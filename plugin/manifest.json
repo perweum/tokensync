@@ -1,0 +1,12 @@
+{
+  "name": "Token Sync",
+  "id": "token-sync-internal",
+  "api": "1.0.0",
+  "main": "dist/plugin/main.js",
+  "ui": "dist/index.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["https://api.github.com"],
+    "reasoning": "Reads and writes token files to GitHub repositories via the GitHub REST API."
+  }
+}

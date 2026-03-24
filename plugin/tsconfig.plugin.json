@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["ES2019"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "outDir": "dist/plugin",
+    "rootDir": "src",
+    "types": ["@figma/plugin-typings"],
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["src/plugin", "src/shared"]
+}
