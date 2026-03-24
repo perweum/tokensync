@@ -41,6 +41,17 @@ figma.ui.onmessage = async (msg: UIMessage) => {
         break
       }
 
+      case 'LOAD_STORAGE': {
+        const value = await figma.clientStorage.getAsync(msg.key) as string | undefined
+        send({ type: 'STORAGE_LOADED', key: msg.key, value: value ?? null })
+        break
+      }
+
+      case 'SAVE_STORAGE': {
+        await figma.clientStorage.setAsync(msg.key, msg.value)
+        break
+      }
+
       case 'CLOSE': {
         figma.closePlugin()
         break

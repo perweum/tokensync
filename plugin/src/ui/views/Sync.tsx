@@ -9,9 +9,11 @@ import { fetchTokenFiles, createTokenPR } from '../hooks/useGitHub'
 import { useSendMessage, usePluginMessage } from '../hooks/usePlugin'
 import { buildFigmaFlatMaps } from '../hooks/useFigmaValues'
 import { parseRepository } from '../../shared/token-merger'
+import type { ParsedRepository } from '../../shared/token-merger'
 import { buildCollectionDiff } from '../../shared/token-diff'
-import { figmaToCollections, figmaToTokenFiles } from '../../shared/figma-to-tokens'
+import { figmaToCollections } from '../../shared/figma-to-tokens'
 import type { CollectionDiff } from '../../shared/token-diff'
+import { runTransformers } from '../../shared/transformer'
 import type { PluginMessage, FigmaVariableCollection, FigmaVariable } from '../../shared/messages'
 import { PullDiff } from './PullDiff'
 import { PushDiff } from './PushDiff'
@@ -27,12 +29,13 @@ type Status =
 interface Props {
   project: Project
   onEditProject: () => void
+  onDeleteProject: () => void
 }
 
 // Stored between the GET_COLLECTIONS call and the plugin response
 type PendingAction = 'pull' | 'push'
 
-export function Sync({ project, onEditProject }: Props) {
+export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject }: Props) {
   const [view, setView] = useState<View>('main')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [applying, setApplying] = useState(false)
@@ -42,6 +45,8 @@ export function Sync({ project, onEditProject }: Props) {
   const pendingAction = useRef<PendingAction | null>(null)
   const pendingGitHub = useRef<ReturnType<typeof parseRepository> | null>(null)
   const pendingFiles = useRef<Awaited<ReturnType<typeof fetchTokenFiles>> | null>(null)
+  const pendingParsed = useRef<ParsedRepository | null>(null)           // push: parsed GitHub repo (metadata + collections)
+  const pendingFigmaCollections = useRef<ReturnType<typeof figmaToCollections> | null>(null) // push: Figma resolved collections
 
   const send = useSendMessage()
 
@@ -203,6 +208,7 @@ export function Sync({ project, onEditProject }: Props) {
 
     // GitHub side: parse existing token files
     const githubParsed = parseRepository(githubFiles, project.tokensPath)
+    pendingParsed.current = githubParsed
 
     // Figma side: convert to same ResolvedCollection shape
     const figmaCollectionData = figmaToCollections(
@@ -210,6 +216,7 @@ export function Sync({ project, onEditProject }: Props) {
       figmaVariables,
       figmaCollectionNames,
     )
+    pendingFigmaCollections.current = figmaCollectionData
 
     // Diff: Figma (new) vs GitHub (current)
     // githubValue = current state in GitHub, figmaValue = new state from Figma
@@ -274,15 +281,23 @@ export function Sync({ project, onEditProject }: Props) {
 
   /**
    * Reconstruct token file content from the push diff entries.
-   * Only writes files that have changes.
+   * Also runs platform transformers (CSS, JS/TS, Dart) if configured in metadata.
    */
   function buildFilesFromDiffs(): Array<{ path: string; content: string }> {
-    // Group diff entries back into file paths
-    // We use the collection name + mode name to determine the file path
-    return diffs.map((diff) => {
+    const tokenFiles = diffs.map((diff) => {
       const { repoPath, tokens } = diffToFile(diff, project.tokensPath)
       return { path: repoPath, content: JSON.stringify(tokens, null, 2) }
     })
+
+    // Run platform transformers using the full Figma collection set
+    const figmaCollections = pendingFigmaCollections.current
+    const parsed = pendingParsed.current
+    if (figmaCollections && parsed) {
+      const platformFiles = runTransformers(figmaCollections, parsed.metadata, project.tokensPath)
+      return [...tokenFiles, ...platformFiles]
+    }
+
+    return tokenFiles
   }
 
   // ---------------------------------------------------------------------------

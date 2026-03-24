@@ -69,6 +69,11 @@ export type PluginMessage =
       count: number
     }
   | {
+      type: 'STORAGE_LOADED'
+      key: string
+      value: string | null
+    }
+  | {
       type: 'ERROR'
       message: string
       context?: string
@@ -86,4 +91,6 @@ export type UIMessage =
       collectionId: string
       modeId: string
     }
+  | { type: 'LOAD_STORAGE'; key: string }
+  | { type: 'SAVE_STORAGE'; key: string; value: string }
   | { type: 'CLOSE' }

@@ -10,6 +10,10 @@ interface Props {
   onSave: (project: Project) => void
 }
 
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
+}
+
 export function Setup({ onSave }: Props) {
   const [name, setName] = useState('')
   const [pat, setPat] = useState('')
@@ -18,6 +22,7 @@ export function Setup({ onSave }: Props) {
   const [tokensPath, setTokensPath] = useState('tokens/')
   const [figmaFileKey, setFigmaFileKey] = useState('')
   const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -27,17 +32,18 @@ export function Setup({ onSave }: Props) {
     if (!pat.trim()) return setError('GitHub Personal Access Token is required')
     if (!repo.trim() || !repo.includes('/'))
       return setError('Repository must be in format org/repo-name')
-    if (!figmaFileKey.trim()) return setError('Figma file key is required')
-
-    onSave({
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      pat: pat.trim(),
-      repo: repo.trim(),
-      branch: branch.trim() || 'main',
-      tokensPath: tokensPath.trim() || 'tokens/',
-      figmaFileKey: figmaFileKey.trim(),
-    })
+    setSaved(true)
+    setTimeout(() => {
+      onSave({
+        id: generateId(),
+        name: name.trim(),
+        pat: pat.trim(),
+        repo: repo.trim(),
+        branch: branch.trim() || 'main',
+        tokensPath: tokensPath.trim() || 'tokens/',
+        figmaFileKey: figmaFileKey.trim(),
+      })
+    }, 400)
   }
 
   return (
@@ -100,7 +106,7 @@ export function Setup({ onSave }: Props) {
 
         <Field
           label="Figma file key"
-          hint="Found in the URL: figma.com/design/FILE_KEY/..."
+          hint="Optional. Found in the URL: figma.com/design/FILE_KEY/..."
         >
           <input
             style={styles.input}
@@ -112,8 +118,8 @@ export function Setup({ onSave }: Props) {
 
         {error && <p style={styles.error}>{error}</p>}
 
-        <button type="submit" style={styles.button}>
-          Save project
+        <button type="submit" style={{ ...styles.button, ...(saved ? styles.buttonSaved : {}) }} disabled={saved}>
+          {saved ? '✓ Saved' : 'Save project'}
         </button>
       </form>
     </div>
@@ -163,5 +169,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     cursor: 'pointer',
   },
-  error: { margin: 0, fontSize: '12px', color: '#c00' },
+  error:       { margin: 0, fontSize: '12px', color: '#c00' },
+  buttonSaved: { background: '#12702f' },
 }

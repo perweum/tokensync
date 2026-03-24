@@ -11,9 +11,14 @@ export default defineConfig({
   plugins: [react(), viteSingleFile()],
   build: {
     outDir: 'dist',
-    emptyOutDir: false, // plugin/main.js is written separately by tsc
+    emptyOutDir: false, // plugin/main.js is written separately by esbuild
+    target: 'es6',
     rollupOptions: {
       input: 'index.html',
+      output: {
+        format: 'iife',  // no <script type="module"> — required for Figma plugin iframe
+        inlineDynamicImports: true,
+      },
     },
   },
 })
