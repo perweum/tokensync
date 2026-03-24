@@ -1,0 +1,107 @@
+{
+  "$description": "Semantic typography tokens. These never change between light/dark or between brands — they are purely structural aliases over primitives.",
+
+  "text": {
+
+    "heading": {
+      "$description": "Display and heading sizes.",
+      "display": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.bold}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.5xl}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.tight}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.tight}" }
+      },
+      "1": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.bold}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.4xl}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.tight}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.tight}" }
+      },
+      "2": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.bold}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.3xl}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.snug}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.tight}" }
+      },
+      "3": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.semibold}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.2xl}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.snug}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.normal}" }
+      },
+      "4": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.semibold}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.xl}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.snug}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.normal}" }
+      }
+    },
+
+    "body": {
+      "$description": "Body text sizes.",
+      "lg": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.regular}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.lg}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.relaxed}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.normal}" }
+      },
+      "md": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.regular}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.md}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.normal}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.normal}" }
+      },
+      "sm": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.regular}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.sm}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.normal}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.normal}" }
+      }
+    },
+
+    "label": {
+      "$description": "Labels, captions, helper text.",
+      "md": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.medium}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.sm}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.normal}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.wide}" }
+      },
+      "sm": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.medium}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.xs}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.normal}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.wider}" }
+      }
+    },
+
+    "code": {
+      "md": {
+        "fontFamily":    { "$type": "fontFamily", "$value": "{typography.fontFamily.mono}" },
+        "fontWeight":    { "$type": "fontWeight", "$value": "{typography.fontWeight.regular}" },
+        "fontSize":      { "$type": "dimension",  "$value": "{typography.fontSize.sm}" },
+        "lineHeight":    { "$type": "number",     "$value": "{typography.lineHeight.relaxed}" },
+        "letterSpacing": { "$type": "dimension",  "$value": "{typography.letterSpacing.normal}" }
+      }
+    }
+
+  },
+
+  "fontFamily": {
+    "$description": "Semantic font family aliases. Override per brand via metadata.json.",
+    "primary":   { "$type": "fontFamily", "$value": "{typography.fontFamily.sans}" },
+    "secondary": { "$type": "fontFamily", "$value": "{typography.fontFamily.serif}" },
+    "mono":      { "$type": "fontFamily", "$value": "{typography.fontFamily.mono}" }
+  }
+
+}

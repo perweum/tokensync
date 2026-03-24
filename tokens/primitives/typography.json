@@ -1,0 +1,51 @@
+{
+  "typography": {
+
+    "fontFamily": {
+      "$type": "fontFamily",
+      "sans":  { "$value": "Inter, system-ui, -apple-system, sans-serif" },
+      "serif": { "$value": "Georgia, 'Times New Roman', serif" },
+      "mono":  { "$value": "'Fira Code', 'Cascadia Code', monospace" }
+    },
+
+    "fontWeight": {
+      "$type": "fontWeight",
+      "regular":  { "$value": "400" },
+      "medium":   { "$value": "500" },
+      "semibold": { "$value": "600" },
+      "bold":     { "$value": "700" }
+    },
+
+    "fontSize": {
+      "$type": "dimension",
+      "$description": "Absolute font size scale. Values are rem-based at 16px root.",
+      "xs":   { "$value": "0.75rem",  "$description": "12px" },
+      "sm":   { "$value": "0.875rem", "$description": "14px" },
+      "md":   { "$value": "1rem",     "$description": "16px" },
+      "lg":   { "$value": "1.125rem", "$description": "18px" },
+      "xl":   { "$value": "1.25rem",  "$description": "20px" },
+      "2xl":  { "$value": "1.5rem",   "$description": "24px" },
+      "3xl":  { "$value": "1.875rem", "$description": "30px" },
+      "4xl":  { "$value": "2.25rem",  "$description": "36px" },
+      "5xl":  { "$value": "3rem",     "$description": "48px" },
+      "6xl":  { "$value": "3.75rem",  "$description": "60px" }
+    },
+
+    "lineHeight": {
+      "$type": "number",
+      "tight":   { "$value": "1.2" },
+      "snug":    { "$value": "1.35" },
+      "normal":  { "$value": "1.5" },
+      "relaxed": { "$value": "1.65" }
+    },
+
+    "letterSpacing": {
+      "$type": "dimension",
+      "tight":  { "$value": "-0.02em" },
+      "normal": { "$value": "0em" },
+      "wide":   { "$value": "0.04em" },
+      "wider":  { "$value": "0.08em" }
+    }
+
+  }
+}

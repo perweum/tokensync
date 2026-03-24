@@ -1,0 +1,76 @@
+{
+  "$schema": "tokensync/v1",
+  "$description": "Project configuration for the token sync pipeline. Defines brands, themes, Figma mapping, and platform output.",
+
+  "version": "1.0.0",
+
+  "brands": ["default"],
+  "themes": ["light", "dark"],
+
+  "roles": {
+    "$description": "Maps semantic colour roles to primitive palette names per brand. Roles are fixed; the primitive behind them is flexible.",
+    "default": {
+      "brand":   "color.brand",
+      "neutral": "color.neutral",
+      "success": "color.success",
+      "error":   "color.error",
+      "warning": "color.warning",
+      "info":    "color.info"
+    }
+  },
+
+  "figma": {
+    "$description": "Figma file and Variable Collection configuration.",
+    "fileKey": "REPLACE_WITH_FIGMA_FILE_KEY",
+    "collections": {
+      "primitives": "Primitives",
+      "global":     "Global",
+      "semantic":   "Semantic"
+    },
+    "$note": "Semantic collection uses combined modes: 'Default/Light', 'Default/Dark', etc."
+  },
+
+  "github": {
+    "$description": "GitHub repository and path configuration.",
+    "repo":       "your-org/design-tokens",
+    "branch":     "main",
+    "tokensPath": "tokens/"
+  },
+
+  "platforms": {
+    "$description": "Output configuration per target platform. Path tokens support {brand} and {theme} placeholders.",
+
+    "css": {
+      "enabled": true,
+      "output":  "dist/{brand}/{theme}.css",
+      "prefix":  "--",
+      "$description": "CSS custom properties. Import in web projects. Supports data-attribute theming."
+    },
+
+    "js": {
+      "enabled": true,
+      "output":  "dist/{brand}/{theme}.js",
+      "format":  "esm",
+      "$description": "ES module with named exports. Use in React, Vue, Svelte etc."
+    },
+
+    "ts": {
+      "enabled": true,
+      "output":  "dist/{brand}/{theme}.ts",
+      "$description": "TypeScript with full type definitions. Import for type-safe token access."
+    },
+
+    "dart": {
+      "enabled": false,
+      "output":  "lib/src/tokens/{brand}_{theme}.dart",
+      "$description": "Dart constants for Flutter. Enable when building a Flutter app."
+    },
+
+    "swift": {
+      "enabled": false,
+      "output":  "Sources/Tokens/{brand}/{theme}.swift",
+      "$description": "Swift constants for iOS/macOS native apps."
+    }
+  }
+
+}

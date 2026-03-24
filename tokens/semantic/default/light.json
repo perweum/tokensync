@@ -1,0 +1,175 @@
+{
+  "$description": "Semantic colour tokens — default brand, light theme. These reference colour primitives only. Step numbers in references indicate perceptual lightness: 500 is the same perceived darkness for all palettes.",
+
+  "background": {
+    "$type": "color",
+    "$description": "Full-page and section backgrounds. Should never carry interactive states.",
+    "default":  { "$value": "{color.white.100}", "$description": "Base page background" },
+    "subtle":   { "$value": "{color.neutral.25}", "$description": "Slightly tinted background (sidebars, code blocks)" },
+    "brand":    { "$value": "{color.brand.25}" },
+    "success":  { "$value": "{color.success.25}" },
+    "error":    { "$value": "{color.error.25}" },
+    "warning":  { "$value": "{color.warning.25}" },
+    "info":     { "$value": "{color.info.25}" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "$description": "Component surfaces (cards, modals, inputs). Carry interactive states.",
+    "default":  { "$value": "{color.white.100}" },
+    "raised":   { "$value": "{color.white.100}", "$description": "Elevated surface — pair with elevation shadow" },
+    "overlay":  { "$value": "{color.white.100}", "$description": "Modal overlays, popovers" },
+    "disabled": { "$value": "{color.neutral.50}" },
+    "brand": {
+      "default": { "$value": "{color.brand.50}" },
+      "hover":   { "$value": "{color.brand.100}" },
+      "active":  { "$value": "{color.brand.200}" }
+    },
+    "success": {
+      "default": { "$value": "{color.success.50}" },
+      "hover":   { "$value": "{color.success.100}" },
+      "active":  { "$value": "{color.success.200}" }
+    },
+    "error": {
+      "default": { "$value": "{color.error.50}" },
+      "hover":   { "$value": "{color.error.100}" },
+      "active":  { "$value": "{color.error.200}" }
+    },
+    "warning": {
+      "default": { "$value": "{color.warning.50}" },
+      "hover":   { "$value": "{color.warning.100}" },
+      "active":  { "$value": "{color.warning.200}" }
+    },
+    "info": {
+      "default": { "$value": "{color.info.50}" },
+      "hover":   { "$value": "{color.info.100}" },
+      "active":  { "$value": "{color.info.200}" }
+    }
+  },
+
+  "border": {
+    "$type": "color",
+    "$description": "Border and divider colours.",
+    "subtle":   { "$value": "{color.neutral.100}", "$description": "Hairline dividers, very subtle" },
+    "default":  { "$value": "{color.neutral.200}", "$description": "Standard component borders" },
+    "strong":   { "$value": "{color.neutral.400}", "$description": "High-emphasis borders" },
+    "disabled": { "$value": "{color.neutral.200}" },
+    "focus":    { "$value": "{color.brand.600}", "$description": "Focus ring colour. Must meet 3:1 against background." },
+    "brand": {
+      "default": { "$value": "{color.brand.200}" },
+      "hover":   { "$value": "{color.brand.400}" }
+    },
+    "success":  { "default": { "$value": "{color.success.300}" } },
+    "error":    { "default": { "$value": "{color.error.300}" } },
+    "warning":  { "default": { "$value": "{color.warning.300}" } },
+    "info":     { "default": { "$value": "{color.info.300}" } }
+  },
+
+  "base": {
+    "$type": "color",
+    "$description": "Solid filled surfaces for interactive elements (buttons, tags, badges). 500 is the base step across all palettes — same perceived darkness.",
+    "disabled": { "$value": "{color.neutral.200}" },
+    "brand": {
+      "default": { "$value": "{color.brand.600}" },
+      "hover":   { "$value": "{color.brand.700}" },
+      "active":  { "$value": "{color.brand.800}" }
+    },
+    "neutral": {
+      "default": { "$value": "{color.neutral.600}" },
+      "hover":   { "$value": "{color.neutral.700}" },
+      "active":  { "$value": "{color.neutral.800}" }
+    },
+    "success": {
+      "default": { "$value": "{color.success.600}" },
+      "hover":   { "$value": "{color.success.700}" },
+      "active":  { "$value": "{color.success.800}" }
+    },
+    "error": {
+      "default": { "$value": "{color.error.600}" },
+      "hover":   { "$value": "{color.error.700}" },
+      "active":  { "$value": "{color.error.800}" }
+    },
+    "warning": {
+      "default": { "$value": "{color.warning.500}" },
+      "hover":   { "$value": "{color.warning.600}" },
+      "active":  { "$value": "{color.warning.700}" }
+    },
+    "info": {
+      "default": { "$value": "{color.info.600}" },
+      "hover":   { "$value": "{color.info.700}" },
+      "active":  { "$value": "{color.info.800}" }
+    }
+  },
+
+  "text": {
+    "$type": "color",
+    "$description": "Text and icon colours.",
+    "default":  { "$value": "{color.neutral.950}", "$description": "Primary body text" },
+    "subtle":   { "$value": "{color.neutral.600}", "$description": "Secondary / supporting text" },
+    "disabled": { "$value": "{color.neutral.400}" },
+    "inverse":  { "$value": "{color.white.100}", "$description": "Text on dark/filled surfaces" },
+    "brand": {
+      "default":  { "$value": "{color.brand.700}" },
+      "contrast": { "$value": "{color.white.100}", "$description": "Text placed on base.brand surface" }
+    },
+    "success": {
+      "default":  { "$value": "{color.success.700}" },
+      "contrast": { "$value": "{color.white.100}" }
+    },
+    "error": {
+      "default":  { "$value": "{color.error.700}" },
+      "contrast": { "$value": "{color.white.100}" }
+    },
+    "warning": {
+      "default":  { "$value": "{color.warning.800}" },
+      "contrast": { "$value": "{color.white.100}" }
+    },
+    "info": {
+      "default":  { "$value": "{color.info.700}" },
+      "contrast": { "$value": "{color.white.100}" }
+    }
+  },
+
+  "icon": {
+    "$type": "color",
+    "$description": "Icon colours. Alias over text tokens — icons and their sibling text should always use matching tokens.",
+    "default":  { "$value": "{text.default}" },
+    "subtle":   { "$value": "{text.subtle}" },
+    "disabled": { "$value": "{text.disabled}" },
+    "inverse":  { "$value": "{text.inverse}" },
+    "brand": {
+      "default":  { "$value": "{text.brand.default}" },
+      "contrast": { "$value": "{text.brand.contrast}" }
+    },
+    "success": {
+      "default":  { "$value": "{text.success.default}" },
+      "contrast": { "$value": "{text.success.contrast}" }
+    },
+    "error": {
+      "default":  { "$value": "{text.error.default}" },
+      "contrast": { "$value": "{text.error.contrast}" }
+    },
+    "warning": {
+      "default":  { "$value": "{text.warning.default}" },
+      "contrast": { "$value": "{text.warning.contrast}" }
+    },
+    "info": {
+      "default":  { "$value": "{text.info.default}" },
+      "contrast": { "$value": "{text.info.contrast}" }
+    }
+  },
+
+  "elevation": {
+    "$description": "Shadow levels for depth. Colours use semi-transparent black.",
+    "1": { "$type": "shadow", "$value": "0 1px 2px {color.black.5}, 0 1px 3px {color.black.10}" },
+    "2": { "$type": "shadow", "$value": "0 4px 6px {color.black.10}, 0 2px 4px {color.black.5}" },
+    "3": { "$type": "shadow", "$value": "0 10px 15px {color.black.10}, 0 4px 6px {color.black.5}" },
+    "4": { "$type": "shadow", "$value": "0 20px 25px {color.black.10}, 0 8px 10px {color.black.5}" }
+  },
+
+  "overlay": {
+    "$description": "Scrim/overlay behind modals and drawers.",
+    "default": { "$type": "color", "$value": "{color.black.30}" }
+  }
+
+}

@@ -1,0 +1,7 @@
+{
+  "name": "tokensync",
+  "version": "0.1.0",
+  "description": "Design token sync between Figma and GitHub. Internal alternative to Token Studio.",
+  "private": true,
+  "type": "module"
+}
