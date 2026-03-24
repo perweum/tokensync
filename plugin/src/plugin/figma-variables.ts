@@ -46,6 +46,7 @@ export async function getCollectionsAndVariables(): Promise<{
 
 /**
  * Applies a TokenTree to a Figma variable collection + mode.
+ * collectionId and modeId may be names (resolved here) or actual Figma IDs.
  * Creates variables that don't exist, updates values for variables that do.
  * Returns the number of variables written.
  */
@@ -54,8 +55,18 @@ export async function applyTokensToCollection(
   collectionId: string,
   modeId: string,
 ): Promise<number> {
-  const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId)
-  if (!collection) throw new Error(`Collection ${collectionId} not found`)
+  // Support name-based lookup (sent from UI as collection name / mode name)
+  const allCollections = await figma.variables.getLocalVariableCollectionsAsync()
+  let collection = allCollections.find((c) => c.id === collectionId)
+                ?? allCollections.find((c) => c.name === collectionId)
+  if (!collection) throw new Error(`Collection "${collectionId}" not found`)
+
+  const mode = collection.modes.find((m) => m.modeId === modeId)
+            ?? collection.modes.find((m) => m.name === modeId)
+  if (!mode) throw new Error(`Mode "${modeId}" not found in collection "${collection.name}"`)
+
+  // Rebind modeId to the actual Figma ID
+  modeId = mode.modeId
 
   // Flatten and resolve all references
   const flat = flattenTokens(tokens)

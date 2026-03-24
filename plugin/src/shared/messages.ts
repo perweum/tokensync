@@ -6,6 +6,16 @@
  */
 
 // ---------------------------------------------------------------------------
+// GitHub file type (used by both UI and shared parsing logic)
+// ---------------------------------------------------------------------------
+
+export interface GitHubFile {
+  path: string
+  content: string  // decoded UTF-8 content
+  sha: string      // needed for updates
+}
+
+// ---------------------------------------------------------------------------
 // Shared token types
 // ---------------------------------------------------------------------------
 
@@ -23,10 +33,19 @@ export interface FigmaVariable {
   id: string
   name: string
   resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN'
-  valuesByMode: Record<string, unknown>
+  /** Raw Figma values per modeId. May be RGBA, number, string, or VariableAlias. */
+  valuesByMode: Record<string, FigmaVariableValue>
   collectionId: string
   collectionName: string
 }
+
+/** Possible raw value types returned by the Figma Variables API. */
+export type FigmaVariableValue =
+  | { r: number; g: number; b: number; a?: number }  // COLOR (alpha optional — Figma returns RGB or RGBA)
+  | number                                             // FLOAT
+  | string                                             // STRING
+  | boolean                                            // BOOLEAN
+  | { type: 'VARIABLE_ALIAS'; id: string }             // alias reference
 
 export interface FigmaVariableCollection {
   id: string
