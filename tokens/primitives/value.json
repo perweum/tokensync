@@ -1,0 +1,10 @@
+{
+  "color": {
+    "blue": {
+      "300": {
+        "$type": "color",
+        "$value": "#84aaff"
+      }
+    }
+  }
+}
