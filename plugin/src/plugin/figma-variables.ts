@@ -84,14 +84,17 @@ export async function applyTokensToCollection(
   // Rebind modeId to the actual Figma ID
   modeId = mode.modeId
 
-  // Flatten and resolve all references
+  // Flatten (keep raw {ref} strings) + build resolved map for fallback
   const flat = flattenTokens(tokens)
-  const resolved = resolveAllReferences(flat)
+  const resolvedFlat = resolveAllReferences(flat)
 
-  // Build a lookup of existing variables by name (slash-notation)
-  const existingVars = await figma.variables.getLocalVariablesAsync()
-  const varByName = new Map(
-    existingVars
+  // Build lookup of ALL local variables — needed to find alias targets across collections
+  const allLocalVars = await figma.variables.getLocalVariablesAsync()
+  const allVarsByName = new Map(allLocalVars.map((v) => [v.name, v]))
+
+  // Lookup of variables that belong to THIS collection
+  const collectionVars = new Map(
+    allLocalVars
       .filter((v) => v.variableCollectionId === collection.id)
       .map((v) => [v.name, v]),
   )
@@ -100,42 +103,81 @@ export async function applyTokensToCollection(
   let removed = 0
   const errors: string[] = []
 
-  // Clean apply: delete all existing variables first so they are recreated in sorted order
+  // Clean apply: wipe all existing variables so they are recreated in sorted order
   if (cleanApply) {
-    for (const variable of varByName.values()) {
-      try { variable.remove() } catch { /* already deleted */ }
+    for (const variable of collectionVars.values()) {
+      try {
+        variable.remove()
+        allVarsByName.delete(variable.name)
+      } catch { /* already deleted */ }
     }
-    varByName.clear()
+    collectionVars.clear()
     console.log(`[TokenSync] Clean apply: cleared all variables from ${collectionId}`)
   }
 
-  // Sort paths so variables are created in the right order (numeric steps: 25, 50, 100 … 950)
-  const sortedPaths = Object.keys(resolved).sort((a, b) =>
-    toSortKey(a).localeCompare(toSortKey(b))
-  )
+  // Sort paths numerically (25, 50, 100 … 950)
+  const sortedPaths = Object.keys(flat)
+    .filter((p) => isTokenValue(flat[p]))
+    .sort((a, b) => toSortKey(a).localeCompare(toSortKey(b)))
 
   console.log(`[TokenSync] Applying ${sortedPaths.length} tokens to ${collectionId}/${modeId}`)
 
+  // ── Pass 1: create all missing variables (no values yet) ──────────────────
   for (const path of sortedPaths) {
-    const token = resolved[path]
-    if (!isTokenValue(token)) continue
-
+    const token = flat[path] as TokenValue
     const figmaName = toFigmaVarName(path)
-    const resolvedType = figmaTypeFromTokenType(token.$type)
-    if (!resolvedType) continue
+    const figmaType = figmaTypeFromTokenType(token.$type)
+    if (!figmaType) continue
+    if (!collectionVars.has(figmaName)) {
+      try {
+        const newVar = figma.variables.createVariable(figmaName, collection, figmaType)
+        collectionVars.set(figmaName, newVar)
+        allVarsByName.set(figmaName, newVar)
+      } catch (err) {
+        errors.push(`create ${figmaName}: ${String(err)}`)
+      }
+    }
+  }
+
+  // ── Pass 2: set values — VariableAlias for refs, literals otherwise ───────
+  for (const path of sortedPaths) {
+    const token = flat[path] as TokenValue
+    const figmaName = toFigmaVarName(path)
+    const variable = collectionVars.get(figmaName)
+    if (!variable) continue
+    const figmaType = figmaTypeFromTokenType(token.$type)
+    if (!figmaType) continue
 
     try {
-      let variable = varByName.get(figmaName)
-      if (!variable) {
-        variable = figma.variables.createVariable(figmaName, collection, resolvedType)
+      if (isPureRef(token.$value)) {
+        // Try to create a VariableAlias pointing to the referenced primitive/semantic variable
+        const targetName = toFigmaVarName(extractRef(token.$value))
+        const targetVar = allVarsByName.get(targetName)
+        if (targetVar) {
+          variable.setValueForMode(modeId, { type: 'VARIABLE_ALIAS', id: targetVar.id })
+          count++
+          continue
+        }
+        // Target variable not found — fall through to literal fallback
       }
 
-      const figmaValue = toFigmaValue(token.$value, resolvedType)
+      // Literal value. For strings that contain embedded {refs} (e.g. shadow values),
+      // resolve them against already-applied Figma variable values.
+      const rawValue = token.$value
+      const literalValue = hasRef(rawValue)
+        ? resolveInlineRefs(rawValue, allVarsByName)
+        : rawValue
+
+      // For the resolved fallback (when alias target wasn't found), use the fully-resolved map
+      const valueToUse = (isPureRef(rawValue) && !hasRef(literalValue))
+        ? literalValue
+        : (hasRef(literalValue) ? (resolvedFlat[path]?.$value ?? literalValue) : literalValue)
+
+      const figmaValue = toFigmaValue(valueToUse, figmaType)
       if (figmaValue === null) {
-        errors.push(`${figmaName}: could not parse value "${token.$value}" (type: ${token.$type})`)
+        errors.push(`${figmaName}: could not parse "${token.$value}" (type: ${token.$type})`)
         continue
       }
-
       variable.setValueForMode(modeId, figmaValue)
       count++
     } catch (err) {
@@ -143,11 +185,11 @@ export async function applyTokensToCollection(
     }
   }
 
-  // Delete variables that were removed from GitHub
+  // ── Delete variables removed from GitHub ──────────────────────────────────
   if (!cleanApply && removedPaths && removedPaths.length > 0) {
     for (const dotPath of removedPaths) {
       const figmaName = toFigmaVarName(dotPath)
-      const variable = varByName.get(figmaName)
+      const variable = collectionVars.get(figmaName)
       if (variable) {
         try {
           variable.remove()
@@ -170,6 +212,49 @@ export async function applyTokensToCollection(
 /** Pads numeric segments so paths sort numerically: blue.25 < blue.100 */
 function toSortKey(path: string): string {
   return path.replace(/(\d+)/g, (n) => n.padStart(6, '0'))
+}
+
+/** Returns true when $value is exactly a single token reference: "{color.blue.200}" */
+function isPureRef(value: string): boolean {
+  return /^\{[^}]+\}$/.test(value)
+}
+
+/** Returns true when $value contains any {ref} pattern (pure or embedded) */
+function hasRef(value: string): boolean {
+  return value.includes('{')
+}
+
+/** Strips the braces from a pure ref: "{color.blue.200}" → "color.blue.200" */
+function extractRef(value: string): string {
+  return value.slice(1, -1)
+}
+
+/**
+ * Resolves embedded {ref} patterns in a string value by substituting the current
+ * value of the matching Figma variable. Used for shadow/composite string tokens.
+ */
+function resolveInlineRefs(
+  value: string,
+  allVarsByName: Map<string, Variable>,
+): string {
+  return value.replace(/\{([^}]+)\}/g, (match, refPath: string) => {
+    const figmaName = toFigmaVarName(refPath)
+    const targetVar = allVarsByName.get(figmaName)
+    if (!targetVar) return match
+
+    // Take value from the first (and usually only) mode of the referenced variable
+    const modeValues = Object.values(targetVar.valuesByMode)
+    if (modeValues.length === 0) return match
+
+    const val = modeValues[0]
+    if (typeof val === 'string') return val
+    if (typeof val === 'number') return String(val)
+    if (typeof val === 'object' && val !== null && 'r' in val) {
+      const { r, g, b, a = 1 } = val as { r: number; g: number; b: number; a?: number }
+      return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`
+    }
+    return match
+  })
 }
 
 // ---------------------------------------------------------------------------

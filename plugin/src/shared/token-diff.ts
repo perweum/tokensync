@@ -15,8 +15,9 @@ export interface DiffEntry {
   path: string
   type: string
   status: DiffStatus
-  githubValue: string | null   // resolved value from GitHub token files
-  figmaValue: string | null    // current resolved value in Figma
+  githubValue: string | null     // resolved value — used for display and comparison
+  githubRawValue: string | null  // unresolved value — may contain "{color.blue.200}" refs for Figma aliases
+  figmaValue: string | null      // current value in Figma
 }
 
 export interface CollectionDiff {
@@ -39,6 +40,7 @@ export interface CollectionDiff {
 export function diffTokens(
   githubTokens: Record<string, TokenValue>,
   figmaValues: Record<string, string>,
+  rawTokens?: Record<string, TokenValue>,
 ): DiffEntry[] {
   const entries: DiffEntry[] = []
   const allPaths = new Set([...Object.keys(githubTokens), ...Object.keys(figmaValues)])
@@ -47,13 +49,14 @@ export function diffTokens(
     const github = githubTokens[path] ?? null
     const figmaRaw = figmaValues[path] ?? null
 
-    const githubValue = github?.$value ?? null
+    const githubValue    = github?.$value ?? null
+    const githubRawValue = rawTokens?.[path]?.$value ?? githubValue  // falls back to resolved
     const type = github?.$type ?? 'unknown'
 
     const status = deriveStatus(githubValue, figmaRaw, type)
     if (status === 'unchanged') continue
 
-    entries.push({ path, type, status, githubValue, figmaValue: figmaRaw })
+    entries.push({ path, type, status, githubValue, githubRawValue, figmaValue: figmaRaw })
   }
 
   return entries.sort(byPathThenStatus)
@@ -64,8 +67,9 @@ export function buildCollectionDiff(
   modeName: string,
   githubTokens: Record<string, TokenValue>,
   figmaValues: Record<string, string>,
+  rawTokens?: Record<string, TokenValue>,
 ): CollectionDiff {
-  const entries = diffTokens(githubTokens, figmaValues)
+  const entries = diffTokens(githubTokens, figmaValues, rawTokens)
   const counts = {
     added:   entries.filter((e) => e.status === 'added').length,
     changed: entries.filter((e) => e.status === 'changed').length,

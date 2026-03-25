@@ -157,6 +157,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         githubCol.modeName,
         githubCol.tokens,
         figmaMap?.values ?? {},
+        githubCol.rawTokens,
       )
     })
 
@@ -178,7 +179,8 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const tokensToApply = diff.entries
       .filter((e) => e.status === 'added' || e.status === 'changed')
       .reduce<Record<string, { $type: string; $value: string }>>((acc, entry) => {
-        if (entry.githubValue) acc[entry.path] = { $type: entry.type, $value: entry.githubValue }
+        const value = entry.githubRawValue ?? entry.githubValue
+      if (value) acc[entry.path] = { $type: entry.type, $value: value }
         return acc
       }, {})
 
@@ -204,7 +206,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     if (!col) return
     send({
       type: 'APPLY_TOKENS',
-      tokens: col.tokens as TokenTree,
+      tokens: col.rawTokens as TokenTree,
       collectionId: collectionName,
       modeId: modeName,
       cleanApply: true,

@@ -44,10 +44,12 @@ const DEFAULT_METADATA: Metadata = {
 export interface ResolvedCollection {
   /** Matches figma collection name from metadata */
   collectionName: string
-  /** e.g. "Value" for primitives/global, "Default/Light" for semantic */
+  /** e.g. "Value" for primitives/global, "Light" for semantic */
   modeName: string
-  /** Flat, fully-resolved token map: path → { $type, $value } */
+  /** Flat, fully-resolved token map: path → { $type, $value } — used for diff comparison */
   tokens: Record<string, TokenValue>
+  /** Flat, unresolved token map: $value may contain "{color.blue.200}" refs — used for Figma alias creation */
+  rawTokens: Record<string, TokenValue>
 }
 
 export interface ParsedRepository {
@@ -76,24 +78,27 @@ export function parseRepository(
 
   // --- Primitives collection ---
   const primitivesTree = mergeTrees(Object.values(layers.primitives))
-  const primitivesFlat = resolveAllReferences(flattenTokens(primitivesTree))
+  const primitivesFlatRaw = flattenTokens(primitivesTree)
+  const primitivesFlat = resolveAllReferences(primitivesFlatRaw)
   collections.push({
     collectionName: metadata.figma.collections.primitives,
     modeName: 'Value',
     tokens: primitivesFlat,
+    rawTokens: primitivesFlatRaw,  // primitives have no refs so raw = resolved
   })
 
   // --- Global collection ---
   const globalTree = mergeTrees(Object.values(layers.global))
-  // Global tokens can reference primitives — include both for resolution
-  const globalWithPrimitives = flattenTokens(mergeTrees([primitivesTree, globalTree]))
-  const globalResolved = resolveAllReferences(globalWithPrimitives)
-  // Keep only global tokens (strip primitives from output)
-  const globalFlat = filterByPaths(globalResolved, Object.keys(flattenTokens(globalTree)))
+  const globalWithPrimitivesFlat = flattenTokens(mergeTrees([primitivesTree, globalTree]))
+  const globalResolved = resolveAllReferences(globalWithPrimitivesFlat)
+  const globalPaths = Object.keys(flattenTokens(globalTree))
+  const globalFlat = filterByPaths(globalResolved, globalPaths)
+  const globalFlatRaw = filterByPaths(globalWithPrimitivesFlat, globalPaths)
   collections.push({
     collectionName: metadata.figma.collections.global,
     modeName: 'Value',
     tokens: globalFlat,
+    rawTokens: globalFlatRaw,  // global tokens (spacing/typography) have no refs
   })
 
   // --- Semantic collection (one mode per brand × theme) ---
@@ -102,11 +107,13 @@ export function parseRepository(
       const semanticTree = buildSemanticTree(layers, brand, theme)
       if (!semanticTree) continue
 
-      // Resolve against primitives + global
       const fullTree = mergeTrees([primitivesTree, globalTree, semanticTree])
-      const fullFlat = resolveAllReferences(flattenTokens(fullTree))
-      // Keep only semantic tokens
-      const semanticFlat = filterByPaths(fullFlat, Object.keys(flattenTokens(semanticTree)))
+      const fullFlatUnresolved = flattenTokens(fullTree)          // keeps {ref} strings
+      const fullFlatResolved = resolveAllReferences(fullFlatUnresolved)
+
+      const semanticPaths = Object.keys(flattenTokens(semanticTree))
+      const semanticFlat    = filterByPaths(fullFlatResolved,   semanticPaths)  // for diff comparison
+      const semanticFlatRaw = filterByPaths(fullFlatUnresolved, semanticPaths)  // for Figma alias creation
 
       const modeName =
         brand === 'default'
@@ -117,6 +124,7 @@ export function parseRepository(
         collectionName: metadata.figma.collections.semantic,
         modeName,
         tokens: semanticFlat,
+        rawTokens: semanticFlatRaw,
       })
     }
   }
