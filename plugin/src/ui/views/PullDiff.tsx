@@ -11,12 +11,14 @@ interface Props {
   diffs: CollectionDiff[]
   onApply: (collectionName: string, modeName: string) => void
   onApplyAll: () => void
+  onCleanApply: (collectionName: string, modeName: string) => void
+  onCleanApplyAll: () => void
   onBack: () => void
   applying: boolean
   error?: string
 }
 
-export function PullDiff({ diffs, onApply, onApplyAll, onBack, applying, error }: Props) {
+export function PullDiff({ diffs, onApply, onApplyAll, onCleanApply, onCleanApplyAll, onBack, applying, error }: Props) {
   const [selectedCollection, setSelectedCollection] = useState(0)
 
   const hasDiffs = diffs.some((d) => d.counts.total > 0)
@@ -76,7 +78,7 @@ export function PullDiff({ diffs, onApply, onApplyAll, onBack, applying, error }
                       onClick={() => onApply(diff.collectionName, diff.modeName)}
                       disabled={applying || diff.counts.total === 0}
                     >
-                      {applying ? 'Applying…' : `Apply this (${diff.counts.total})`}
+                      {applying ? 'Applying…' : `Apply changes (${diff.counts.total})`}
                     </button>
                     {diffs.length > 1 && (
                       <button
@@ -85,6 +87,26 @@ export function PullDiff({ diffs, onApply, onApplyAll, onBack, applying, error }
                         disabled={applying}
                       >
                         Apply All
+                      </button>
+                    )}
+                  </div>
+                  <div style={s.footerBtns}>
+                    <button
+                      style={{ ...s.cleanBtn, ...(applying ? s.applyBtnDisabled : {}) }}
+                      onClick={() => onCleanApply(diff.collectionName, diff.modeName)}
+                      disabled={applying}
+                      title="Deletes all variables in this collection and recreates them in sorted order"
+                    >
+                      Clean apply
+                    </button>
+                    {diffs.length > 1 && (
+                      <button
+                        style={{ ...s.cleanBtn, ...(applying ? s.applyBtnDisabled : {}) }}
+                        onClick={onCleanApplyAll}
+                        disabled={applying}
+                        title="Clean apply for all collections"
+                      >
+                        Clean apply all
                       </button>
                     )}
                   </div>
@@ -298,10 +320,11 @@ const s: Record<string, React.CSSProperties> = {
   swatch:      { width: '12px', height: '12px', borderRadius: '3px', flexShrink: 0, display: 'inline-block' },
   valueText:   { fontSize: '11px', color: '#555', fontFamily: 'monospace' },
 
-  footer:      { position: 'sticky', bottom: 0, padding: '12px 16px', background: '#fff', borderTop: '1px solid #eee' },
+  footer:      { position: 'sticky', bottom: 0, padding: '12px 16px', background: '#fff', borderTop: '1px solid #eee', display: 'flex', flexDirection: 'column', gap: '6px' },
   footerBtns:  { display: 'flex', gap: '8px' },
   applyBtn:        { flex: 1, background: '#1a52d8', color: '#fff', border: 'none', borderRadius: '8px', padding: '11px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' },
   applyAllBtn:     { flexShrink: 0, background: '#222', color: '#fff', border: 'none', borderRadius: '8px', padding: '11px 16px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' },
-  applyBtnDisabled: { background: '#aaa', cursor: 'not-allowed' },
+  applyBtnDisabled: { background: '#aaa', cursor: 'not-allowed', borderColor: '#aaa' },
+  cleanBtn:         { flex: 1, background: 'none', color: '#c00000', border: '1px solid #fcc', borderRadius: '8px', padding: '9px', fontSize: '12px', fontWeight: 500, cursor: 'pointer' },
   errorMsg:        { fontSize: '12px', color: '#c00', background: '#fff0f0', border: '1px solid #fcc', borderRadius: '6px', padding: '8px 10px', marginBottom: '8px' },
 }

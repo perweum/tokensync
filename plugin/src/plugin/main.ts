@@ -32,12 +32,14 @@ figma.ui.onmessage = async (msg: UIMessage) => {
       }
 
       case 'APPLY_TOKENS': {
-        const { count, errors } = await applyTokensToCollection(
+        const { count, removed, errors } = await applyTokensToCollection(
           msg.tokens,
           msg.collectionId,
           msg.modeId,
+          msg.removedPaths,
+          msg.cleanApply,
         )
-        send({ type: 'TOKENS_APPLIED', count, errors })
+        send({ type: 'TOKENS_APPLIED', count, removed, errors })
         break
       }
 

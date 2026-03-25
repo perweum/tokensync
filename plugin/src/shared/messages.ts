@@ -67,6 +67,7 @@ export type PluginMessage =
   | {
       type: 'TOKENS_APPLIED'
       count: number
+      removed: number
       errors: string[]
     }
   | {
@@ -91,6 +92,8 @@ export type UIMessage =
       tokens: TokenTree
       collectionId: string
       modeId: string
+      removedPaths?: string[]  // dot-notation paths of tokens removed from GitHub
+      cleanApply?: boolean     // delete all existing variables first, then recreate sorted
     }
   | { type: 'LOAD_STORAGE'; key: string }
   | { type: 'SAVE_STORAGE'; key: string; value: string }

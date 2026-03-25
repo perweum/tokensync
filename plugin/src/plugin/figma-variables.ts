@@ -54,7 +54,9 @@ export async function applyTokensToCollection(
   tokens: TokenTree,
   collectionId: string,
   modeId: string,
-): Promise<{ count: number; errors: string[] }> {
+  removedPaths?: string[],
+  cleanApply?: boolean,
+): Promise<{ count: number; removed: number; errors: string[] }> {
   // Support name-based lookup (sent from UI as collection name / mode name)
   const allCollections = await figma.variables.getLocalVariableCollectionsAsync()
   let collection = allCollections.find((c) => c.id === collectionId)
@@ -71,7 +73,6 @@ export async function applyTokensToCollection(
   // Create mode if it doesn't exist (Figma always creates a default "Mode 1" — rename or add)
   if (!mode) {
     if (collection.modes.length === 1 && collection.modes[0].name === 'Mode 1') {
-      // Rename the placeholder mode Figma creates automatically
       collection.renameMode(collection.modes[0].modeId, modeId)
       mode = collection.modes[0]
     } else {
@@ -96,23 +97,35 @@ export async function applyTokensToCollection(
   )
 
   let count = 0
+  let removed = 0
   const errors: string[] = []
 
-  console.log(`[TokenSync] Applying ${Object.keys(resolved).length} tokens to ${collectionId}/${modeId}`)
+  // Clean apply: delete all existing variables first so they are recreated in sorted order
+  if (cleanApply) {
+    for (const variable of varByName.values()) {
+      try { variable.remove() } catch { /* already deleted */ }
+    }
+    varByName.clear()
+    console.log(`[TokenSync] Clean apply: cleared all variables from ${collectionId}`)
+  }
 
-  for (const [path, token] of Object.entries(resolved)) {
+  // Sort paths so variables are created in the right order (numeric steps: 25, 50, 100 … 950)
+  const sortedPaths = Object.keys(resolved).sort((a, b) =>
+    toSortKey(a).localeCompare(toSortKey(b))
+  )
+
+  console.log(`[TokenSync] Applying ${sortedPaths.length} tokens to ${collectionId}/${modeId}`)
+
+  for (const path of sortedPaths) {
+    const token = resolved[path]
     if (!isTokenValue(token)) continue
 
     const figmaName = toFigmaVarName(path)
     const resolvedType = figmaTypeFromTokenType(token.$type)
-    if (!resolvedType) {
-      // Skip silently — unsupported type (e.g. composite shadow objects)
-      continue
-    }
+    if (!resolvedType) continue
 
     try {
       let variable = varByName.get(figmaName)
-
       if (!variable) {
         variable = figma.variables.createVariable(figmaName, collection, resolvedType)
       }
@@ -130,12 +143,33 @@ export async function applyTokensToCollection(
     }
   }
 
+  // Delete variables that were removed from GitHub
+  if (!cleanApply && removedPaths && removedPaths.length > 0) {
+    for (const dotPath of removedPaths) {
+      const figmaName = toFigmaVarName(dotPath)
+      const variable = varByName.get(figmaName)
+      if (variable) {
+        try {
+          variable.remove()
+          removed++
+        } catch (err) {
+          errors.push(`delete ${figmaName}: ${String(err)}`)
+        }
+      }
+    }
+  }
+
   if (errors.length) {
     console.warn(`[TokenSync] ${errors.length} error(s) in ${collectionId}:`, errors.slice(0, 5))
   }
-  console.log(`[TokenSync] Applied ${count} variables to ${collectionId}`)
+  console.log(`[TokenSync] Applied ${count}, removed ${removed} variables in ${collectionId}`)
 
-  return { count, errors }
+  return { count, removed, errors }
+}
+
+/** Pads numeric segments so paths sort numerically: blue.25 < blue.100 */
+function toSortKey(path: string): string {
+  return path.replace(/(\d+)/g, (n) => n.padStart(6, '0'))
 }
 
 // ---------------------------------------------------------------------------

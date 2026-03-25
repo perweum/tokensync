@@ -14,7 +14,7 @@ import { buildCollectionDiff } from '../../shared/token-diff'
 import { figmaToCollections } from '../../shared/figma-to-tokens'
 import type { CollectionDiff } from '../../shared/token-diff'
 import { runTransformers } from '../../shared/transformer'
-import type { PluginMessage, FigmaVariableCollection, FigmaVariable } from '../../shared/messages'
+import type { PluginMessage, FigmaVariableCollection, FigmaVariable, TokenTree } from '../../shared/messages'
 import { PullDiff } from './PullDiff'
 import { PushDiff } from './PushDiff'
 
@@ -47,6 +47,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const pendingAction = useRef<PendingAction | null>(null)
   const applyAllRemaining = useRef(0)
   const pendingGitHub = useRef<ReturnType<typeof parseRepository> | null>(null)
+  const pendingGitHubCollections = useRef<ReturnType<typeof parseRepository>['collections'] | null>(null)
   const pendingFiles = useRef<Awaited<ReturnType<typeof fetchTokenFiles>> | null>(null)
   const pendingParsed = useRef<ParsedRepository | null>(null)           // push: parsed GitHub repo (metadata + collections)
   const pendingFigmaCollections = useRef<ReturnType<typeof figmaToCollections> | null>(null) // push: Figma resolved collections
@@ -78,19 +79,20 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           const errSuffix = msg.errors.length
             ? ` (${msg.errors.length} error${msg.errors.length > 1 ? 's' : ''}: ${msg.errors[0]})`
             : ''
+          const removedSuffix = msg.removed > 0 ? `, ${msg.removed} removed` : ''
           if (applyAllRemaining.current > 0) {
             applyAllRemaining.current--
             if (applyAllRemaining.current === 0) {
               setApplying(false)
               viewRef.current = 'main'
               setView('main')
-              setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `All collections applied to Figma${errSuffix}` })
+              setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `All collections applied to Figma${removedSuffix}${errSuffix}` })
             }
           } else {
             setApplying(false)
             viewRef.current = 'main'
             setView('main')
-            setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `Applied ${msg.count} variable(s) to Figma${errSuffix}` })
+            setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `Applied ${msg.count} variable(s)${removedSuffix} to Figma${errSuffix}` })
           }
         }
         if (msg.type === 'ERROR') {
@@ -168,6 +170,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setView('pull-diff')
     }
 
+    pendingGitHubCollections.current = github.collections
     pendingGitHub.current = null
   }
 
@@ -179,11 +182,32 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         return acc
       }, {})
 
+    const removedPaths = diff.entries
+      .filter((e) => e.status === 'removed')
+      .map((e) => e.path)
+
     send({
       type: 'APPLY_TOKENS',
       tokens: tokensToApply,
       collectionId: diff.collectionName,
       modeId: diff.modeName,
+      removedPaths: removedPaths.length > 0 ? removedPaths : undefined,
+    })
+  }
+
+  function sendCleanApply(collectionName: string, modeName: string) {
+    const allCollections = pendingGitHubCollections.current
+    if (!allCollections) return
+    const col = allCollections.find(
+      (c) => c.collectionName === collectionName && c.modeName === modeName,
+    )
+    if (!col) return
+    send({
+      type: 'APPLY_TOKENS',
+      tokens: col.tokens as TokenTree,
+      collectionId: collectionName,
+      modeId: modeName,
+      cleanApply: true,
     })
   }
 
@@ -206,6 +230,22 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     setApplying(true)
     for (const diff of pending) {
       sendApplyDiff(diff)
+    }
+  }
+
+  function handleCleanApply(collectionName: string, modeName: string) {
+    applyAllRemaining.current = 0
+    setApplying(true)
+    sendCleanApply(collectionName, modeName)
+  }
+
+  function handleCleanApplyAll() {
+    const allCollections = pendingGitHubCollections.current
+    if (!allCollections) return
+    applyAllRemaining.current = allCollections.length
+    setApplying(true)
+    for (const col of allCollections) {
+      sendCleanApply(col.collectionName, col.modeName)
     }
   }
 
@@ -347,7 +387,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         diffs={diffs}
         onApply={handleApplyToFigma}
         onApplyAll={handleApplyAll}
-        onBack={() => { viewRef.current = 'main'; setView('main'); setStatus({ kind: 'idle' }) }}
+        onCleanApply={handleCleanApply}
+        onCleanApplyAll={handleCleanApplyAll}
+        onBack={() => {
+          viewRef.current = 'main'
+          setView('main')
+          setStatus({ kind: 'idle' })
+          pendingGitHubCollections.current = null
+        }}
         applying={applying}
         error={diffError}
       />
