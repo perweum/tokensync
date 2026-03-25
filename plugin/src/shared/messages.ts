@@ -67,6 +67,7 @@ export type PluginMessage =
   | {
       type: 'TOKENS_APPLIED'
       count: number
+      errors: string[]
     }
   | {
       type: 'STORAGE_LOADED'

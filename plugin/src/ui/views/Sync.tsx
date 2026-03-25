@@ -41,8 +41,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [applying, setApplying] = useState(false)
   const [creating, setCreating] = useState(false)
   const [diffs, setDiffs] = useState<CollectionDiff[]>([])
+  const [diffError, setDiffError] = useState<string | undefined>(undefined)
 
+  const viewRef = useRef<View>('main')
   const pendingAction = useRef<PendingAction | null>(null)
+  const applyAllRemaining = useRef(0)
   const pendingGitHub = useRef<ReturnType<typeof parseRepository> | null>(null)
   const pendingFiles = useRef<Awaited<ReturnType<typeof fetchTokenFiles>> | null>(null)
   const pendingParsed = useRef<ParsedRepository | null>(null)           // push: parsed GitHub repo (metadata + collections)
@@ -72,14 +75,32 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           pendingAction.current = null
         }
         if (msg.type === 'TOKENS_APPLIED') {
-          setApplying(false)
-          setView('main')
-          setStatus({ kind: 'success', message: `Applied ${msg.count} variable(s) to Figma` })
+          const errSuffix = msg.errors.length
+            ? ` (${msg.errors.length} error${msg.errors.length > 1 ? 's' : ''}: ${msg.errors[0]})`
+            : ''
+          if (applyAllRemaining.current > 0) {
+            applyAllRemaining.current--
+            if (applyAllRemaining.current === 0) {
+              setApplying(false)
+              viewRef.current = 'main'
+              setView('main')
+              setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `All collections applied to Figma${errSuffix}` })
+            }
+          } else {
+            setApplying(false)
+            viewRef.current = 'main'
+            setView('main')
+            setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `Applied ${msg.count} variable(s) to Figma${errSuffix}` })
+          }
         }
         if (msg.type === 'ERROR') {
           setApplying(false)
           setCreating(false)
-          setStatus({ kind: 'error', message: msg.message })
+          if (viewRef.current === 'pull-diff') {
+            setDiffError(msg.message)
+          } else {
+            setStatus({ kind: 'error', message: msg.message })
+          }
         }
       },
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,14 +171,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     pendingGitHub.current = null
   }
 
-  function handleApplyToFigma(collectionName: string, modeName: string) {
-    const diff = diffs.find(
-      (d) => d.collectionName === collectionName && d.modeName === modeName,
-    )
-    if (!diff) return
-
-    setApplying(true)
-
+  function sendApplyDiff(diff: CollectionDiff) {
     const tokensToApply = diff.entries
       .filter((e) => e.status === 'added' || e.status === 'changed')
       .reduce<Record<string, { $type: string; $value: string }>>((acc, entry) => {
@@ -168,9 +182,31 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     send({
       type: 'APPLY_TOKENS',
       tokens: tokensToApply,
-      collectionId: collectionName,
-      modeId: modeName,
+      collectionId: diff.collectionName,
+      modeId: diff.modeName,
     })
+  }
+
+  function handleApplyToFigma(collectionName: string, modeName: string) {
+    const diff = diffs.find(
+      (d) => d.collectionName === collectionName && d.modeName === modeName,
+    )
+    if (!diff) return
+
+    applyAllRemaining.current = 0
+    setApplying(true)
+    sendApplyDiff(diff)
+  }
+
+  function handleApplyAll() {
+    const pending = diffs.filter((d) => d.counts.total > 0)
+    if (pending.length === 0) return
+
+    applyAllRemaining.current = pending.length
+    setApplying(true)
+    for (const diff of pending) {
+      sendApplyDiff(diff)
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -305,12 +341,15 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // ---------------------------------------------------------------------------
 
   if (view === 'pull-diff') {
+    viewRef.current = 'pull-diff'
     return (
       <PullDiff
         diffs={diffs}
         onApply={handleApplyToFigma}
-        onBack={() => { setView('main'); setStatus({ kind: 'idle' }) }}
+        onApplyAll={handleApplyAll}
+        onBack={() => { viewRef.current = 'main'; setView('main'); setStatus({ kind: 'idle' }) }}
         applying={applying}
+        error={diffError}
       />
     )
   }

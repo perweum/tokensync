@@ -3,48 +3,52 @@
 
     "fontFamily": {
       "$type": "fontFamily",
-      "sans":  { "$value": "Inter, system-ui, -apple-system, sans-serif" },
-      "serif": { "$value": "Georgia, 'Times New Roman', serif" },
-      "mono":  { "$value": "'Fira Code', 'Cascadia Code', monospace" }
+      "$description": "Use the exact font name as it appears in Figma (must be installed).",
+      "sans":  { "$value": "Inter" },
+      "serif": { "$value": "Georgia" },
+      "mono":  { "$value": "Fira Code" }
     },
 
     "fontWeight": {
       "$type": "fontWeight",
-      "regular":  { "$value": "400" },
-      "medium":   { "$value": "500" },
-      "semibold": { "$value": "600" },
-      "bold":     { "$value": "700" }
+      "$description": "Named weights matching the font's style names in Figma.",
+      "regular":  { "$value": "Regular" },
+      "medium":   { "$value": "Medium" },
+      "semibold": { "$value": "SemiBold" },
+      "bold":     { "$value": "Bold" }
     },
 
     "fontSize": {
       "$type": "dimension",
-      "$description": "Absolute font size scale. Values are rem-based at 16px root.",
-      "xs":   { "$value": "0.75rem",  "$description": "12px" },
-      "sm":   { "$value": "0.875rem", "$description": "14px" },
-      "md":   { "$value": "1rem",     "$description": "16px" },
-      "lg":   { "$value": "1.125rem", "$description": "18px" },
-      "xl":   { "$value": "1.25rem",  "$description": "20px" },
-      "2xl":  { "$value": "1.5rem",   "$description": "24px" },
-      "3xl":  { "$value": "1.875rem", "$description": "30px" },
-      "4xl":  { "$value": "2.25rem",  "$description": "36px" },
-      "5xl":  { "$value": "3rem",     "$description": "48px" },
-      "6xl":  { "$value": "3.75rem",  "$description": "60px" }
+      "$description": "Font sizes in px (converted from rem at 16px base).",
+      "xs":  { "$value": "12" },
+      "sm":  { "$value": "14" },
+      "md":  { "$value": "16" },
+      "lg":  { "$value": "18" },
+      "xl":  { "$value": "20" },
+      "2xl": { "$value": "24" },
+      "3xl": { "$value": "30" },
+      "4xl": { "$value": "36" },
+      "5xl": { "$value": "48" },
+      "6xl": { "$value": "60" }
     },
 
     "lineHeight": {
       "$type": "number",
-      "tight":   { "$value": "1.2" },
-      "snug":    { "$value": "1.35" },
-      "normal":  { "$value": "1.5" },
-      "relaxed": { "$value": "1.65" }
+      "$description": "Line height as percentage value (e.g. 150 = 150%).",
+      "tight":   { "$value": "120" },
+      "snug":    { "$value": "135" },
+      "normal":  { "$value": "150" },
+      "relaxed": { "$value": "165" }
     },
 
     "letterSpacing": {
-      "$type": "dimension",
-      "tight":  { "$value": "-0.02em" },
-      "normal": { "$value": "0em" },
-      "wide":   { "$value": "0.04em" },
-      "wider":  { "$value": "0.08em" }
+      "$type": "number",
+      "$description": "Letter spacing as percentage (e.g. -2 = -2%).",
+      "tight":  { "$value": "-2" },
+      "normal": { "$value": "0" },
+      "wide":   { "$value": "4" },
+      "wider":  { "$value": "8" }
     }
 
   }

@@ -3,19 +3,35 @@
     "$type": "color",
 
     "black": {
-      "100": { "$value": "#000000" },
-      "30":  { "$value": "rgba(0, 0, 0, 0.30)" },
-      "20":  { "$value": "rgba(0, 0, 0, 0.20)" },
-      "10":  { "$value": "rgba(0, 0, 0, 0.10)" },
-      "5":   { "$value": "rgba(0, 0, 0, 0.05)" }
+      "$description": "Semi-transparent black — for overlays, shadows and scrim. Scale = opacity (25=4%, 50=5%, 100=10% … 950=solid).",
+      "25":  { "$value": "rgba(0, 0, 0, 0.04)" },
+      "50":  { "$value": "rgba(0, 0, 0, 0.05)" },
+      "100": { "$value": "rgba(0, 0, 0, 0.10)" },
+      "200": { "$value": "rgba(0, 0, 0, 0.20)" },
+      "300": { "$value": "rgba(0, 0, 0, 0.30)" },
+      "400": { "$value": "rgba(0, 0, 0, 0.40)" },
+      "500": { "$value": "rgba(0, 0, 0, 0.50)" },
+      "600": { "$value": "rgba(0, 0, 0, 0.60)" },
+      "700": { "$value": "rgba(0, 0, 0, 0.70)" },
+      "800": { "$value": "rgba(0, 0, 0, 0.80)" },
+      "900": { "$value": "rgba(0, 0, 0, 0.90)" },
+      "950": { "$value": "#000000" }
     },
 
     "white": {
-      "100": { "$value": "#ffffff" },
-      "30":  { "$value": "rgba(255, 255, 255, 0.30)" },
-      "20":  { "$value": "rgba(255, 255, 255, 0.20)" },
-      "10":  { "$value": "rgba(255, 255, 255, 0.10)" },
-      "5":   { "$value": "rgba(255, 255, 255, 0.05)" }
+      "$description": "Semi-transparent white — for overlays on dark surfaces. Scale = opacity (25=4%, 50=5%, 100=10% … 950=solid).",
+      "25":  { "$value": "rgba(255, 255, 255, 0.04)" },
+      "50":  { "$value": "rgba(255, 255, 255, 0.05)" },
+      "100": { "$value": "rgba(255, 255, 255, 0.10)" },
+      "200": { "$value": "rgba(255, 255, 255, 0.20)" },
+      "300": { "$value": "rgba(255, 255, 255, 0.30)" },
+      "400": { "$value": "rgba(255, 255, 255, 0.40)" },
+      "500": { "$value": "rgba(255, 255, 255, 0.50)" },
+      "600": { "$value": "rgba(255, 255, 255, 0.60)" },
+      "700": { "$value": "rgba(255, 255, 255, 0.70)" },
+      "800": { "$value": "rgba(255, 255, 255, 0.80)" },
+      "900": { "$value": "rgba(255, 255, 255, 0.90)" },
+      "950": { "$value": "#ffffff" }
     },
 
     "neutral": {
@@ -34,8 +50,8 @@
       "950": { "$value": "#0d0d0d" }
     },
 
-    "brand": {
-      "$description": "Primary brand colour. Replace seed to regenerate this ramp.",
+    "blue": {
+      "$description": "Blue. Default brand colour — replace seed in Themebuilder to regenerate.",
       "25":  { "$value": "#f0f5ff" },
       "50":  { "$value": "#e0ecff" },
       "100": { "$value": "#c5d8ff" },
@@ -50,8 +66,8 @@
       "950": { "$value": "#040f2d" }
     },
 
-    "success": {
-      "$description": "Positive / success status colour.",
+    "green": {
+      "$description": "Green. Maps to the success role.",
       "25":  { "$value": "#f0faf3" },
       "50":  { "$value": "#ddf4e4" },
       "100": { "$value": "#b8e8c7" },
@@ -66,8 +82,8 @@
       "950": { "$value": "#021509" }
     },
 
-    "error": {
-      "$description": "Negative / destructive / error status colour.",
+    "red": {
+      "$description": "Red. Maps to the error role.",
       "25":  { "$value": "#fff5f5" },
       "50":  { "$value": "#ffe8e8" },
       "100": { "$value": "#ffcece" },
@@ -82,8 +98,8 @@
       "950": { "$value": "#280000" }
     },
 
-    "warning": {
-      "$description": "Warning / caution status colour.",
+    "amber": {
+      "$description": "Amber. Maps to the warning role.",
       "25":  { "$value": "#fffbf0" },
       "50":  { "$value": "#fff3d6" },
       "100": { "$value": "#ffe5a3" },
@@ -98,8 +114,8 @@
       "950": { "$value": "#241200" }
     },
 
-    "info": {
-      "$description": "Informational / neutral-positive status colour.",
+    "sky": {
+      "$description": "Sky blue. Maps to the info role.",
       "25":  { "$value": "#f0fbff" },
       "50":  { "$value": "#ddf5ff" },
       "100": { "$value": "#b3e9ff" },

@@ -1,49 +1,49 @@
 {
-  "$description": "Semantic colour tokens — default brand, light theme. These reference colour primitives only. Step numbers in references indicate perceptual lightness: 500 is the same perceived darkness for all palettes.",
+  "$description": "Semantic colour tokens — default brand, light theme. References colour primitives only.",
 
   "background": {
     "$type": "color",
     "$description": "Full-page and section backgrounds. Should never carry interactive states.",
-    "default":  { "$value": "{color.white.100}", "$description": "Base page background" },
+    "default":  { "$value": "{color.white.950}", "$description": "Base page background" },
     "subtle":   { "$value": "{color.neutral.25}", "$description": "Slightly tinted background (sidebars, code blocks)" },
-    "brand":    { "$value": "{color.brand.25}" },
-    "success":  { "$value": "{color.success.25}" },
-    "error":    { "$value": "{color.error.25}" },
-    "warning":  { "$value": "{color.warning.25}" },
-    "info":     { "$value": "{color.info.25}" }
+    "brand":    { "$value": "{color.blue.25}" },
+    "success":  { "$value": "{color.green.25}" },
+    "error":    { "$value": "{color.red.25}" },
+    "warning":  { "$value": "{color.amber.25}" },
+    "info":     { "$value": "{color.sky.25}" }
   },
 
   "surface": {
     "$type": "color",
     "$description": "Component surfaces (cards, modals, inputs). Carry interactive states.",
-    "default":  { "$value": "{color.white.100}" },
-    "raised":   { "$value": "{color.white.100}", "$description": "Elevated surface — pair with elevation shadow" },
-    "overlay":  { "$value": "{color.white.100}", "$description": "Modal overlays, popovers" },
+    "default":  { "$value": "{color.white.950}" },
+    "raised":   { "$value": "{color.white.950}", "$description": "Elevated surface — pair with elevation shadow" },
+    "overlay":  { "$value": "{color.white.950}", "$description": "Modal overlays, popovers" },
     "disabled": { "$value": "{color.neutral.50}" },
     "brand": {
-      "default": { "$value": "{color.brand.50}" },
-      "hover":   { "$value": "{color.brand.100}" },
-      "active":  { "$value": "{color.brand.200}" }
+      "default": { "$value": "{color.blue.50}" },
+      "hover":   { "$value": "{color.blue.100}" },
+      "active":  { "$value": "{color.blue.200}" }
     },
     "success": {
-      "default": { "$value": "{color.success.50}" },
-      "hover":   { "$value": "{color.success.100}" },
-      "active":  { "$value": "{color.success.200}" }
+      "default": { "$value": "{color.green.50}" },
+      "hover":   { "$value": "{color.green.100}" },
+      "active":  { "$value": "{color.green.200}" }
     },
     "error": {
-      "default": { "$value": "{color.error.50}" },
-      "hover":   { "$value": "{color.error.100}" },
-      "active":  { "$value": "{color.error.200}" }
+      "default": { "$value": "{color.red.50}" },
+      "hover":   { "$value": "{color.red.100}" },
+      "active":  { "$value": "{color.red.200}" }
     },
     "warning": {
-      "default": { "$value": "{color.warning.50}" },
-      "hover":   { "$value": "{color.warning.100}" },
-      "active":  { "$value": "{color.warning.200}" }
+      "default": { "$value": "{color.amber.50}" },
+      "hover":   { "$value": "{color.amber.100}" },
+      "active":  { "$value": "{color.amber.200}" }
     },
     "info": {
-      "default": { "$value": "{color.info.50}" },
-      "hover":   { "$value": "{color.info.100}" },
-      "active":  { "$value": "{color.info.200}" }
+      "default": { "$value": "{color.sky.50}" },
+      "hover":   { "$value": "{color.sky.100}" },
+      "active":  { "$value": "{color.sky.200}" }
     }
   },
 
@@ -54,25 +54,25 @@
     "default":  { "$value": "{color.neutral.200}", "$description": "Standard component borders" },
     "strong":   { "$value": "{color.neutral.400}", "$description": "High-emphasis borders" },
     "disabled": { "$value": "{color.neutral.200}" },
-    "focus":    { "$value": "{color.brand.600}", "$description": "Focus ring colour. Must meet 3:1 against background." },
+    "focus":    { "$value": "{color.blue.600}", "$description": "Focus ring colour. Must meet 3:1 against background." },
     "brand": {
-      "default": { "$value": "{color.brand.200}" },
-      "hover":   { "$value": "{color.brand.400}" }
+      "default": { "$value": "{color.blue.200}" },
+      "hover":   { "$value": "{color.blue.400}" }
     },
-    "success":  { "default": { "$value": "{color.success.300}" } },
-    "error":    { "default": { "$value": "{color.error.300}" } },
-    "warning":  { "default": { "$value": "{color.warning.300}" } },
-    "info":     { "default": { "$value": "{color.info.300}" } }
+    "success":  { "default": { "$value": "{color.green.300}" } },
+    "error":    { "default": { "$value": "{color.red.300}" } },
+    "warning":  { "default": { "$value": "{color.amber.300}" } },
+    "info":     { "default": { "$value": "{color.sky.300}" } }
   },
 
   "base": {
     "$type": "color",
-    "$description": "Solid filled surfaces for interactive elements (buttons, tags, badges). 500 is the base step across all palettes — same perceived darkness.",
+    "$description": "Solid filled surfaces for interactive elements (buttons, tags, badges). 500 is the base step across all palettes.",
     "disabled": { "$value": "{color.neutral.200}" },
     "brand": {
-      "default": { "$value": "{color.brand.600}" },
-      "hover":   { "$value": "{color.brand.700}" },
-      "active":  { "$value": "{color.brand.800}" }
+      "default": { "$value": "{color.blue.600}" },
+      "hover":   { "$value": "{color.blue.700}" },
+      "active":  { "$value": "{color.blue.800}" }
     },
     "neutral": {
       "default": { "$value": "{color.neutral.600}" },
@@ -80,53 +80,53 @@
       "active":  { "$value": "{color.neutral.800}" }
     },
     "success": {
-      "default": { "$value": "{color.success.600}" },
-      "hover":   { "$value": "{color.success.700}" },
-      "active":  { "$value": "{color.success.800}" }
+      "default": { "$value": "{color.green.600}" },
+      "hover":   { "$value": "{color.green.700}" },
+      "active":  { "$value": "{color.green.800}" }
     },
     "error": {
-      "default": { "$value": "{color.error.600}" },
-      "hover":   { "$value": "{color.error.700}" },
-      "active":  { "$value": "{color.error.800}" }
+      "default": { "$value": "{color.red.600}" },
+      "hover":   { "$value": "{color.red.700}" },
+      "active":  { "$value": "{color.red.800}" }
     },
     "warning": {
-      "default": { "$value": "{color.warning.500}" },
-      "hover":   { "$value": "{color.warning.600}" },
-      "active":  { "$value": "{color.warning.700}" }
+      "default": { "$value": "{color.amber.500}" },
+      "hover":   { "$value": "{color.amber.600}" },
+      "active":  { "$value": "{color.amber.700}" }
     },
     "info": {
-      "default": { "$value": "{color.info.600}" },
-      "hover":   { "$value": "{color.info.700}" },
-      "active":  { "$value": "{color.info.800}" }
+      "default": { "$value": "{color.sky.600}" },
+      "hover":   { "$value": "{color.sky.700}" },
+      "active":  { "$value": "{color.sky.800}" }
     }
   },
 
   "text": {
     "$type": "color",
-    "$description": "Text and icon colours.",
+    "$description": "Text colours.",
     "default":  { "$value": "{color.neutral.950}", "$description": "Primary body text" },
     "subtle":   { "$value": "{color.neutral.600}", "$description": "Secondary / supporting text" },
     "disabled": { "$value": "{color.neutral.400}" },
-    "inverse":  { "$value": "{color.white.100}", "$description": "Text on dark/filled surfaces" },
+    "inverse":  { "$value": "{color.white.950}", "$description": "Text on dark/filled surfaces" },
     "brand": {
-      "default":  { "$value": "{color.brand.700}" },
-      "contrast": { "$value": "{color.white.100}", "$description": "Text placed on base.brand surface" }
+      "default":  { "$value": "{color.blue.700}" },
+      "contrast": { "$value": "{color.white.950}", "$description": "Text placed on base.brand surface" }
     },
     "success": {
-      "default":  { "$value": "{color.success.700}" },
-      "contrast": { "$value": "{color.white.100}" }
+      "default":  { "$value": "{color.green.700}" },
+      "contrast": { "$value": "{color.white.950}" }
     },
     "error": {
-      "default":  { "$value": "{color.error.700}" },
-      "contrast": { "$value": "{color.white.100}" }
+      "default":  { "$value": "{color.red.700}" },
+      "contrast": { "$value": "{color.white.950}" }
     },
     "warning": {
-      "default":  { "$value": "{color.warning.800}" },
-      "contrast": { "$value": "{color.white.100}" }
+      "default":  { "$value": "{color.amber.800}" },
+      "contrast": { "$value": "{color.white.950}" }
     },
     "info": {
-      "default":  { "$value": "{color.info.700}" },
-      "contrast": { "$value": "{color.white.100}" }
+      "default":  { "$value": "{color.sky.700}" },
+      "contrast": { "$value": "{color.white.950}" }
     }
   },
 
@@ -161,15 +161,15 @@
 
   "elevation": {
     "$description": "Shadow levels for depth. Colours use semi-transparent black.",
-    "1": { "$type": "shadow", "$value": "0 1px 2px {color.black.5}, 0 1px 3px {color.black.10}" },
-    "2": { "$type": "shadow", "$value": "0 4px 6px {color.black.10}, 0 2px 4px {color.black.5}" },
-    "3": { "$type": "shadow", "$value": "0 10px 15px {color.black.10}, 0 4px 6px {color.black.5}" },
-    "4": { "$type": "shadow", "$value": "0 20px 25px {color.black.10}, 0 8px 10px {color.black.5}" }
+    "1": { "$type": "shadow", "$value": "0 1px 2px {color.black.50}, 0 1px 3px {color.black.100}" },
+    "2": { "$type": "shadow", "$value": "0 4px 6px {color.black.100}, 0 2px 4px {color.black.50}" },
+    "3": { "$type": "shadow", "$value": "0 10px 15px {color.black.100}, 0 4px 6px {color.black.50}" },
+    "4": { "$type": "shadow", "$value": "0 20px 25px {color.black.100}, 0 8px 10px {color.black.50}" }
   },
 
   "overlay": {
     "$description": "Scrim/overlay behind modals and drawers.",
-    "default": { "$type": "color", "$value": "{color.black.30}" }
+    "default": { "$type": "color", "$value": "{color.black.300}" }
   }
 
 }

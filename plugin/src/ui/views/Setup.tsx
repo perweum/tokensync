@@ -8,19 +8,21 @@ import type { Project } from '../App'
 
 interface Props {
   onSave: (project: Project) => void
+  onCancel?: () => void
+  existing?: Project | null
 }
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
 }
 
-export function Setup({ onSave }: Props) {
-  const [name, setName] = useState('')
-  const [pat, setPat] = useState('')
-  const [repo, setRepo] = useState('')
-  const [branch, setBranch] = useState('main')
-  const [tokensPath, setTokensPath] = useState('tokens/')
-  const [figmaFileKey, setFigmaFileKey] = useState('')
+export function Setup({ onSave, onCancel, existing }: Props) {
+  const [name, setName] = useState(existing?.name ?? '')
+  const [pat, setPat] = useState(existing?.pat ?? '')
+  const [repo, setRepo] = useState(existing?.repo ?? '')
+  const [branch, setBranch] = useState(existing?.branch ?? 'main')
+  const [tokensPath, setTokensPath] = useState(existing?.tokensPath ?? 'tokens/')
+  const [figmaFileKey, setFigmaFileKey] = useState(existing?.figmaFileKey ?? '')
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
 
@@ -35,7 +37,7 @@ export function Setup({ onSave }: Props) {
     setSaved(true)
     setTimeout(() => {
       onSave({
-        id: generateId(),
+        id: existing?.id ?? generateId(),
         name: name.trim(),
         pat: pat.trim(),
         repo: repo.trim(),
@@ -48,7 +50,12 @@ export function Setup({ onSave }: Props) {
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.heading}>Add project</h2>
+      <div style={styles.headingRow}>
+        {onCancel && (
+          <button style={styles.backBtn} onClick={onCancel}>← Back</button>
+        )}
+        <h2 style={styles.heading}>{existing ? 'Edit project' : 'Add project'}</h2>
+      </div>
       <p style={styles.subtext}>
         Connect a GitHub repository to this Figma file. Token files will be
         read from and written to the repository via Pull Request.
@@ -145,8 +152,10 @@ function Field({
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px' },
-  heading:   { margin: 0, fontSize: '16px', fontWeight: 600 },
+  container:   { padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px' },
+  headingRow:  { display: 'flex', alignItems: 'center', gap: '8px' },
+  heading:     { margin: 0, fontSize: '16px', fontWeight: 600 },
+  backBtn:     { background: 'none', border: 'none', fontSize: '12px', color: '#555', cursor: 'pointer', padding: '2px 0' },
   subtext:   { margin: 0, fontSize: '12px', color: '#666', lineHeight: 1.5 },
   form:      { display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '8px' },
   field:     { display: 'flex', flexDirection: 'column', gap: '4px' },

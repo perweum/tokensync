@@ -125,7 +125,13 @@ export default function App() {
   const activeProject = projects.find((p) => p.id === activeId) ?? null
 
   if (projects.length === 0 || showSetup) {
-    return <Setup onSave={handleSaveProject} />
+    return (
+      <Setup
+        onSave={handleSaveProject}
+        onCancel={projects.length > 0 ? () => setShowSetup(false) : undefined}
+        existing={showSetup ? activeProject : null}
+      />
+    )
   }
 
   if (activeProject) {

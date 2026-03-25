@@ -10,11 +10,13 @@ import { groupByCategory } from '../../shared/token-diff'
 interface Props {
   diffs: CollectionDiff[]
   onApply: (collectionName: string, modeName: string) => void
+  onApplyAll: () => void
   onBack: () => void
   applying: boolean
+  error?: string
 }
 
-export function PullDiff({ diffs, onApply, onBack, applying }: Props) {
+export function PullDiff({ diffs, onApply, onApplyAll, onBack, applying, error }: Props) {
   const [selectedCollection, setSelectedCollection] = useState(0)
 
   const hasDiffs = diffs.some((d) => d.counts.total > 0)
@@ -47,7 +49,9 @@ export function PullDiff({ diffs, onApply, onBack, applying }: Props) {
                   }}
                   onClick={() => setSelectedCollection(i)}
                 >
-                  {diff.modeName}
+                  {diff.modeName === 'Value'
+                    ? diff.collectionName
+                    : `${diff.collectionName} / ${diff.modeName}`}
                   {diff.counts.total > 0 && (
                     <span style={s.tabBadge}>{diff.counts.total}</span>
                   )}
@@ -65,13 +69,25 @@ export function PullDiff({ diffs, onApply, onBack, applying }: Props) {
                 <SummaryBar counts={diff.counts} />
                 <DiffList entries={diff.entries} />
                 <div style={s.footer}>
-                  <button
-                    style={{ ...s.applyBtn, ...(applying ? s.applyBtnDisabled : {}) }}
-                    onClick={() => onApply(diff.collectionName, diff.modeName)}
-                    disabled={applying || diff.counts.total === 0}
-                  >
-                    {applying ? 'Applying…' : `Apply to Figma (${diff.counts.total})`}
-                  </button>
+                  {error && <div style={s.errorMsg}>{error}</div>}
+                  <div style={s.footerBtns}>
+                    <button
+                      style={{ ...s.applyBtn, ...(applying ? s.applyBtnDisabled : {}) }}
+                      onClick={() => onApply(diff.collectionName, diff.modeName)}
+                      disabled={applying || diff.counts.total === 0}
+                    >
+                      {applying ? 'Applying…' : `Apply this (${diff.counts.total})`}
+                    </button>
+                    {diffs.length > 1 && (
+                      <button
+                        style={{ ...s.applyAllBtn, ...(applying ? s.applyBtnDisabled : {}) }}
+                        onClick={onApplyAll}
+                        disabled={applying}
+                      >
+                        Apply All
+                      </button>
+                    )}
+                  </div>
                 </div>
               </>
             )
@@ -183,12 +199,12 @@ function Value({
 }) {
   return (
     <span style={{ ...s.value, opacity: faded ? 0.45 : 1 }}>
-      {isColor && isHex(value) && (
+      {isColor && (isHex(value) || isRgba(value)) && (
         <span
           style={{
             ...s.swatch,
             background: value,
-            border: isLight(value) ? '1px solid #ddd' : '1px solid transparent',
+            border: isHex(value) && isLight(value) ? '1px solid #ddd' : '1px solid #e0e0e0',
           }}
         />
       )}
@@ -203,6 +219,10 @@ function Value({
 
 function isHex(v: string) {
   return /^#[0-9a-f]{3,8}$/i.test(v)
+}
+
+function isRgba(v: string) {
+  return /^rgba?\(/i.test(v)
 }
 
 function isLight(hex: string): boolean {
@@ -279,6 +299,9 @@ const s: Record<string, React.CSSProperties> = {
   valueText:   { fontSize: '11px', color: '#555', fontFamily: 'monospace' },
 
   footer:      { position: 'sticky', bottom: 0, padding: '12px 16px', background: '#fff', borderTop: '1px solid #eee' },
-  applyBtn:    { width: '100%', background: '#1a52d8', color: '#fff', border: 'none', borderRadius: '8px', padding: '11px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' },
+  footerBtns:  { display: 'flex', gap: '8px' },
+  applyBtn:        { flex: 1, background: '#1a52d8', color: '#fff', border: 'none', borderRadius: '8px', padding: '11px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' },
+  applyAllBtn:     { flexShrink: 0, background: '#222', color: '#fff', border: 'none', borderRadius: '8px', padding: '11px 16px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' },
   applyBtnDisabled: { background: '#aaa', cursor: 'not-allowed' },
+  errorMsg:        { fontSize: '12px', color: '#c00', background: '#fff0f0', border: '1px solid #fcc', borderRadius: '6px', padding: '8px 10px', marginBottom: '8px' },
 }

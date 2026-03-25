@@ -32,17 +32,21 @@ export function isTokenTree(value: unknown): value is TokenTree {
 export function flattenTokens(
   tree: TokenTree,
   prefix = '',
+  inheritedType = '',
 ): Record<string, TokenValue> {
   const result: Record<string, TokenValue> = {}
+  const groupType = (tree as Record<string, unknown>)['$type'] as string | undefined
+  const effectiveType = groupType ?? inheritedType
 
   for (const [key, value] of Object.entries(tree)) {
     if (key.startsWith('$')) continue // skip $type, $description group-level fields
     const path = prefix ? `${prefix}.${key}` : key
 
     if (isTokenValue(value)) {
-      result[path] = value
+      // Propagate group-level $type if the token doesn't have its own
+      result[path] = value.$type ? value : { ...value, $type: effectiveType }
     } else if (isTokenTree(value)) {
-      Object.assign(result, flattenTokens(value, path))
+      Object.assign(result, flattenTokens(value, path, effectiveType))
     }
   }
 

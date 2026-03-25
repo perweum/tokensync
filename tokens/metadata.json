@@ -10,12 +10,12 @@
   "roles": {
     "$description": "Maps semantic colour roles to primitive palette names per brand. Roles are fixed; the primitive behind them is flexible.",
     "default": {
-      "brand":   "color.brand",
+      "brand":   "color.blue",
       "neutral": "color.neutral",
-      "success": "color.success",
-      "error":   "color.error",
-      "warning": "color.warning",
-      "info":    "color.info"
+      "success": "color.green",
+      "error":   "color.red",
+      "warning": "color.amber",
+      "info":    "color.sky"
     }
   },
 

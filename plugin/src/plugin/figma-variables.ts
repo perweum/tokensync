@@ -48,22 +48,37 @@ export async function getCollectionsAndVariables(): Promise<{
  * Applies a TokenTree to a Figma variable collection + mode.
  * collectionId and modeId may be names (resolved here) or actual Figma IDs.
  * Creates variables that don't exist, updates values for variables that do.
- * Returns the number of variables written.
+ * Returns { count, errors }.
  */
 export async function applyTokensToCollection(
   tokens: TokenTree,
   collectionId: string,
   modeId: string,
-): Promise<number> {
+): Promise<{ count: number; errors: string[] }> {
   // Support name-based lookup (sent from UI as collection name / mode name)
   const allCollections = await figma.variables.getLocalVariableCollectionsAsync()
   let collection = allCollections.find((c) => c.id === collectionId)
                 ?? allCollections.find((c) => c.name === collectionId)
-  if (!collection) throw new Error(`Collection "${collectionId}" not found`)
 
-  const mode = collection.modes.find((m) => m.modeId === modeId)
-            ?? collection.modes.find((m) => m.name === modeId)
-  if (!mode) throw new Error(`Mode "${modeId}" not found in collection "${collection.name}"`)
+  // Create collection if it doesn't exist yet (first-time apply)
+  if (!collection) {
+    collection = figma.variables.createVariableCollection(collectionId)
+  }
+
+  let mode = collection.modes.find((m) => m.modeId === modeId)
+          ?? collection.modes.find((m) => m.name === modeId)
+
+  // Create mode if it doesn't exist (Figma always creates a default "Mode 1" — rename or add)
+  if (!mode) {
+    if (collection.modes.length === 1 && collection.modes[0].name === 'Mode 1') {
+      // Rename the placeholder mode Figma creates automatically
+      collection.renameMode(collection.modes[0].modeId, modeId)
+      mode = collection.modes[0]
+    } else {
+      const newModeId = collection.addMode(modeId)
+      mode = collection.modes.find((m) => m.modeId === newModeId)!
+    }
+  }
 
   // Rebind modeId to the actual Figma ID
   modeId = mode.modeId
@@ -76,33 +91,51 @@ export async function applyTokensToCollection(
   const existingVars = await figma.variables.getLocalVariablesAsync()
   const varByName = new Map(
     existingVars
-      .filter((v) => v.variableCollectionId === collectionId)
+      .filter((v) => v.variableCollectionId === collection.id)
       .map((v) => [v.name, v]),
   )
 
   let count = 0
+  const errors: string[] = []
+
+  console.log(`[TokenSync] Applying ${Object.keys(resolved).length} tokens to ${collectionId}/${modeId}`)
 
   for (const [path, token] of Object.entries(resolved)) {
     if (!isTokenValue(token)) continue
 
     const figmaName = toFigmaVarName(path)
     const resolvedType = figmaTypeFromTokenType(token.$type)
-    if (!resolvedType) continue // skip unsupported types
-
-    let variable = varByName.get(figmaName)
-
-    if (!variable) {
-      variable = figma.variables.createVariable(figmaName, collection, resolvedType)
+    if (!resolvedType) {
+      // Skip silently — unsupported type (e.g. composite shadow objects)
+      continue
     }
 
-    const figmaValue = toFigmaValue(token.$value, resolvedType)
-    if (figmaValue !== null) {
+    try {
+      let variable = varByName.get(figmaName)
+
+      if (!variable) {
+        variable = figma.variables.createVariable(figmaName, collection, resolvedType)
+      }
+
+      const figmaValue = toFigmaValue(token.$value, resolvedType)
+      if (figmaValue === null) {
+        errors.push(`${figmaName}: could not parse value "${token.$value}" (type: ${token.$type})`)
+        continue
+      }
+
       variable.setValueForMode(modeId, figmaValue)
       count++
+    } catch (err) {
+      errors.push(`${figmaName}: ${String(err)}`)
     }
   }
 
-  return count
+  if (errors.length) {
+    console.warn(`[TokenSync] ${errors.length} error(s) in ${collectionId}:`, errors.slice(0, 5))
+  }
+  console.log(`[TokenSync] Applied ${count} variables to ${collectionId}`)
+
+  return { count, errors }
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +151,6 @@ function figmaTypeFromTokenType(
     case 'dimension':
     case 'number':
     case 'fontWeight':
-      return 'FLOAT'
     case 'fontFamily':
     case 'shadow':
       return 'STRING'
@@ -164,6 +196,8 @@ function hexToRGBA(hex: string): RGBA | null {
 }
 
 function parseDimension(value: string): number | null {
-  const num = parseFloat(value)
+  // Strip known units — values in token files are pre-converted to unitless px/% numbers
+  const stripped = value.replace(/px$/, '').replace(/rem$/, '').replace(/em$/, '')
+  const num = parseFloat(stripped)
   return isNaN(num) ? null : num
 }
