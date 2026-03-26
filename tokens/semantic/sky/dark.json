@@ -1,0 +1,44 @@
+{
+  "$description": "Sub-brand Sky — dark theme. Sparse override: only brand-role tokens are redefined.",
+
+  "background": {
+    "$type": "color",
+    "brand": { "$value": "{color.sky.950}" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.sky.900}" },
+      "hover":   { "$value": "{color.sky.800}" },
+      "active":  { "$value": "{color.sky.700}" }
+    }
+  },
+
+  "border": {
+    "$type": "color",
+    "focus": { "$value": "{color.sky.400}" },
+    "brand": {
+      "default": { "$value": "{color.sky.700}" },
+      "hover":   { "$value": "{color.sky.500}" }
+    }
+  },
+
+  "base": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.sky.500}" },
+      "hover":   { "$value": "{color.sky.400}" },
+      "active":  { "$value": "{color.sky.300}" }
+    }
+  },
+
+  "text": {
+    "$type": "color",
+    "brand": {
+      "default":  { "$value": "{color.sky.300}" },
+      "contrast": { "$value": "{color.neutral.950}" }
+    }
+  }
+
+}

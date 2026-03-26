@@ -4,13 +4,29 @@
 
   "version": "1.0.0",
 
-  "brands": ["default"],
+  "brands": ["default", "green", "sky"],
   "themes": ["light", "dark"],
 
   "roles": {
-    "$description": "Maps semantic colour roles to primitive palette names per brand. Roles are fixed; the primitive behind them is flexible.",
+    "$description": "Maps semantic colour roles to primitive palette names per brand. Used by platform transformers and documentation.",
     "default": {
       "brand":   "color.blue",
+      "neutral": "color.neutral",
+      "success": "color.green",
+      "error":   "color.red",
+      "warning": "color.amber",
+      "info":    "color.sky"
+    },
+    "green": {
+      "brand":   "color.green",
+      "neutral": "color.neutral",
+      "success": "color.green",
+      "error":   "color.red",
+      "warning": "color.amber",
+      "info":    "color.sky"
+    },
+    "sky": {
+      "brand":   "color.sky",
       "neutral": "color.neutral",
       "success": "color.green",
       "error":   "color.red",
@@ -27,7 +43,7 @@
       "global":     "Global",
       "semantic":   "Semantic"
     },
-    "$note": "Semantic collection uses combined modes: 'Default/Light', 'Default/Dark', etc."
+    "$note": "Semantic collection modes: Light, Dark (Masterbrand), Green/Light, Green/Dark, Sky/Light, Sky/Dark."
   },
 
   "github": {

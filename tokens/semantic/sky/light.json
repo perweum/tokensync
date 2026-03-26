@@ -1,0 +1,44 @@
+{
+  "$description": "Sub-brand Sky — light theme. Sparse override: only brand-role tokens are redefined. All other tokens inherit from the Masterbrand default.",
+
+  "background": {
+    "$type": "color",
+    "brand": { "$value": "{color.sky.25}" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.sky.50}" },
+      "hover":   { "$value": "{color.sky.100}" },
+      "active":  { "$value": "{color.sky.200}" }
+    }
+  },
+
+  "border": {
+    "$type": "color",
+    "focus": { "$value": "{color.sky.600}" },
+    "brand": {
+      "default": { "$value": "{color.sky.200}" },
+      "hover":   { "$value": "{color.sky.400}" }
+    }
+  },
+
+  "base": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.sky.600}" },
+      "hover":   { "$value": "{color.sky.700}" },
+      "active":  { "$value": "{color.sky.800}" }
+    }
+  },
+
+  "text": {
+    "$type": "color",
+    "brand": {
+      "default":  { "$value": "{color.sky.700}" },
+      "contrast": { "$value": "{color.white.950}" }
+    }
+  }
+
+}

@@ -1,0 +1,44 @@
+{
+  "$description": "Sub-brand Green — dark theme. Sparse override: only brand-role tokens are redefined.",
+
+  "background": {
+    "$type": "color",
+    "brand": { "$value": "{color.green.950}" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.green.900}" },
+      "hover":   { "$value": "{color.green.800}" },
+      "active":  { "$value": "{color.green.700}" }
+    }
+  },
+
+  "border": {
+    "$type": "color",
+    "focus": { "$value": "{color.green.400}" },
+    "brand": {
+      "default": { "$value": "{color.green.700}" },
+      "hover":   { "$value": "{color.green.500}" }
+    }
+  },
+
+  "base": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.green.500}" },
+      "hover":   { "$value": "{color.green.400}" },
+      "active":  { "$value": "{color.green.300}" }
+    }
+  },
+
+  "text": {
+    "$type": "color",
+    "brand": {
+      "default":  { "$value": "{color.green.300}" },
+      "contrast": { "$value": "{color.neutral.950}" }
+    }
+  }
+
+}
