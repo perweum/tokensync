@@ -1,0 +1,10 @@
+{
+  "color": {
+    "amber": {
+      "50": {
+        "$type": "color",
+        "$value": "#fff2d2"
+      }
+    }
+  }
+}
