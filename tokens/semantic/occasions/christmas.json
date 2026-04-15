@@ -1,0 +1,49 @@
+{
+  "$description": "Christmas occasion overlay — composes over default/light. Swaps brand from blue to festive red; boosts base.success to a more vivid green so both brand colours read as intentional Christmas palette choices.",
+
+  "background": {
+    "$type": "color",
+    "brand": { "$value": "{color.red.25}", "$description": "Festive red tint replaces blue brand background" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.red.50}" },
+      "hover":   { "$value": "{color.red.100}" },
+      "active":  { "$value": "{color.red.200}" }
+    }
+  },
+
+  "border": {
+    "$type": "color",
+    "focus": { "$value": "{color.red.600}" },
+    "brand": {
+      "default": { "$value": "{color.red.200}" },
+      "hover":   { "$value": "{color.red.400}" }
+    }
+  },
+
+  "base": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.red.600}" },
+      "hover":   { "$value": "{color.red.700}" },
+      "active":  { "$value": "{color.red.800}" }
+    },
+    "success": {
+      "default": { "$value": "{color.green.500}", "$description": "One step lighter than default — makes green more vivid alongside the Christmas red" },
+      "hover":   { "$value": "{color.green.600}" },
+      "active":  { "$value": "{color.green.700}" }
+    }
+  },
+
+  "text": {
+    "$type": "color",
+    "brand": {
+      "default":  { "$value": "{color.red.700}" },
+      "contrast": { "$value": "{color.white.950}" }
+    }
+  }
+
+}

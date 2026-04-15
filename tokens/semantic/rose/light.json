@@ -1,0 +1,44 @@
+{
+  "$description": "Sub-brand Rose — light theme. Sparse override: brand role mapped to the red palette. All other tokens (neutrals, status colours, elevation) inherit from the default brand.",
+
+  "background": {
+    "$type": "color",
+    "brand": { "$value": "{color.red.25}" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.red.50}" },
+      "hover":   { "$value": "{color.red.100}" },
+      "active":  { "$value": "{color.red.200}" }
+    }
+  },
+
+  "border": {
+    "$type": "color",
+    "focus": { "$value": "{color.red.600}", "$description": "Focus ring — red.600 meets 3:1 on white" },
+    "brand": {
+      "default": { "$value": "{color.red.200}" },
+      "hover":   { "$value": "{color.red.400}" }
+    }
+  },
+
+  "base": {
+    "$type": "color",
+    "brand": {
+      "default": { "$value": "{color.red.600}" },
+      "hover":   { "$value": "{color.red.700}" },
+      "active":  { "$value": "{color.red.800}" }
+    }
+  },
+
+  "text": {
+    "$type": "color",
+    "brand": {
+      "default":  { "$value": "{color.red.700}" },
+      "contrast": { "$value": "{color.white.950}" }
+    }
+  }
+
+}

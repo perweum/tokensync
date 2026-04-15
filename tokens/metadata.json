@@ -4,8 +4,16 @@
 
   "version": "1.0.0",
 
-  "brands": ["default", "green", "sky"],
+  "brands": ["default", "green", "sky", "rose"],
   "themes": ["light", "dark"],
+
+  "compositions": [
+    {
+      "name": "Christmas/Light",
+      "layers": ["default/light", "occasions/christmas"],
+      "$description": "Seasonal overlay: default brand with Christmas red accent. The overlay file only contains the tokens that differ from default/light."
+    }
+  ],
 
   "roles": {
     "$description": "Maps semantic colour roles to primitive palette names per brand. Used by platform transformers and documentation.",
@@ -32,6 +40,14 @@
       "error":   "color.red",
       "warning": "color.amber",
       "info":    "color.sky"
+    },
+    "rose": {
+      "brand":   "color.red",
+      "neutral": "color.neutral",
+      "success": "color.green",
+      "error":   "color.red",
+      "warning": "color.amber",
+      "info":    "color.sky"
     }
   },
 
@@ -43,7 +59,7 @@
       "global":     "Global",
       "semantic":   "Semantic"
     },
-    "$note": "Semantic collection modes: Light, Dark (Masterbrand), Green/Light, Green/Dark, Sky/Light, Sky/Dark."
+    "$note": "Semantic collection modes: Light, Dark (default), Green/Light, Green/Dark, Sky/Light, Sky/Dark, Rose/Light, Rose/Dark, Christmas/Light (composition)."
   },
 
   "github": {
