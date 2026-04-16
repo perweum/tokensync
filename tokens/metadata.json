@@ -57,9 +57,10 @@
     "collections": {
       "primitives": "Primitives",
       "global":     "Global",
+      "brand":      "Brand",
       "semantic":   "Semantic"
     },
-    "$note": "Semantic collection modes: Light, Dark (default), Green/Light, Green/Dark, Sky/Light, Sky/Dark, Rose/Light, Rose/Dark, Christmas/Light (composition)."
+    "$note": "Brand collection modes: Default, Green, Sky, Rose. Semantic collection modes: Light, Dark. Switch brand and theme independently in Figma."
   },
 
   "github": {
