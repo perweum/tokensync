@@ -68,6 +68,9 @@ function dartClass(className: string, tokens: Record<string, TokenValue>): strin
 function toDartValue(token: TokenValue): string | null {
   const v = token.$value
 
+  // Boolean
+  if (token.$type === 'boolean') return v === 'true' ? 'true' : 'false'
+
   // Color: #rrggbb or #rrggbbaa
   const hexMatch = v.match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i)
   if (hexMatch) {
@@ -97,6 +100,7 @@ function toDartValue(token: TokenValue): string | null {
 }
 
 function dartType(token: TokenValue): string {
+  if (token.$type === 'boolean') return 'bool'
   const v = token.$value
   if (v.startsWith('#') || v.startsWith('rgba(')) return 'Color'
   if (/^[\d.]+px$/.test(v) || /^[\d.]+$/.test(v)) return 'double'

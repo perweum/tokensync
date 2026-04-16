@@ -56,6 +56,7 @@ export async function applyTokensToCollection(
   modeId: string,
   removedPaths?: string[],
   cleanApply?: boolean,
+  resolvedValues?: Record<string, string>,
 ): Promise<{ count: number; removed: number; errors: string[] }> {
   // Support name-based lookup (sent from UI as collection name / mode name)
   const allCollections = await figma.variables.getLocalVariableCollectionsAsync()
@@ -169,9 +170,15 @@ export async function applyTokensToCollection(
         : rawValue
 
       // For the resolved fallback (when alias target wasn't found), use the fully-resolved map
-      const valueToUse = (isPureRef(rawValue) && !hasRef(literalValue))
+      // Priority: inlined ref resolution → resolvedValues from UI → resolvedFlat (same-collection only)
+      let valueToUse = (isPureRef(rawValue) && !hasRef(literalValue))
         ? literalValue
         : (hasRef(literalValue) ? (resolvedFlat[path]?.$value ?? literalValue) : literalValue)
+
+      // If still unresolved, fall back to the pre-resolved value sent from the UI
+      if (hasRef(valueToUse) && resolvedValues?.[path]) {
+        valueToUse = resolvedValues[path]
+      }
 
       const figmaValue = toFigmaValue(valueToUse, figmaType)
       if (figmaValue === null) {
@@ -263,15 +270,19 @@ function resolveInlineRefs(
 
 function figmaTypeFromTokenType(
   type: string,
-): 'COLOR' | 'FLOAT' | 'STRING' | null {
+): 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN' | null {
   switch (type) {
     case 'color':
       return 'COLOR'
+    case 'boolean':
+      return 'BOOLEAN'
     case 'dimension':
     case 'number':
     case 'fontWeight':
     case 'fontFamily':
     case 'shadow':
+    case 'string':
+    case 'text':
       return 'STRING'
     default:
       return null
@@ -280,10 +291,11 @@ function figmaTypeFromTokenType(
 
 function toFigmaValue(
   value: string,
-  type: 'COLOR' | 'FLOAT' | 'STRING',
-): RGBA | number | string | null {
+  type: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN',
+): RGBA | number | string | boolean | null {
   if (type === 'COLOR') return hexToRGBA(value)
   if (type === 'FLOAT') return parseDimension(value)
+  if (type === 'BOOLEAN') return value === 'true'
   if (type === 'STRING') return value
   return null
 }

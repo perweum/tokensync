@@ -25,14 +25,24 @@ interface TreeResponse   { tree: Array<{ type: string; path: string }> }
 interface ContentsResponse { content: string; sha: string }
 interface RefResponse    { object: { sha: string } }
 interface PRResponse     { html_url: string; number: number; title: string }
+type BranchListResponse = Array<{ name: string }>
 
 // ---------------------------------------------------------------------------
 // Read
 // ---------------------------------------------------------------------------
 
+export async function fetchBranches(pat: string, repo: string): Promise<string[]> {
+  // Fetches up to 100 branches — enough for all realistic repos
+  const data = await apiGet<BranchListResponse>(
+    `repos/${repo}/branches?per_page=100`,
+    pat,
+  )
+  return data.map((b) => b.name)
+}
+
 export async function fetchTokenFiles(config: GitHubConfig): Promise<GitHubFile[]> {
   const tree = await apiGet<TreeResponse>(
-    `repos/${config.repo}/git/trees/HEAD?recursive=1`,
+    `repos/${config.repo}/git/trees/${encodeURIComponent(config.branch)}?recursive=1`,
     config.pat,
   )
 
@@ -49,7 +59,7 @@ export async function fetchTokenFiles(config: GitHubConfig): Promise<GitHubFile[
 
 async function fetchFile(path: string, config: GitHubConfig): Promise<GitHubFile> {
   const data = await apiGet<ContentsResponse>(
-    `repos/${config.repo}/contents/${path}`,
+    `repos/${config.repo}/contents/${path}?ref=${encodeURIComponent(config.branch)}`,
     config.pat,
   )
   const content = atob(data.content.replace(/\n/g, ''))

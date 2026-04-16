@@ -29,7 +29,7 @@ export function buildFigmaFlatMaps(
     collection.modes.map((mode) => ({
       collectionName: collection.name,
       modeName: mode.name,
-      values: buildModeMap(collection, mode.modeId, variables, varById),
+      values: buildModeMap(collection, mode.modeId, varById),
     })),
   )
 }
@@ -41,7 +41,6 @@ export function buildFigmaFlatMaps(
 function buildModeMap(
   collection: FigmaVariableCollection,
   modeId: string,
-  variables: FigmaVariable[],
   varById: Map<string, FigmaVariable>,
 ): Record<string, string> {
   const result: Record<string, string> = {}
@@ -75,7 +74,9 @@ function resolveValue(
   if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'VARIABLE_ALIAS') {
     const target = varById.get(value.id)
     if (!target) return null
-    const targetValue = target.valuesByMode[modeId]
+    // Cross-collection aliases (e.g. Semantic → Primitives) have a different modeId.
+    // Fall back to the first available mode value when the current modeId is not found.
+    const targetValue = target.valuesByMode[modeId] ?? Object.values(target.valuesByMode)[0]
     if (targetValue === undefined) return null
     return resolveValue(targetValue, modeId, varById, depth + 1)
   }

@@ -18,6 +18,7 @@ export interface DiffEntry {
   githubValue: string | null     // resolved value — used for display and comparison
   githubRawValue: string | null  // unresolved value — may contain "{color.blue.200}" refs for Figma aliases
   figmaValue: string | null      // current value in Figma
+  description?: string           // $description from the GitHub token, if present
 }
 
 export interface CollectionDiff {
@@ -56,7 +57,8 @@ export function diffTokens(
     const status = deriveStatus(githubValue, figmaRaw, type)
     if (status === 'unchanged') continue
 
-    entries.push({ path, type, status, githubValue, githubRawValue, figmaValue: figmaRaw })
+    const description = rawTokens?.[path]?.$description ?? github?.$description
+    entries.push({ path, type, status, githubValue, githubRawValue, figmaValue: figmaRaw, description })
   }
 
   return entries.sort(byPathThenStatus)
@@ -109,18 +111,39 @@ function normalise(value: string, type: string): string {
 }
 
 function normaliseColor(value: string): string {
-  // Convert rgba(255,255,255,1) → #ffffff
+  const parsed = parseColorComponents(value)
+  if (!parsed) return value.toLowerCase().trim()
+  const { r, g, b, a } = parsed
+  if (a >= 0.9999) return `#${toH(r)}${toH(g)}${toH(b)}`
+  // Round alpha to 2 decimal places to absorb float→8-bit→float round-trip drift
+  // e.g. rgba(0,0,0,0.90) and #000000e5 (229/255≈0.898) both normalise to rgba(0,0,0,0.9)
+  const ar = Math.round(a * 100) / 100
+  return `rgba(${r},${g},${b},${ar})`
+}
+
+function toH(n: number) { return n.toString(16).padStart(2, '0') }
+
+/** Parse any colour string into integer r/g/b (0-255) and float a (0-1). */
+function parseColorComponents(value: string): { r: number; g: number; b: number; a: number } | null {
+  // rgba(...) or rgb(...)
   const rgba = value.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/)
   if (rgba) {
-    const r = parseInt(rgba[1]).toString(16).padStart(2, '0')
-    const g = parseInt(rgba[2]).toString(16).padStart(2, '0')
-    const b = parseInt(rgba[3]).toString(16).padStart(2, '0')
-    const a = rgba[4] !== undefined ? parseFloat(rgba[4]) : 1
-    if (a === 1) return `#${r}${g}${b}`
-    const ah = Math.round(a * 255).toString(16).padStart(2, '0')
-    return `#${r}${g}${b}${ah}`
+    return {
+      r: parseInt(rgba[1]),
+      g: parseInt(rgba[2]),
+      b: parseInt(rgba[3]),
+      a: rgba[4] !== undefined ? parseFloat(rgba[4]) : 1,
+    }
   }
-  return value.toLowerCase().trim()
+  // #rrggbb or #rrggbbaa
+  const clean = value.replace('#', '')
+  if (clean.length === 6) {
+    return { r: parseInt(clean.slice(0, 2), 16), g: parseInt(clean.slice(2, 4), 16), b: parseInt(clean.slice(4, 6), 16), a: 1 }
+  }
+  if (clean.length === 8) {
+    return { r: parseInt(clean.slice(0, 2), 16), g: parseInt(clean.slice(2, 4), 16), b: parseInt(clean.slice(4, 6), 16), a: parseInt(clean.slice(6, 8), 16) / 255 }
+  }
+  return null
 }
 
 function normaliseDimension(value: string): string {

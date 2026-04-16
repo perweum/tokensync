@@ -19,6 +19,37 @@ figma.showUI(__html__, {
 })
 
 // ---------------------------------------------------------------------------
+// Serial apply queue
+// Figma's async onmessage handler can run concurrently when the UI sends
+// multiple APPLY_TOKENS messages in quick succession. This queue ensures
+// each apply completes fully before the next one starts — critical so that
+// Primitives variables exist in Figma before Semantic aliases look them up.
+// ---------------------------------------------------------------------------
+
+type ApplyTask = () => Promise<void>
+const applyQueue: ApplyTask[] = []
+let applyBusy = false
+
+function enqueueApply(task: ApplyTask) {
+  applyQueue.push(task)
+  if (!applyBusy) drainApplyQueue()
+}
+
+async function drainApplyQueue() {
+  applyBusy = true
+  while (applyQueue.length > 0) {
+    const task = applyQueue.shift()!
+    try {
+      await task()
+    } catch (err) {
+      // Unexpected error in task — report to UI and continue draining
+      send({ type: 'ERROR', message: err instanceof Error ? err.message : String(err), context: 'APPLY_TOKENS' })
+    }
+  }
+  applyBusy = false
+}
+
+// ---------------------------------------------------------------------------
 // Message handler
 // ---------------------------------------------------------------------------
 
@@ -32,14 +63,17 @@ figma.ui.onmessage = async (msg: UIMessage) => {
       }
 
       case 'APPLY_TOKENS': {
-        const { count, removed, errors } = await applyTokensToCollection(
-          msg.tokens,
-          msg.collectionId,
-          msg.modeId,
-          msg.removedPaths,
-          msg.cleanApply,
-        )
-        send({ type: 'TOKENS_APPLIED', count, removed, errors })
+        enqueueApply(async () => {
+          const { count, removed, errors } = await applyTokensToCollection(
+            msg.tokens,
+            msg.collectionId,
+            msg.modeId,
+            msg.removedPaths,
+            msg.cleanApply,
+            msg.resolvedValues,
+          )
+          send({ type: 'TOKENS_APPLIED', count, removed, errors })
+        })
         break
       }
 

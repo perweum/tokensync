@@ -90,6 +90,8 @@ export type UIMessage =
   | {
       type: 'APPLY_TOKENS'
       tokens: TokenTree
+      /** Resolved values for tokens that contain {refs} — used as fallback when alias target not found. */
+      resolvedValues?: Record<string, string>
       collectionId: string
       modeId: string
       removedPaths?: string[]  // dot-notation paths of tokens removed from GitHub

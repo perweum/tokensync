@@ -9,7 +9,7 @@ import { groupByCategory } from '../../shared/token-diff'
 
 interface Props {
   diffs: CollectionDiff[]
-  onCreatePR: (title: string) => void
+  onCreatePR: (title: string, selectedKeys: Set<string>) => void
   onBack: () => void
   creating: boolean
 }
@@ -17,6 +17,22 @@ interface Props {
 export function PushDiff({ diffs, onCreatePR, onBack, creating }: Props) {
   const [prTitle, setPrTitle] = useState('chore: sync design tokens from Figma')
   const [activeTab, setActiveTab] = useState(0)
+
+  // Selective sync — all collections selected by default
+  const allKeys = diffs.map((d) => `${d.collectionName}/${d.modeName}`)
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set(allKeys))
+
+  function toggleKey(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  const selectedChanges = diffs
+    .filter((d) => selectedKeys.has(`${d.collectionName}/${d.modeName}`))
+    .reduce((n, d) => n + d.counts.total, 0)
 
   const totalChanges = diffs.reduce((n, d) => n + d.counts.total, 0)
   const hasChanges = totalChanges > 0
@@ -52,18 +68,31 @@ export function PushDiff({ diffs, onCreatePR, onBack, creating }: Props) {
 
           {/* Collection tabs */}
           <div style={s.tabs}>
-            {diffs.map((diff, i) => (
-              <button
-                key={`${diff.collectionName}/${diff.modeName}`}
-                style={{ ...s.tab, ...(activeTab === i ? s.tabActive : {}) }}
-                onClick={() => setActiveTab(i)}
-              >
-                {diff.modeName}
-                {diff.counts.total > 0 && (
-                  <span style={s.tabBadge}>{diff.counts.total}</span>
-                )}
-              </button>
-            ))}
+            {diffs.map((diff, i) => {
+              const key = `${diff.collectionName}/${diff.modeName}`
+              const selected = selectedKeys.has(key)
+              return (
+                <button
+                  key={key}
+                  style={{ ...s.tab, ...(activeTab === i ? s.tabActive : {}), ...(!selected ? s.tabDeselected : {}) }}
+                  onClick={() => setActiveTab(i)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    style={s.tabCheck}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleKey(key)}
+                  />
+                  {diff.modeName}
+                  {diff.counts.total > 0 && (
+                    <span style={{ ...s.tabBadge, ...(!selected ? s.tabBadgeOff : {}) }}>
+                      {diff.counts.total}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
 
           {/* Diff list for active tab */}
@@ -84,11 +113,16 @@ export function PushDiff({ diffs, onCreatePR, onBack, creating }: Props) {
               placeholder="Pull request title"
             />
             <button
-              style={{ ...s.prBtn, ...(creating ? s.prBtnDisabled : {}) }}
-              onClick={() => onCreatePR(prTitle.trim() || 'chore: sync design tokens from Figma')}
-              disabled={creating}
+              style={{ ...s.prBtn, ...((creating || selectedChanges === 0) ? s.prBtnDisabled : {}) }}
+              onClick={() => onCreatePR(prTitle.trim() || 'chore: sync design tokens from Figma', selectedKeys)}
+              disabled={creating || selectedChanges === 0}
             >
-              {creating ? 'Creating PR…' : `Create PR (${totalChanges} changes)`}
+              {creating
+                ? 'Creating PR…'
+                : selectedChanges === 0
+                  ? 'Select collections to include'
+                  : `Create PR (${selectedChanges} change${selectedChanges !== 1 ? 's' : ''})`
+              }
             </button>
           </div>
         </>
@@ -166,7 +200,12 @@ function DiffRow({ entry }: { entry: DiffEntry }) {
       <span style={{ ...s.dot, color: dotColor(entry.status) }}>
         {dotIcon(entry.status)}
       </span>
-      <span style={s.path}>{label}</span>
+      <div style={s.meta}>
+        <span style={s.path}>{label}</span>
+        {entry.description && (
+          <span style={s.desc}>{entry.description}</span>
+        )}
+      </div>
       <div style={s.vals}>
         {entry.figmaValue !== null && (
           <Val value={entry.figmaValue} isColor={isColor} faded={entry.status === 'changed'} />
@@ -239,10 +278,13 @@ const s: Record<string, React.CSSProperties> = {
   overviewNum:  { fontWeight: 700, fontSize: '20px', lineHeight: 1 },
   overviewLabel:{ fontSize: '10px', color: '#888', marginTop: 2 },
   chip:         { fontSize: '11px', fontWeight: 500, padding: '3px 8px', borderRadius: '12px' },
-  tabs:         { display: 'flex', gap: '2px', padding: '8px 16px 0', borderBottom: '1px solid #eee', overflowX: 'auto' },
-  tab:          { background: 'none', border: 'none', fontSize: '12px', padding: '6px 10px', cursor: 'pointer', color: '#666', borderRadius: '6px 6px 0 0', display: 'flex', alignItems: 'center', gap: '5px' },
-  tabActive:    { background: '#f0f0f0', color: '#1a1a1a', fontWeight: 500 },
-  tabBadge:     { background: '#1a52d8', color: '#fff', borderRadius: '8px', padding: '1px 5px', fontSize: '10px' },
+  tabs:           { display: 'flex', gap: '2px', padding: '8px 16px 0', borderBottom: '1px solid #eee', overflowX: 'auto' },
+  tab:            { background: 'none', border: 'none', fontSize: '12px', padding: '6px 10px', cursor: 'pointer', color: '#666', borderRadius: '6px 6px 0 0', display: 'flex', alignItems: 'center', gap: '5px' },
+  tabActive:      { background: '#f0f0f0', color: '#1a1a1a', fontWeight: 500 },
+  tabDeselected:  { opacity: 0.45 },
+  tabCheck:       { margin: 0, cursor: 'pointer', flexShrink: 0 },
+  tabBadge:       { background: '#1a52d8', color: '#fff', borderRadius: '8px', padding: '1px 5px', fontSize: '10px' },
+  tabBadgeOff:    { background: '#aaa' },
   noDiff:       { padding: '24px 16px', fontSize: '12px', color: '#888', textAlign: 'center' },
   diffList:     { flex: 1, overflowY: 'auto', paddingBottom: 100 },
   categoryRow:  { width: '100%', display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', background: '#f8f8f8', border: 'none', borderBottom: '1px solid #eee', cursor: 'pointer', textAlign: 'left' },
@@ -251,7 +293,9 @@ const s: Record<string, React.CSSProperties> = {
   categoryCount:{ fontSize: '11px', color: '#888' },
   row:          { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 16px', borderBottom: '1px solid #f0f0f0' },
   dot:          { fontWeight: 700, fontSize: '13px', width: 14, flexShrink: 0, fontFamily: 'monospace' },
-  path:         { flex: 1, fontSize: '11px', color: '#333', fontFamily: 'monospace' },
+  meta:         { flex: 1, display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 },
+  path:         { fontSize: '11px', color: '#333', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  desc:         { fontSize: '10px', color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   vals:         { display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 },
   arrow:        { fontSize: '11px', color: '#aaa' },
   footer:       { position: 'sticky', bottom: 0, padding: '12px 16px', background: '#fff', borderTop: '1px solid #eee', display: 'flex', flexDirection: 'column', gap: '8px' },

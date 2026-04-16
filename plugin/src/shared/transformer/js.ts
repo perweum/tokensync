@@ -60,7 +60,9 @@ function flatToNested(tokens: Record<string, TokenValue>): string {
 
   for (const [path, token] of Object.entries(tokens)) {
     const keys = path.split('.')
-    setNested(nested, keys, token.$value)
+    // Boolean tokens are stored as "true"/"false" strings in JSON — convert to JS boolean
+    const value = token.$type === 'boolean' ? token.$value === 'true' : token.$value
+    setNested(nested, keys, value)
   }
 
   return serialize(nested, 0)
@@ -86,6 +88,7 @@ function safeKey(k: string): string {
 function serialize(obj: unknown, indent: number): string {
   if (typeof obj === 'string') return JSON.stringify(obj)
   if (typeof obj === 'number') return String(obj)
+  if (typeof obj === 'boolean') return String(obj)
   if (typeof obj !== 'object' || obj === null) return String(obj)
 
   const pad = '  '.repeat(indent + 1)

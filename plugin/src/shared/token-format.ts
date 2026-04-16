@@ -54,26 +54,41 @@ export function flattenTokens(
 }
 
 /**
- * Resolve a reference like `{color.brand.600}` against a flat token map.
- * Returns the resolved $value string, or null if unresolvable.
+ * Resolve a reference (or embedded references) against a flat token map.
+ *
+ * Handles two cases:
+ *   Pure ref:     "{color.brand.600}"          → resolves to a single value
+ *   Embedded ref: "0 1px 2px {color.black.50}" → each {ref} is substituted inline
+ *
+ * Returns the resolved string, or null if a pure ref target is missing.
  */
 export function resolveReference(
   ref: string,
   flat: Record<string, TokenValue>,
 ): string | null {
   const match = ref.match(/^\{(.+)\}$/)
-  if (!match) return ref // not a reference — return as-is
-
-  const path = match[1]
-  const token = flat[path]
-  if (!token) return null
-
-  // recurse if the resolved value is itself a reference
-  if (token.$value.startsWith('{')) {
-    return resolveReference(token.$value, flat)
+  if (match) {
+    // Pure reference — look up and recurse
+    const path = match[1]
+    const token = flat[path]
+    if (!token) return null
+    if (token.$value.startsWith('{')) {
+      return resolveReference(token.$value, flat)
+    }
+    return token.$value
   }
 
-  return token.$value
+  // Embedded references inside a composite value (e.g. shadow strings)
+  if (ref.includes('{')) {
+    return ref.replace(/\{([^}]+)\}/g, (_match, refPath: string) => {
+      const token = flat[refPath]
+      if (!token) return _match
+      const resolved = resolveReference(token.$value, flat)
+      return resolved ?? _match
+    })
+  }
+
+  return ref // not a reference — return as-is
 }
 
 /**

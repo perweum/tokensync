@@ -3,15 +3,15 @@
  * Manages the pull and push flows.
  */
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Project } from '../App'
-import { fetchTokenFiles, createTokenPR } from '../hooks/useGitHub'
+import { fetchTokenFiles, fetchBranches, createTokenPR } from '../hooks/useGitHub'
 import { useSendMessage, usePluginMessage } from '../hooks/usePlugin'
 import { buildFigmaFlatMaps } from '../hooks/useFigmaValues'
 import { parseRepository } from '../../shared/token-merger'
-import type { ParsedRepository } from '../../shared/token-merger'
+import type { ParsedRepository, Metadata } from '../../shared/token-merger'
 import { buildCollectionDiff } from '../../shared/token-diff'
-import { figmaToCollections } from '../../shared/figma-to-tokens'
+import { figmaToCollections, figmaToTokenFiles, buildCompositionOverlayFile } from '../../shared/figma-to-tokens'
 import type { CollectionDiff } from '../../shared/token-diff'
 import { runTransformers } from '../../shared/transformer'
 import type { PluginMessage, FigmaVariableCollection, FigmaVariable, TokenTree } from '../../shared/messages'
@@ -25,6 +25,11 @@ type Status =
   | { kind: 'loading'; message: string }
   | { kind: 'success'; message: string; url?: string }
   | { kind: 'error'; message: string }
+
+interface LastSync {
+  timestamp: number
+  direction: 'pull' | 'push'
+}
 
 interface Props {
   project: Project
@@ -42,6 +47,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [creating, setCreating] = useState(false)
   const [diffs, setDiffs] = useState<CollectionDiff[]>([])
   const [diffError, setDiffError] = useState<string | undefined>(undefined)
+  const [lastSync, setLastSync] = useState<LastSync | null>(null)
+
+  // Branch switching — persisted per project; defaults to the configured branch
+  const branchKey = `tokensync:branch:${project.id}`
+  const [activeBranch, setActiveBranch] = useState(project.branch)
+  const [branches, setBranches] = useState<string[]>([])
+
+  const lastSyncKey = `tokensync:lastSync:${project.id}`
 
   const viewRef = useRef<View>('main')
   const pendingAction = useRef<PendingAction | null>(null)
@@ -51,13 +64,42 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const pendingFiles = useRef<Awaited<ReturnType<typeof fetchTokenFiles>> | null>(null)
   const pendingParsed = useRef<ParsedRepository | null>(null)           // push: parsed GitHub repo (metadata + collections)
   const pendingFigmaCollections = useRef<ReturnType<typeof figmaToCollections> | null>(null) // push: Figma resolved collections
+  const pendingFigmaRaw = useRef<{ collections: FigmaVariableCollection[]; variables: FigmaVariable[] } | null>(null) // push: raw Figma data for file generation
 
   const send = useSendMessage()
 
   const figmaCollectionNames = {
     primitives: 'Primitives',
     global: 'Global',
+    brand: 'Brand',
     semantic: 'Semantic',
+  }
+
+  // ---------------------------------------------------------------------------
+  // Last sync state — load on mount, save after successful operations
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    send({ type: 'LOAD_STORAGE', key: lastSyncKey })
+    send({ type: 'LOAD_STORAGE', key: branchKey })
+
+    // Fetch available branches in the background — non-blocking
+    fetchBranches(project.pat, project.repo)
+      .then((list) => setBranches(list))
+      .catch(() => {/* silently ignore — branch selector falls back to text display */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id])
+
+  function handleBranchChange(branch: string) {
+    setActiveBranch(branch)
+    send({ type: 'SAVE_STORAGE', key: branchKey, value: branch })
+    setStatus({ kind: 'idle' })
+  }
+
+  function saveLastSync(direction: 'pull' | 'push') {
+    const entry: LastSync = { timestamp: Date.now(), direction }
+    setLastSync(entry)
+    send({ type: 'SAVE_STORAGE', key: lastSyncKey, value: JSON.stringify(entry) })
   }
 
   // ---------------------------------------------------------------------------
@@ -67,6 +109,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   usePluginMessage(
     useCallback(
       (msg: PluginMessage) => {
+        if (msg.type === 'STORAGE_LOADED' && msg.key === lastSyncKey) {
+          try {
+            setLastSync(msg.value ? JSON.parse(msg.value) as LastSync : null)
+          } catch { /* ignore */ }
+        }
+        if (msg.type === 'STORAGE_LOADED' && msg.key === branchKey) {
+          if (msg.value) setActiveBranch(msg.value)
+        }
         if (msg.type === 'COLLECTIONS_LOADED') {
           if (pendingAction.current === 'pull') {
             handlePullCollectionsLoaded(msg.collections, msg.variables)
@@ -86,12 +136,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
               setApplying(false)
               viewRef.current = 'main'
               setView('main')
+              if (!msg.errors.length) saveLastSync('pull')
               setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `All collections applied to Figma${removedSuffix}${errSuffix}` })
             }
           } else {
             setApplying(false)
             viewRef.current = 'main'
             setView('main')
+            if (!msg.errors.length) saveLastSync('pull')
             setStatus({ kind: msg.errors.length ? 'error' : 'success', message: `Applied ${msg.count} variable(s)${removedSuffix} to Figma${errSuffix}` })
           }
         }
@@ -121,7 +173,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       const files = await fetchTokenFiles({
         pat: project.pat,
         repo: project.repo,
-        branch: project.branch,
+        branch: activeBranch,
         tokensPath: project.tokensPath,
       })
 
@@ -176,13 +228,21 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   }
 
   function sendApplyDiff(diff: CollectionDiff) {
-    const tokensToApply = diff.entries
-      .filter((e) => e.status === 'added' || e.status === 'changed')
-      .reduce<Record<string, { $type: string; $value: string }>>((acc, entry) => {
-        const value = entry.githubRawValue ?? entry.githubValue
+    const changed = diff.entries.filter((e) => e.status === 'added' || e.status === 'changed')
+
+    const tokensToApply = changed.reduce<Record<string, { $type: string; $value: string }>>((acc, entry) => {
+      const value = entry.githubRawValue ?? entry.githubValue
       if (value) acc[entry.path] = { $type: entry.type, $value: value }
-        return acc
-      }, {})
+      return acc
+    }, {})
+
+    // Resolved hex values — used as fallback when the ref target variable doesn't exist yet
+    const resolvedValues: Record<string, string> = {}
+    for (const entry of changed) {
+      if (entry.githubValue && entry.githubRawValue && entry.githubRawValue !== entry.githubValue) {
+        resolvedValues[entry.path] = entry.githubValue
+      }
+    }
 
     const removedPaths = diff.entries
       .filter((e) => e.status === 'removed')
@@ -191,37 +251,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     send({
       type: 'APPLY_TOKENS',
       tokens: tokensToApply,
+      resolvedValues: Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
       collectionId: diff.collectionName,
       modeId: diff.modeName,
       removedPaths: removedPaths.length > 0 ? removedPaths : undefined,
     })
-  }
-
-  function sendCleanApply(collectionName: string, modeName: string) {
-    const allCollections = pendingGitHubCollections.current
-    if (!allCollections) return
-    const col = allCollections.find(
-      (c) => c.collectionName === collectionName && c.modeName === modeName,
-    )
-    if (!col) return
-    send({
-      type: 'APPLY_TOKENS',
-      tokens: col.rawTokens as TokenTree,
-      collectionId: collectionName,
-      modeId: modeName,
-      cleanApply: true,
-    })
-  }
-
-  function handleApplyToFigma(collectionName: string, modeName: string) {
-    const diff = diffs.find(
-      (d) => d.collectionName === collectionName && d.modeName === modeName,
-    )
-    if (!diff) return
-
-    applyAllRemaining.current = 0
-    setApplying(true)
-    sendApplyDiff(diff)
   }
 
   function handleApplyAll() {
@@ -235,19 +269,34 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     }
   }
 
-  function handleCleanApply(collectionName: string, modeName: string) {
-    applyAllRemaining.current = 0
-    setApplying(true)
-    sendCleanApply(collectionName, modeName)
-  }
-
   function handleCleanApplyAll() {
     const allCollections = pendingGitHubCollections.current
     if (!allCollections) return
     applyAllRemaining.current = allCollections.length
     setApplying(true)
+    // Only send cleanApply=true for the first mode of each collection.
+    // Multi-mode collections (e.g. Semantic with Light + Dark) share variables —
+    // a clean apply on mode 2 would delete variables written by mode 1.
+    const cleanedCollections = new Set<string>()
     for (const col of allCollections) {
-      sendCleanApply(col.collectionName, col.modeName)
+      const isFirst = !cleanedCollections.has(col.collectionName)
+      if (isFirst) cleanedCollections.add(col.collectionName)
+      // Build resolved fallback map: path → hex value, for tokens whose raw value is a {ref}
+      const resolvedValues: Record<string, string> = {}
+      for (const [path, token] of Object.entries(col.rawTokens)) {
+        const resolved = col.tokens[path]
+        if (resolved && token.$value !== resolved.$value) {
+          resolvedValues[path] = resolved.$value
+        }
+      }
+      send({
+        type: 'APPLY_TOKENS',
+        tokens: col.rawTokens as TokenTree,
+        resolvedValues: Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
+        collectionId: col.collectionName,
+        modeId: col.modeName,
+        cleanApply: isFirst,
+      })
     }
   }
 
@@ -262,7 +311,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       const files = await fetchTokenFiles({
         pat: project.pat,
         repo: project.repo,
-        branch: project.branch,
+        branch: activeBranch,
         tokensPath: project.tokensPath,
       })
 
@@ -295,6 +344,8 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       figmaCollectionNames,
     )
     pendingFigmaCollections.current = figmaCollectionData
+    // Keep raw data for writing complete token files to GitHub (not just diff entries)
+    pendingFigmaRaw.current = { collections: figmaCollections, variables: figmaVariables }
 
     // Diff: Figma (new) vs GitHub (current)
     // githubValue = current state in GitHub, figmaValue = new state from Figma
@@ -326,18 +377,16 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     pendingFiles.current = null
   }
 
-  async function handleCreatePR(prTitle: string) {
+  async function handleCreatePR(prTitle: string, selectedKeys: Set<string>) {
     setCreating(true)
     try {
-      // Re-read Figma variables to build token files for the PR
-      // (We already have them from the push flow — rebuild from diffs)
-      const changedFiles = buildFilesFromDiffs()
+      const changedFiles = buildFilesFromDiffs(selectedKeys)
 
       const result = await createTokenPR(
         {
           pat: project.pat,
           repo: project.repo,
-          branch: project.branch,
+          branch: activeBranch,
           tokensPath: project.tokensPath,
         },
         changedFiles,
@@ -346,6 +395,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
       setCreating(false)
       setView('main')
+      saveLastSync('push')
       setStatus({
         kind: 'success',
         message: `PR #${result.number} created`,
@@ -358,24 +408,101 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   }
 
   /**
-   * Reconstruct token file content from the push diff entries.
-   * Also runs platform transformers (CSS, JS/TS, Dart) if configured in metadata.
+   * Build token files for the PR.
+   * selectedKeys: set of "collectionName/modeName" pairs to include.
+   * Writes ALL variables for selected collections (not just changed ones) so GitHub files stay complete.
+   * Composition modes are excluded from standard file writing and handled as sparse overlays instead.
+   * Also runs platform transformers if configured in metadata.
    */
-  function buildFilesFromDiffs(): Array<{ path: string; content: string }> {
-    const tokenFiles = diffs.map((diff) => {
-      const { repoPath, tokens } = diffToFile(diff, project.tokensPath)
-      return { path: repoPath, content: JSON.stringify(tokens, null, 2) }
-    })
-
-    // Run platform transformers using the full Figma collection set
-    const figmaCollections = pendingFigmaCollections.current
+  function buildFilesFromDiffs(selectedKeys: Set<string>): Array<{ path: string; content: string }> {
+    const raw = pendingFigmaRaw.current
     const parsed = pendingParsed.current
+    const compositionModeNames = new Set((parsed?.metadata.compositions ?? []).map((c) => c.name))
+
+    // Build filtered collections: only selected modes, with composition modes stripped from Semantic
+    const filteredCollections = raw?.collections
+      .map((col) => {
+        if (col.name === figmaCollectionNames.semantic) {
+          // Strip composition modes (written separately as sparse overlays) and unselected modes
+          const filteredModes = col.modes.filter(
+            (mode) =>
+              !compositionModeNames.has(mode.name) &&
+              selectedKeys.has(`${col.name}/${mode.name}`),
+          )
+          return { ...col, modes: filteredModes }
+        }
+        // Primitives / Global: keep if any mode is selected
+        return col.modes.some((mode) => selectedKeys.has(`${col.name}/${mode.name}`))
+          ? col
+          : { ...col, modes: [] }
+      })
+      .filter((col) => col.modes.length > 0)
+
+    const tokenFiles = (raw && filteredCollections)
+      ? figmaToTokenFiles(filteredCollections, raw.variables, project.tokensPath, figmaCollectionNames)
+          .map((f) => ({ path: f.repoPath, content: f.content }))
+      : []
+
+    // Composition sparse overlay files
+    const compositionFiles = buildCompositionOverlayFiles(selectedKeys, parsed?.metadata)
+
+    // Platform transformers always use the full collection set (they represent the full design system)
+    const figmaCollections = pendingFigmaCollections.current
     if (figmaCollections && parsed) {
       const platformFiles = runTransformers(figmaCollections, parsed.metadata, project.tokensPath)
-      return [...tokenFiles, ...platformFiles]
+      return [...tokenFiles, ...compositionFiles, ...platformFiles]
     }
 
-    return tokenFiles
+    return [...tokenFiles, ...compositionFiles]
+  }
+
+  /** Convert a semantic layer path (e.g. "default/light") to its Figma mode name (e.g. "Light"). */
+  function layerPathToModeName(layerPath: string): string {
+    const parts = layerPath.split('/')
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase() + parts[0].slice(1)
+    const [brand, theme] = parts
+    const themeCapital = theme.charAt(0).toUpperCase() + theme.slice(1)
+    if (brand === 'default') return themeCapital
+    return `${brand.charAt(0).toUpperCase() + brand.slice(1)}/${themeCapital}`
+  }
+
+  /** Build sparse overlay files for each selected composition. */
+  function buildCompositionOverlayFiles(
+    selectedKeys: Set<string>,
+    metadata: Metadata | undefined,
+  ): Array<{ path: string; content: string }> {
+    if (!metadata?.compositions?.length) return []
+
+    const figmaCollections = pendingFigmaCollections.current
+    if (!figmaCollections) return []
+
+    const semanticName = metadata.figma.collections.semantic
+    const files: Array<{ path: string; content: string }> = []
+
+    for (const comp of metadata.compositions) {
+      if (!selectedKeys.has(`${semanticName}/${comp.name}`)) continue
+      if (comp.layers.length < 2) continue
+
+      const baseModeName = layerPathToModeName(comp.layers[0])
+      const baseCol = figmaCollections.find(
+        (c) => c.collectionName === semanticName && c.modeName === baseModeName,
+      )
+      const compCol = figmaCollections.find(
+        (c) => c.collectionName === semanticName && c.modeName === comp.name,
+      )
+      if (!baseCol || !compCol) continue
+
+      const lastLayer = comp.layers[comp.layers.length - 1]
+      const file = buildCompositionOverlayFile(
+        compCol.rawTokens,
+        baseCol.rawTokens,
+        lastLayer,
+        project.tokensPath,
+      )
+      if (file) files.push({ path: file.repoPath, content: file.content })
+    }
+
+    return files
   }
 
   // ---------------------------------------------------------------------------
@@ -387,10 +514,8 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     return (
       <PullDiff
         diffs={diffs}
-        onApply={handleApplyToFigma}
-        onApplyAll={handleApplyAll}
-        onCleanApply={handleCleanApply}
-        onCleanApplyAll={handleCleanApplyAll}
+        onApply={handleApplyAll}
+        onCleanApply={handleCleanApplyAll}
         onBack={() => {
           viewRef.current = 'main'
           setView('main')
@@ -407,8 +532,8 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     return (
       <PushDiff
         diffs={diffs}
-        onCreatePR={handleCreatePR}
-        onBack={() => { setView('main'); setStatus({ kind: 'idle' }) }}
+        onCreatePR={(title, keys) => handleCreatePR(title, keys)}
+        onBack={() => { setView('main'); setStatus({ kind: 'idle' }); pendingFigmaRaw.current = null }}
         creating={creating}
       />
     )
@@ -417,11 +542,32 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={styles.projectName}>{project.name}</div>
-          <div style={styles.projectMeta}>{project.repo} · {project.branch}</div>
+          <div style={styles.projectMeta}>
+            {project.repo}
+            {lastSync && <span style={styles.lastSync}> · {formatLastSync(lastSync)}</span>}
+          </div>
         </div>
         <button style={styles.editBtn} onClick={onEditProject}>Settings</button>
+      </div>
+
+      <div style={styles.branchRow}>
+        <span style={styles.branchLabel}>Branch</span>
+        {branches.length > 1 ? (
+          <select
+            style={styles.branchSelect}
+            value={activeBranch}
+            onChange={(e) => handleBranchChange(e.target.value)}
+            disabled={status.kind === 'loading'}
+          >
+            {branches.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        ) : (
+          <span style={styles.branchName}>{activeBranch}</span>
+        )}
       </div>
 
       <div style={styles.actions}>
@@ -464,49 +610,6 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 }
 
 // ---------------------------------------------------------------------------
-// Convert a CollectionDiff back into a token file for the PR
-// ---------------------------------------------------------------------------
-
-function diffToFile(
-  diff: CollectionDiff,
-  tokensPath: string,
-): { repoPath: string; tokens: Record<string, unknown> } {
-  const { collectionName, modeName } = diff
-
-  const repoPath = inferFilePath(collectionName, modeName, tokensPath)
-  const tokens: Record<string, unknown> = {}
-
-  for (const entry of diff.entries) {
-    if (entry.status === 'removed') continue  // removed = delete from Figma, not from GitHub
-    if (entry.githubValue === null) continue
-
-    const keys = entry.path.split('.')
-    let current = tokens
-    for (let i = 0; i < keys.length - 1; i++) {
-      if (typeof current[keys[i]] !== 'object' || current[keys[i]] === null) {
-        current[keys[i]] = {}
-      }
-      current = current[keys[i]] as Record<string, unknown>
-    }
-    current[keys[keys.length - 1]] = { $type: entry.type, $value: entry.githubValue }
-  }
-
-  return { repoPath, tokens }
-}
-
-function inferFilePath(collectionName: string, modeName: string, tokensPath: string): string {
-  const base = tokensPath.endsWith('/') ? tokensPath : tokensPath + '/'
-  const col = collectionName.toLowerCase()
-  if (col === 'primitives') return `${base}primitives/${modeName.toLowerCase()}.json`
-  if (col === 'global') return `${base}semantic/global/${modeName.toLowerCase()}.json`
-  // Semantic: modeName = "Default/Light" → semantic/default/light.json
-  const parts = modeName.split('/')
-  const brand = (parts[0] ?? 'default').toLowerCase().replace(/\s+/g, '-')
-  const theme = (parts[1] ?? 'light').toLowerCase()
-  return `${base}semantic/${brand}/${theme}.json`
-}
-
-// ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
@@ -533,6 +636,16 @@ function ActionCard({
   )
 }
 
+function formatLastSync(sync: LastSync): string {
+  const mins = Math.floor((Date.now() - sync.timestamp) / 60000)
+  const label = sync.direction === 'pull' ? 'Pulled' : 'Pushed'
+  if (mins < 1) return `${label} just now`
+  if (mins < 60) return `${label} ${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${label} ${hrs}h ago`
+  return `${label} ${Math.floor(hrs / 24)}d ago`
+}
+
 function statusStyle(kind: Status['kind']): React.CSSProperties {
   if (kind === 'error')   return { background: '#fff0f0', color: '#c00', borderColor: '#fcc' }
   if (kind === 'success') return { background: '#f0faf3', color: '#127030', borderColor: '#b8e8c7' }
@@ -540,11 +653,16 @@ function statusStyle(kind: Status['kind']): React.CSSProperties {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container:    { padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' },
-  header:       { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  container:    { padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' },
+  header:       { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' },
   projectName:  { fontWeight: 600, fontSize: '15px' },
   projectMeta:  { fontSize: '11px', color: '#888', marginTop: '2px' },
-  editBtn:      { fontSize: '12px', color: '#555', background: 'none', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' },
+  lastSync:     { color: '#aaa' },
+  editBtn:      { fontSize: '12px', color: '#555', background: 'none', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', flexShrink: 0 },
+  branchRow:    { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#f8f8f8', borderRadius: '8px', border: '1px solid #eee' },
+  branchLabel:  { fontSize: '11px', color: '#888', fontWeight: 500, flexShrink: 0 },
+  branchSelect: { flex: 1, fontSize: '12px', padding: '3px 6px', borderRadius: '5px', border: '1px solid #ddd', background: '#fff', color: '#222', cursor: 'pointer' },
+  branchName:   { flex: 1, fontSize: '12px', color: '#333', fontFamily: 'monospace' },
   actions:      { display: 'flex', flexDirection: 'column', gap: '12px' },
   card:         { border: '1px solid #e8e8e8', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' },
   cardText:     { display: 'flex', flexDirection: 'column', gap: '4px' },
