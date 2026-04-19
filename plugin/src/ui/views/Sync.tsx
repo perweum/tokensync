@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Project } from '../App'
-import { fetchTokenFiles, fetchBranches, createTokenPR } from '../hooks/useGitHub'
+import { fetchTokenFiles, fetchBranches, createBranch, createTokenPR } from '../hooks/useGitHub'
 import { useSendMessage, usePluginMessage } from '../hooks/usePlugin'
 import { buildFigmaFlatMaps } from '../hooks/useFigmaValues'
 import { parseRepository } from '../../shared/token-merger'
@@ -53,6 +53,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const branchKey = `tokensync:branch:${project.id}`
   const [activeBranch, setActiveBranch] = useState(project.branch)
   const [branches, setBranches] = useState<string[]>([])
+  const [branchesLoading, setBranchesLoading] = useState(false)
+  const [creatingBranch, setCreatingBranch] = useState(false)
+  const [newBranchName, setNewBranchName] = useState('')
+  const [branchCreateError, setBranchCreateError] = useState<string | undefined>(undefined)
+  const [branchCreateLoading, setBranchCreateLoading] = useState(false)
 
   const lastSyncKey = `tokensync:lastSync:${project.id}`
 
@@ -79,14 +84,23 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // Last sync state — load on mount, save after successful operations
   // ---------------------------------------------------------------------------
 
+  const refreshBranches = useCallback(async () => {
+    setBranchesLoading(true)
+    try {
+      const list = await fetchBranches(project.pat, project.repo)
+      setBranches(list)
+    } catch {
+      // silently ignore — branch selector falls back to text display
+    } finally {
+      setBranchesLoading(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id])
+
   useEffect(() => {
     send({ type: 'LOAD_STORAGE', key: lastSyncKey })
     send({ type: 'LOAD_STORAGE', key: branchKey })
-
-    // Fetch available branches in the background — non-blocking
-    fetchBranches(project.pat, project.repo)
-      .then((list) => setBranches(list))
-      .catch(() => {/* silently ignore — branch selector falls back to text display */})
+    refreshBranches()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id])
 
@@ -94,6 +108,24 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     setActiveBranch(branch)
     send({ type: 'SAVE_STORAGE', key: branchKey, value: branch })
     setStatus({ kind: 'idle' })
+  }
+
+  async function handleCreateBranch() {
+    const name = newBranchName.trim()
+    if (!name) return
+    setBranchCreateLoading(true)
+    setBranchCreateError(undefined)
+    try {
+      await createBranch(project.pat, project.repo, name, activeBranch)
+      setBranches((prev) => [...prev, name].sort())
+      handleBranchChange(name)
+      setCreatingBranch(false)
+      setNewBranchName('')
+    } catch (err) {
+      setBranchCreateError(err instanceof Error ? err.message : 'Failed to create branch')
+    } finally {
+      setBranchCreateLoading(false)
+    }
   }
 
   function saveLastSync(direction: 'pull' | 'push') {
@@ -553,20 +585,71 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       </div>
 
       <div style={styles.branchRow}>
-        <span style={styles.branchLabel}>Branch</span>
-        {branches.length > 1 ? (
-          <select
-            style={styles.branchSelect}
-            value={activeBranch}
-            onChange={(e) => handleBranchChange(e.target.value)}
-            disabled={status.kind === 'loading'}
-          >
-            {branches.map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
+        {creatingBranch ? (
+          <>
+            <input
+              style={styles.branchInput}
+              value={newBranchName}
+              onChange={(e) => { setNewBranchName(e.target.value); setBranchCreateError(undefined) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateBranch(); if (e.key === 'Escape') { setCreatingBranch(false); setNewBranchName(''); setBranchCreateError(undefined) } }}
+              placeholder={`from: ${activeBranch}`}
+              autoFocus
+              disabled={branchCreateLoading}
+            />
+            <button
+              style={{ ...styles.branchIconBtn, background: '#1a52d8', color: '#fff', borderColor: '#1a52d8' }}
+              onClick={handleCreateBranch}
+              disabled={branchCreateLoading || !newBranchName.trim()}
+              title="Create branch"
+            >
+              {branchCreateLoading ? '…' : 'Create'}
+            </button>
+            <button
+              style={styles.branchIconBtn}
+              onClick={() => { setCreatingBranch(false); setNewBranchName(''); setBranchCreateError(undefined) }}
+              disabled={branchCreateLoading}
+              title="Cancel"
+            >
+              ✕
+            </button>
+            {branchCreateError && (
+              <span style={styles.branchError}>{branchCreateError}</span>
+            )}
+          </>
         ) : (
-          <span style={styles.branchName}>{activeBranch}</span>
+          <>
+            <span style={styles.branchLabel}>Branch</span>
+            {branches.length > 1 ? (
+              <select
+                style={styles.branchSelect}
+                value={activeBranch}
+                onChange={(e) => handleBranchChange(e.target.value)}
+                disabled={status.kind === 'loading'}
+              >
+                {branches.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            ) : (
+              <span style={styles.branchName}>{activeBranch}</span>
+            )}
+            <button
+              style={styles.branchIconBtn}
+              onClick={refreshBranches}
+              disabled={branchesLoading || status.kind === 'loading'}
+              title="Refresh branch list"
+            >
+              {branchesLoading ? '…' : '⟳'}
+            </button>
+            <button
+              style={styles.branchIconBtn}
+              onClick={() => { setCreatingBranch(true); setBranchCreateError(undefined) }}
+              disabled={status.kind === 'loading'}
+              title={`New branch from ${activeBranch}`}
+            >
+              +
+            </button>
+          </>
         )}
       </div>
 
@@ -663,6 +746,9 @@ const styles: Record<string, React.CSSProperties> = {
   branchLabel:  { fontSize: '11px', color: '#888', fontWeight: 500, flexShrink: 0 },
   branchSelect: { flex: 1, fontSize: '12px', padding: '3px 6px', borderRadius: '5px', border: '1px solid #ddd', background: '#fff', color: '#222', cursor: 'pointer' },
   branchName:   { flex: 1, fontSize: '12px', color: '#333', fontFamily: 'monospace' },
+  branchInput:  { flex: 1, fontSize: '12px', padding: '3px 8px', borderRadius: '5px', border: '1px solid #1a52d8', outline: 'none', fontFamily: 'monospace', minWidth: 0 },
+  branchIconBtn:{ flexShrink: 0, fontSize: '12px', padding: '3px 8px', borderRadius: '5px', border: '1px solid #ddd', background: '#fff', color: '#444', cursor: 'pointer', lineHeight: 1.4 },
+  branchError:  { fontSize: '11px', color: '#c00', flexShrink: 0 },
   actions:      { display: 'flex', flexDirection: 'column', gap: '12px' },
   card:         { border: '1px solid #e8e8e8', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' },
   cardText:     { display: 'flex', flexDirection: 'column', gap: '4px' },

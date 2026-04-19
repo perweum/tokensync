@@ -40,6 +40,27 @@ export async function fetchBranches(pat: string, repo: string): Promise<string[]
   return data.map((b) => b.name)
 }
 
+/**
+ * Create a new branch from an existing branch's HEAD SHA.
+ * Returns the new branch name.
+ */
+export async function createBranch(
+  pat: string,
+  repo: string,
+  newBranchName: string,
+  fromBranch: string,
+): Promise<string> {
+  const ref = await apiGet<RefResponse>(
+    `repos/${repo}/git/ref/heads/${fromBranch}`,
+    pat,
+  )
+  await apiPost(`repos/${repo}/git/refs`, pat, {
+    ref: `refs/heads/${newBranchName}`,
+    sha: ref.object.sha,
+  })
+  return newBranchName
+}
+
 export async function fetchTokenFiles(config: GitHubConfig): Promise<GitHubFile[]> {
   const tree = await apiGet<TreeResponse>(
     `repos/${config.repo}/git/trees/${encodeURIComponent(config.branch)}?recursive=1`,
