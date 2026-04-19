@@ -33,7 +33,7 @@ The plugin runs inside Figma and has direct access to Variables. It talks to Git
 
 ## Token format
 
-Tokens are organised in three layers:
+Tokens are organised in four layers:
 
 ```
 tokens/
@@ -46,25 +46,31 @@ tokens/
     global/               Never changes between themes
       typography.json     Heading, body, label composites
       spacing.json        Component and layout spacing
-    default/              Default brand
-      light.json          All colour semantics, light theme
-      dark.json           All colour semantics, dark theme
-    brand-a/              Additional brand (sparse overrides only)
-      light.json
-      dark.json
+    brand/                Brand palette mappings
+      default.json        brand.N → color.blue.N (default brand)
+      green.json          brand.N → color.green.N
+      {name}.json         Additional brands
+    light.json            Semantic colour roles — light theme
+    dark.json             Semantic colour roles — dark theme
+    {occasion}/           Optional sparse overlays for compositions
+      christmas.json
 
   metadata.json           Project config: brands, Figma, GitHub, output
 ```
 
-### Why this structure?
+### Why four collections?
 
-**Primitives are just values.** `color.brand.600 = #1a52d8`. No meaning, no context.
+The architecture separates brand palette from semantic meaning. Semantic tokens reference `{brand.N}` — an indirection layer — instead of `{color.blue.N}` directly.
 
-**Semantics carry meaning.** `base.brand.default` is the token a button's background uses. It references a primitive — but the semantic name stays constant. When you change a brand, you change which primitive it points to. The component code never changes.
+```
+Primitives          Brand              Semantic
+color.blue.600  →   brand.600     →    base.brand.default
+color.green.600 →   brand.600 (green)
+```
 
-**Brands are folders, not set combinations.** If you have three clients, you have three brand folders. Each one only needs to contain what's different from `default`. Everything else is inherited automatically.
-
-**Global semantics are separate.** Typography sizes, spacing, and border radius don't change between light and dark mode. They live in `global/` and are loaded once.
+Switching brand means changing which colour ramp `brand.N` points to. The semantic token layer never changes. This means:
+- One `light.json` and one `dark.json` serve all brands
+- Runtime brand switching works without regenerating CSS — just flip a `[data-brand]` attribute
 
 ### Colour ramps
 
@@ -98,9 +104,9 @@ Standard [W3C DTCG](https://www.w3.org/community/design-tokens/) format:
   "base": {
     "$type": "color",
     "brand": {
-      "default": { "$value": "{color.brand.600}", "$description": "Primary button background" },
-      "hover":   { "$value": "{color.brand.700}" },
-      "active":  { "$value": "{color.brand.800}" }
+      "default": { "$value": "{brand.600}", "$description": "Primary button background" },
+      "hover":   { "$value": "{brand.700}" },
+      "active":  { "$value": "{brand.800}" }
     }
   }
 }
@@ -114,89 +120,95 @@ References use `{dot.path.notation}` and resolve across all files in the token t
 
 ### What you get
 
-When tokens are built, you get platform-specific output files:
+When tokens are built, you get a single CSS file that supports all brands and both themes via data attributes:
 
 ```
 dist/
-  default/
-    light.css    CSS custom properties
-    dark.css
-    light.ts     TypeScript constants
-    dark.ts
-  brand-a/
-    light.css
-    dark.css
+  tokens.css     CSS custom properties (all brands + themes)
+  light.ts       TypeScript constants (default brand, light)
+  dark.ts        TypeScript constants (default brand, dark)
 ```
 
-You never need to look at the token JSON. Just use the output files.
-
----
-
-### Web — automatic light/dark + user toggle
+### Web — brand and theme switching
 
 **Step 1: Import the CSS**
 
 ```html
-<link rel="stylesheet" href="node_modules/@your-org/tokens/dist/default/light.css">
-<link rel="stylesheet" href="node_modules/@your-org/tokens/dist/default/dark.css">
+<link rel="stylesheet" href="node_modules/@your-org/tokens/dist/tokens.css">
 ```
 
 Or in JavaScript:
 
 ```js
-import '@your-org/tokens/dist/default/light.css'
-import '@your-org/tokens/dist/default/dark.css'
+import '@your-org/tokens/dist/tokens.css'
 ```
 
-**Step 2: Add a data attribute to `<html>`**
+**Step 2: Add data attributes to `<html>`**
 
 ```html
-<html data-color-scheme="auto">
+<html data-color-scheme="auto" data-brand="default">
 ```
 
-The CSS uses this attribute to switch themes. `auto` follows the operating system setting. `light` and `dark` lock the theme.
+- `data-color-scheme`: `"light"` | `"dark"` | `"auto"` (follows OS setting)
+- `data-brand`: `"default"` | `"green"` | `"sky"` | `"rose"` (or omit — defaults to the root palette)
 
 **Step 3: Use CSS custom properties in your code**
 
 ```css
 .button {
-  background-color: var(--color-base-brand-default);
-  color:            var(--color-text-brand-contrast);
+  background-color: var(--base-brand-default);
+  color:            var(--text-brand-contrast);
   border-radius:    var(--radius-md);
   padding:          var(--spacing-component-button-paddingY)
                     var(--spacing-component-button-paddingX);
 }
 
 .button:hover {
-  background-color: var(--color-base-brand-hover);
+  background-color: var(--base-brand-hover);
 }
 ```
 
-**Step 4: User toggle (JavaScript)**
+**Step 4: Switching brand and theme (JavaScript)**
 
 ```js
+function setBrand(brand) {
+  // brand: 'default' | 'green' | 'sky' | 'rose'
+  document.documentElement.setAttribute('data-brand', brand)
+  localStorage.setItem('brand', brand)
+}
+
 function setColorScheme(scheme) {
   // scheme: 'light' | 'dark' | 'auto'
   document.documentElement.setAttribute('data-color-scheme', scheme)
   localStorage.setItem('color-scheme', scheme)
 }
 
-// Restore saved preference on page load
-const saved = localStorage.getItem('color-scheme')
-if (saved) {
-  document.documentElement.setAttribute('data-color-scheme', saved)
-}
-
-// Listen for OS-level changes (when scheme = 'auto')
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  const current = document.documentElement.getAttribute('data-color-scheme')
-  if (current === 'auto' || !current) {
-    // CSS handles this automatically — no JS needed
-  }
-})
+// Restore on page load
+const savedBrand = localStorage.getItem('brand')
+const savedScheme = localStorage.getItem('color-scheme')
+if (savedBrand) document.documentElement.setAttribute('data-brand', savedBrand)
+if (savedScheme) document.documentElement.setAttribute('data-color-scheme', savedScheme)
 ```
 
-The CSS handles the `auto` case without JavaScript using `@media (prefers-color-scheme: dark)`. JavaScript only needs to handle explicit user overrides.
+The CSS handles the `auto` case for color scheme using `@media (prefers-color-scheme: dark)`. JavaScript only handles explicit user overrides.
+
+**Scoped brand switching**
+
+You can also switch brand on a subset of the page by placing `data-brand` on any container element:
+
+```html
+<!-- Most of the page uses the default brand -->
+<html data-color-scheme="auto" data-brand="default">
+  <body>
+    <!-- This section uses the green brand -->
+    <section data-brand="green">
+      <button class="button">Green brand button</button>
+    </section>
+  </body>
+</html>
+```
+
+All `var(--brand-N)` references inside the `[data-brand="green"]` container automatically cascade to the green palette. No additional CSS is required.
 
 ---
 
@@ -204,22 +216,27 @@ The CSS handles the `auto` case without JavaScript using `@media (prefers-color-
 
 ```tsx
 // app/layout.tsx (Next.js) or index.tsx (Vite/CRA)
-import '@your-org/tokens/dist/default/light.css'
-import '@your-org/tokens/dist/default/dark.css'
+import '@your-org/tokens/dist/tokens.css'
 
 // ThemeProvider.tsx
 import { createContext, useContext, useEffect, useState } from 'react'
 
 type ColorScheme = 'light' | 'dark' | 'auto'
+type Brand = 'default' | 'green' | 'sky' | 'rose'
 
 const ThemeContext = createContext<{
   colorScheme: ColorScheme
+  brand: Brand
   setColorScheme: (s: ColorScheme) => void
-}>({ colorScheme: 'auto', setColorScheme: () => {} })
+  setBrand: (b: Brand) => void
+}>({ colorScheme: 'auto', brand: 'default', setColorScheme: () => {}, setBrand: () => {} })
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [colorScheme, setColorScheme] = useState<ColorScheme>(
     () => (localStorage.getItem('color-scheme') as ColorScheme) ?? 'auto'
+  )
+  const [brand, setBrand] = useState<Brand>(
+    () => (localStorage.getItem('brand') as Brand) ?? 'default'
   )
 
   useEffect(() => {
@@ -227,8 +244,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('color-scheme', colorScheme)
   }, [colorScheme])
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-brand', brand)
+    localStorage.setItem('brand', brand)
+  }, [brand])
+
   return (
-    <ThemeContext.Provider value={{ colorScheme, setColorScheme }}>
+    <ThemeContext.Provider value={{ colorScheme, brand, setColorScheme, setBrand }}>
       {children}
     </ThemeContext.Provider>
   )
@@ -242,11 +264,16 @@ export const useTheme = () => useContext(ThemeContext)
 import { useTheme } from './ThemeProvider'
 
 function ThemeToggle() {
-  const { colorScheme, setColorScheme } = useTheme()
+  const { colorScheme, brand, setColorScheme, setBrand } = useTheme()
   return (
-    <button onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}>
-      {colorScheme === 'dark' ? 'Light mode' : 'Dark mode'}
-    </button>
+    <>
+      <button onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}>
+        {colorScheme === 'dark' ? 'Light mode' : 'Dark mode'}
+      </button>
+      <button onClick={() => setBrand(brand === 'default' ? 'green' : 'default')}>
+        Switch brand
+      </button>
+    </>
   )
 }
 ```
@@ -254,8 +281,8 @@ function ThemeToggle() {
 ```css
 /* Button.module.css — tokens available everywhere via CSS custom properties */
 .button {
-  background: var(--color-base-brand-default);
-  color: var(--color-text-brand-contrast);
+  background: var(--base-brand-default);
+  color: var(--text-brand-contrast);
 }
 ```
 
@@ -268,8 +295,8 @@ React Native does not support CSS custom properties. Use the JavaScript token fi
 ```ts
 // useTokens.ts
 import { useColorScheme } from 'react-native'
-import lightTokens from '@your-org/tokens/dist/default/light'
-import darkTokens  from '@your-org/tokens/dist/default/dark'
+import lightTokens from '@your-org/tokens/dist/light'
+import darkTokens  from '@your-org/tokens/dist/dark'
 
 export function useTokens() {
   const scheme = useColorScheme() // 'light' | 'dark' | null
@@ -305,18 +332,18 @@ const styles = StyleSheet.create({
 })
 ```
 
-For user-overridable themes, store the preference in AsyncStorage and use a React context (same pattern as the web React example above, but swap `document.documentElement` for context state).
+JS/TS output resolves through the default brand. For React Native multi-brand, maintain separate JS/TS outputs per brand.
 
 ---
 
 ### Flutter
 
 ```dart
-// tokens/default_light.dart (generated)
-class TokensDefaultLight {
-  static const colorBackgroundDefault = Color(0xFFFFFFFF);
+// tokens/light.dart (generated)
+class TokensLight {
   static const colorBaseBrandDefault  = Color(0xFF1A52D8);
   static const colorBaseBrandHover    = Color(0xFF1240B0);
+  static const colorBackgroundDefault = Color(0xFFFFFFFF);
   static const colorTextDefault       = Color(0xFF0D0D0D);
   static const radiusMd               = 8.0;
   static const spacingInline4         = 16.0;
@@ -325,13 +352,13 @@ class TokensDefaultLight {
 
 ```dart
 // main.dart
-import 'tokens/default_light.dart';
-import 'tokens/default_dark.dart';
+import 'tokens/light.dart';
+import 'tokens/dark.dart';
 
 MaterialApp(
-  themeMode: ThemeMode.system, // or ThemeMode.light / ThemeMode.dark
-  theme:     _buildTheme(TokensDefaultLight()),
-  darkTheme: _buildTheme(TokensDefaultDark()),
+  themeMode: ThemeMode.system,
+  theme:     _buildTheme(TokensLight()),
+  darkTheme: _buildTheme(TokensDark()),
   home: const MyApp(),
 )
 
@@ -347,59 +374,24 @@ ThemeData _buildTheme(dynamic t) => ThemeData(
 )
 ```
 
-For user toggle:
-
-```dart
-// In your state management (Provider, Riverpod, Bloc, etc.)
-ThemeMode _themeMode = ThemeMode.system;
-
-void setTheme(ThemeMode mode) {
-  setState(() => _themeMode = mode);
-  prefs.setString('theme', mode.name); // persist with shared_preferences
-}
-```
-
 ---
 
 ### Web Components / Vanilla JS
 
-Tokens work the same as plain web — import CSS, use custom properties. No framework needed.
+Works the same as plain web — import CSS, use custom properties. No framework needed.
 
 ```html
-<html data-color-scheme="auto">
+<html data-color-scheme="auto" data-brand="default">
 <head>
-  <link rel="stylesheet" href="dist/default/light.css">
-  <link rel="stylesheet" href="dist/default/dark.css">
+  <link rel="stylesheet" href="dist/tokens.css">
 </head>
 ```
 
 ```css
 my-button::part(root) {
-  background: var(--color-base-brand-default);
-  color: var(--color-text-brand-contrast);
+  background: var(--base-brand-default);
+  color: var(--text-brand-contrast);
 }
-```
-
----
-
-### Multi-brand
-
-To use a different brand, import the brand's CSS file instead of `default`:
-
-```html
-<!-- brand-a -->
-<link rel="stylesheet" href="dist/brand-a/light.css">
-<link rel="stylesheet" href="dist/brand-a/dark.css">
-```
-
-The CSS custom property names are identical across brands — `--color-base-brand-default` always refers to the primary button colour, regardless of which brand CSS is loaded. Switching brands only requires swapping the CSS import.
-
-For applications that serve multiple brands on the same page, use `data-brand` on a container:
-
-```html
-<div data-brand="brand-a">
-  <!-- All tokens inside here use brand-a values -->
-</div>
 ```
 
 ---
@@ -425,16 +417,27 @@ GitHub is always the source of truth. If Figma and GitHub conflict, GitHub wins.
 
 ### Adding a new brand
 
-1. Add colour seeds to Themebuilder and generate the primitives
-2. Create `tokens/semantic/{brand-name}/light.json` and `dark.json` with only the tokens that differ from `default`
-3. Add the brand name to `metadata.json` under `brands` and map any different roles under `roles`
-4. Run the Token Sync plugin to push to GitHub and sync to Figma
+1. Generate the colour ramp in Themebuilder (produces `color.{name}.N` primitives)
+2. Add `tokens/semantic/brand/{name}.json` with `brand.N → {color.{name}.N}` aliases
+3. Add the brand name to `metadata.json` under `brands` and map roles under `roles`
+4. Commit and push — the plugin will pick up the new Brand mode on next pull
+
+No changes to `light.json` or `dark.json` are required because semantic tokens already reference `{brand.N}`.
+
+### Adding a composition (seasonal overlay)
+
+1. Create `tokens/semantic/{occasion}/{name}.json` with only the tokens that differ from the base theme
+2. Add an entry to `metadata.json` under `compositions`:
+   ```json
+   { "name": "Christmas/Light", "layers": ["default/light", "occasions/christmas"] }
+   ```
+3. Commit and push — the plugin produces an additional Figma mode on next pull
 
 ### First-time project setup
 
-1. Create the token folder structure (copy this repo as a template)
+1. Copy this repo as a template
 2. Edit `metadata.json` — set `github.repo`, `github.branch`, and `figma.fileKey`
-3. Run the plugin and use **Create Figma Variables** to populate the Figma file for the first time
+3. Run the plugin and use **Apply to Figma** to populate the Figma file for the first time
 4. Commit the token files to the repo
 
 ---
@@ -447,31 +450,29 @@ The Figma Variables REST API requires an Enterprise or Organisation plan for wri
 
 ### Why always PR and not direct push?
 
-Design tokens power every product built on the design system. A bad push can break colour contrast, spacing, or typography across all platforms simultaneously. A Pull Request gives the team a mandatory review step. Direct push can be enabled per project via `metadata.json` once the team is comfortable with the workflow.
+Design tokens power every product built on the design system. A bad push can break colour contrast, spacing, or typography across all platforms simultaneously. A Pull Request gives the team a mandatory review step.
+
+### Why a Brand collection and `{brand.N}` indirection?
+
+The naive multi-brand approach is N×M: two theme files per brand (`green/light.json`, `green/dark.json`, `sky/light.json`, …). This creates redundancy — the semantic structure of every brand is identical, only the colour ramp differs.
+
+The `brand.N` layer solves this: one `light.json` and one `dark.json` serve all brands. In Figma, the Brand collection's active mode determines which colour ramp `brand.N` resolves to. In CSS, `[data-brand]` on any ancestor does the same. Neither the semantic files nor the component code need to know about brands at all.
 
 ### Why not Token Studio format?
 
-Token Studio's `$themes.json` is a list of token set combinations with embedded Figma collection and mode IDs. It works, but:
+Token Studio's `$themes.json` is a list of token set combinations with embedded Figma collection and mode IDs. It is practically unreadable without Token Studio open, and math expressions in token values are Token Studio extensions that no other tool understands.
 
-- It is practically unreadable without Token Studio open
-- Math expressions in token values (`floor({_size.unit} * 4)`) are Token Studio extensions — no other tool understands them
-- Token sets are an abstract organisational concept; they don't map to "brands" or "themes" directly
-
-This tool uses explicit folder structure. `semantic/brand-a/dark.json` is the dark theme for brand-a. No abstraction needed.
+This tool uses explicit folder structure. `semantic/brand/green.json` is the green brand palette. `semantic/light.json` is the light theme. No abstraction needed.
 
 ### Why 12-step colour ramps and not 16?
 
-Digdir's designsystemet uses 16 stops, but the 16th stop is always the contrast colour for the same ramp. This means 32 unique colour values per palette across light and dark — it solves the same problem differently.
+The 12-step model uses a single ramp that works for both light and dark themes. The same `color.brand.600` is the button background in light mode; a lighter step (`color.brand.400`) is used in dark mode. 12 colours per palette, named by perceptual lightness, is the right trade-off between granularity and simplicity.
 
-The 12-step model uses a single ramp that works for both themes. The same `color.brand.600` is the button background in light mode, and a lighter step (`color.brand.400`) is the button background in dark mode. The ramp covers the full range from near-white to near-black. 12 colours per palette, clearly named by perceptual lightness, is the right trade-off between granularity and simplicity.
-
-The cross-palette consistency guarantee — that `green.500` and `blue.500` are equally dark — is what makes this work. It is enforced by the OKLCH generation in Themebuilder.
+The cross-palette consistency guarantee — that `green.500` and `blue.500` are equally dark — is enforced by the OKLCH generation in Themebuilder.
 
 ### Why pre-computed values, not formulas in tokens?
 
-Digdir's sizing system uses Token Studio math expressions (`floor({_size.unit} * 4)`) in token values. This is elegant in theory — change one root value and the whole scale updates. In practice it creates tooling lock-in: only `@tokens-studio/sd-transforms` can evaluate these expressions.
-
-This tool pre-computes values at generation time. The build tool (Themebuilder or the plugin) calculates `floor(4/18*18 * 4) = 16px` and writes `"16px"` into the JSON. Any tool can read the files. The generation logic is owned by us.
+Pre-computed values make token files readable by any tool. The build logic (Themebuilder or the plugin) computes `floor(4 * 4) = 16px` and writes `"16px"` into the JSON. No Style Dictionary transform step required.
 
 ---
 
@@ -482,18 +483,30 @@ Themebuilder generates colour primitives (12-step OKLCH ramps) and semantic colo
 The two tools are separate but designed to work together:
 
 - Themebuilder exports → Token Sync format → GitHub
-- GitHub → Token Sync format → Themebuilder import
+- GitHub → Token Sync plugin → Figma Variables
 - A shared format library can be extracted as an internal npm package when both tools are mature
 
 ---
 
 ## Project status
 
-| Phase | Status | Description |
-|---|---|---|
-| Token format spec | ✅ Done | This document + example files |
-| Figma plugin scaffold | Planned | React + Vite, Figma plugin manifest |
-| GitHub integration | Planned | Pull, push, PR creation via PAT |
-| Core sync UI | Planned | Diff view, apply, multi-project |
-| Platform transformer | Planned | CSS, JS/TS, Dart, Swift output |
-| Themebuilder integration | Planned | Import/export via shared format |
+| Feature | Status |
+|---|---|
+| Token format spec | Done |
+| Figma plugin — scaffold, manifest | Done |
+| GitHub integration (pull, push, PR) | Done |
+| Pull diff view (GitHub → Figma) | Done |
+| Push diff view (Figma → GitHub) | Done |
+| Apply to Figma (pull) | Done |
+| Multi-project support | Done |
+| Brand + Semantic two-collection architecture | Done |
+| Composition / seasonal overlay support | Done |
+| CSS platform transformer | Done |
+| JS / TypeScript platform transformer | Done |
+| Dart (Flutter) platform transformer | Done |
+| Swift platform transformer | Planned |
+| Branch switching per project | Planned |
+| Boolean and string token types in diff | Planned |
+| `$description` shown in diff UI | Planned |
+| Figma Styles export | Not planned |
+| GitLab / Azure DevOps provider | Not planned |
