@@ -1,43 +1,106 @@
 {
   "geometry": {
-
-    "size": {
-      "$type": "dimension",
-      "$description": "Spacing and sizing scale. Unit = 4px (step=4, base=18, mode-font-size=18). Generated per size mode by the build tool.",
-      "1":  { "$value": "4px" },
-      "2":  { "$value": "8px" },
-      "3":  { "$value": "12px" },
-      "4":  { "$value": "16px" },
-      "5":  { "$value": "20px" },
-      "6":  { "$value": "24px" },
-      "8":  { "$value": "32px" },
-      "10": { "$value": "40px" },
-      "12": { "$value": "48px" },
-      "14": { "$value": "56px" },
-      "16": { "$value": "64px" },
-      "20": { "$value": "80px" },
-      "24": { "$value": "96px" }
-    },
-
-    "radius": {
-      "$type": "dimension",
-      "$description": "Border radius primitives. radiusBase multiplier is set per theme.",
-      "none": { "$value": "0px" },
-      "1":    { "$value": "4px" },
-      "2":    { "$value": "8px" },
-      "3":    { "$value": "12px" },
-      "4":    { "$value": "16px" },
-      "5":    { "$value": "24px" },
-      "6":    { "$value": "32px" },
-      "full": { "$value": "9999px" }
-    },
-
     "borderWidth": {
-      "$type": "dimension",
-      "thin":   { "$value": "1px" },
-      "medium": { "$value": "1.5px" },
-      "thick":  { "$value": "2px" }
+      "medium": {
+        "$type": "string",
+        "$value": "1.5px"
+      },
+      "thick": {
+        "$type": "string",
+        "$value": "2px"
+      },
+      "thin": {
+        "$type": "string",
+        "$value": "1px"
+      }
+    },
+    "radius": {
+      "1": {
+        "$type": "string",
+        "$value": "4px"
+      },
+      "2": {
+        "$type": "string",
+        "$value": "8px"
+      },
+      "3": {
+        "$type": "string",
+        "$value": "12px"
+      },
+      "4": {
+        "$type": "string",
+        "$value": "16px"
+      },
+      "5": {
+        "$type": "string",
+        "$value": "24px"
+      },
+      "6": {
+        "$type": "string",
+        "$value": "32px"
+      },
+      "full": {
+        "$type": "string",
+        "$value": "9999px"
+      },
+      "none": {
+        "$type": "string",
+        "$value": "0px"
+      }
+    },
+    "size": {
+      "1": {
+        "$type": "string",
+        "$value": "4px"
+      },
+      "2": {
+        "$type": "string",
+        "$value": "8px"
+      },
+      "3": {
+        "$type": "string",
+        "$value": "12px"
+      },
+      "4": {
+        "$type": "string",
+        "$value": "16px"
+      },
+      "5": {
+        "$type": "string",
+        "$value": "20px"
+      },
+      "6": {
+        "$type": "string",
+        "$value": "24px"
+      },
+      "8": {
+        "$type": "string",
+        "$value": "32px"
+      },
+      "10": {
+        "$type": "string",
+        "$value": "40px"
+      },
+      "12": {
+        "$type": "string",
+        "$value": "48px"
+      },
+      "14": {
+        "$type": "string",
+        "$value": "56px"
+      },
+      "16": {
+        "$type": "string",
+        "$value": "64px"
+      },
+      "20": {
+        "$type": "string",
+        "$value": "80px"
+      },
+      "24": {
+        "$type": "string",
+        "$value": "96px"
+      }
     }
-
   }
 }
