@@ -51,8 +51,6 @@ tokens/
       {name}.json         Additional themes (Zero, Vanilla, …)
     light.json            Semantic colour roles — light color scheme
     dark.json             Semantic colour roles — dark color scheme
-    {occasion}/           Optional sparse overlays for compositions
-      christmas.json
 
   metadata.json           Project config: themes, Figma, GitHub, output
 ```
@@ -424,15 +422,6 @@ GitHub is always the source of truth. If Figma and GitHub conflict, GitHub wins.
 
 No changes to `light.json` or `dark.json` are required. Severity tokens are not part of themes and never need to change.
 
-### Adding a composition (seasonal overlay)
-
-1. Create `tokens/semantic/{occasion}/{name}.json` with only the tokens that differ from the base scheme
-2. Add an entry to `metadata.json` under `compositions`:
-   ```json
-   { "name": "Christmas/Light", "layers": ["default/light", "occasions/christmas"] }
-   ```
-3. Commit and push — the plugin produces an additional Figma mode in the Semantic collection on the next pull
-
 ### First-time project setup
 
 1. Copy this repo as a template
@@ -506,7 +495,6 @@ The two tools are separate but designed to work together:
 | Apply to Figma (pull) | Done |
 | Multi-project support | Done |
 | Primitives → Themes → Semantic three-layer architecture | Done |
-| Composition / seasonal overlay support | Done |
 | CSS platform transformer | Done |
 | JS / TypeScript platform transformer | Done |
 | Dart (Flutter) platform transformer | Done |

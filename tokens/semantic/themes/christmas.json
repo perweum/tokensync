@@ -1,0 +1,183 @@
+{
+  "$description": "Theme: Christmas. Brand colour is festive red; success base is one step lighter green so both read as intentional palette choices. Neutral tokens are identical to Original. Both light and dark color schemes are covered — switch theme independently of viewing mode.",
+
+  "light": {
+    "background": {
+      "$type": "color",
+      "default":  { "$value": "{color.white.950}" },
+      "subtle":   { "$value": "{color.neutral.25}" },
+      "brand":    { "$value": "{color.red.25}" }
+    },
+
+    "surface": {
+      "$type": "color",
+      "default":  { "$value": "{color.white.950}" },
+      "raised":   { "$value": "{color.white.950}", "$description": "Elevated surface — pair with elevation shadow" },
+      "overlay":  { "$value": "{color.white.950}", "$description": "Modal overlays, popovers" },
+      "disabled": { "$value": "{color.neutral.50}" },
+      "brand": {
+        "default": { "$value": "{color.red.50}" },
+        "hover":   { "$value": "{color.red.100}" },
+        "active":  { "$value": "{color.red.200}" }
+      },
+      "neutral": {
+        "default": { "$value": "{color.neutral.50}" },
+        "hover":   { "$value": "{color.neutral.100}" },
+        "active":  { "$value": "{color.neutral.200}" }
+      }
+    },
+
+    "border": {
+      "$type": "color",
+      "subtle":   { "$value": "{color.neutral.100}" },
+      "default":  { "$value": "{color.neutral.200}" },
+      "strong":   { "$value": "{color.neutral.400}" },
+      "disabled": { "$value": "{color.neutral.200}" },
+      "focus":    { "$value": "{color.red.600}", "$description": "Focus ring — red for Christmas theme." },
+      "brand": {
+        "default": { "$value": "{color.red.200}" },
+        "hover":   { "$value": "{color.red.400}" }
+      }
+    },
+
+    "base": {
+      "$type": "color",
+      "disabled": { "$value": "{color.neutral.200}" },
+      "brand": {
+        "default": { "$value": "{color.red.600}" },
+        "hover":   { "$value": "{color.red.700}" },
+        "active":  { "$value": "{color.red.800}" }
+      },
+      "neutral": {
+        "default": { "$value": "{color.neutral.600}" },
+        "hover":   { "$value": "{color.neutral.700}" },
+        "active":  { "$value": "{color.neutral.800}" }
+      }
+    },
+
+    "text": {
+      "$type": "color",
+      "default":  { "$value": "{color.neutral.950}" },
+      "subtle":   { "$value": "{color.neutral.600}" },
+      "disabled": { "$value": "{color.neutral.400}" },
+      "inverse":  { "$value": "{color.white.950}" },
+      "brand": {
+        "default":  { "$value": "{color.red.700}" },
+        "contrast": { "$value": "{color.white.950}" }
+      }
+    },
+
+    "icon": {
+      "$type": "color",
+      "default":  { "$value": "{light.text.default}" },
+      "subtle":   { "$value": "{light.text.subtle}" },
+      "disabled": { "$value": "{light.text.disabled}" },
+      "inverse":  { "$value": "{light.text.inverse}" },
+      "brand": {
+        "default":  { "$value": "{light.text.brand.default}" },
+        "contrast": { "$value": "{light.text.brand.contrast}" }
+      }
+    },
+
+    "elevation": {
+      "1": { "$type": "shadow", "$value": "0 1px 2px {color.black.50}, 0 1px 3px {color.black.100}" },
+      "2": { "$type": "shadow", "$value": "0 4px 6px {color.black.100}, 0 2px 4px {color.black.50}" },
+      "3": { "$type": "shadow", "$value": "0 10px 15px {color.black.100}, 0 4px 6px {color.black.50}" },
+      "4": { "$type": "shadow", "$value": "0 20px 25px {color.black.100}, 0 8px 10px {color.black.50}" }
+    },
+
+    "overlay": {
+      "default": { "$type": "color", "$value": "{color.black.300}" }
+    }
+  },
+
+  "dark": {
+    "background": {
+      "$type": "color",
+      "default":  { "$value": "{color.neutral.950}" },
+      "subtle":   { "$value": "{color.neutral.900}" },
+      "brand":    { "$value": "{color.red.950}" }
+    },
+
+    "surface": {
+      "$type": "color",
+      "default":  { "$value": "{color.neutral.900}" },
+      "raised":   { "$value": "{color.neutral.800}" },
+      "overlay":  { "$value": "{color.neutral.800}" },
+      "disabled": { "$value": "{color.neutral.800}" },
+      "brand": {
+        "default": { "$value": "{color.red.900}" },
+        "hover":   { "$value": "{color.red.800}" },
+        "active":  { "$value": "{color.red.700}" }
+      },
+      "neutral": {
+        "default": { "$value": "{color.neutral.800}" },
+        "hover":   { "$value": "{color.neutral.700}" },
+        "active":  { "$value": "{color.neutral.600}" }
+      }
+    },
+
+    "border": {
+      "$type": "color",
+      "subtle":   { "$value": "{color.neutral.800}" },
+      "default":  { "$value": "{color.neutral.700}" },
+      "strong":   { "$value": "{color.neutral.500}" },
+      "disabled": { "$value": "{color.neutral.700}" },
+      "focus":    { "$value": "{color.red.400}", "$description": "Focus ring — red for Christmas theme." },
+      "brand": {
+        "default": { "$value": "{color.red.700}" },
+        "hover":   { "$value": "{color.red.500}" }
+      }
+    },
+
+    "base": {
+      "$type": "color",
+      "disabled": { "$value": "{color.neutral.700}" },
+      "brand": {
+        "default": { "$value": "{color.red.500}" },
+        "hover":   { "$value": "{color.red.400}" },
+        "active":  { "$value": "{color.red.300}" }
+      },
+      "neutral": {
+        "default": { "$value": "{color.neutral.500}" },
+        "hover":   { "$value": "{color.neutral.400}" },
+        "active":  { "$value": "{color.neutral.300}" }
+      }
+    },
+
+    "text": {
+      "$type": "color",
+      "default":  { "$value": "{color.neutral.50}" },
+      "subtle":   { "$value": "{color.neutral.400}" },
+      "disabled": { "$value": "{color.neutral.600}" },
+      "inverse":  { "$value": "{color.neutral.950}" },
+      "brand": {
+        "default":  { "$value": "{color.red.300}" },
+        "contrast": { "$value": "{color.neutral.950}" }
+      }
+    },
+
+    "icon": {
+      "$type": "color",
+      "default":  { "$value": "{dark.text.default}" },
+      "subtle":   { "$value": "{dark.text.subtle}" },
+      "disabled": { "$value": "{dark.text.disabled}" },
+      "inverse":  { "$value": "{dark.text.inverse}" },
+      "brand": {
+        "default":  { "$value": "{dark.text.brand.default}" },
+        "contrast": { "$value": "{dark.text.brand.contrast}" }
+      }
+    },
+
+    "elevation": {
+      "1": { "$type": "shadow", "$value": "0 1px 2px {color.black.200}, 0 1px 3px {color.black.300}" },
+      "2": { "$type": "shadow", "$value": "0 4px 6px {color.black.300}, 0 2px 4px {color.black.200}" },
+      "3": { "$type": "shadow", "$value": "0 10px 15px {color.black.300}, 0 4px 6px {color.black.200}" },
+      "4": { "$type": "shadow", "$value": "0 20px 25px {color.black.300}, 0 8px 10px {color.black.200}" }
+    },
+
+    "overlay": {
+      "default": { "$type": "color", "$value": "{color.black.300}" }
+    }
+  }
+}

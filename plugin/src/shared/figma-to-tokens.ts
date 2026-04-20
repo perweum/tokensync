@@ -207,38 +207,6 @@ function buildSemanticFile(
   }
 }
 
-/**
- * Build a sparse overlay file for a composition.
- * Compares comp-mode rawTokens vs base-mode rawTokens and writes only entries that differ.
- */
-export function buildCompositionOverlayFile(
-  compTokens: Record<string, TokenValue>,
-  baseTokens: Record<string, TokenValue>,
-  overlayLayerPath: string,
-  tokensPath: string,
-): TokenFile | null {
-  const tree: Record<string, unknown> = {}
-  let count = 0
-
-  for (const [path, token] of Object.entries(compTokens)) {
-    const base = baseTokens[path]
-    if (!base || base.$value !== token.$value) {
-      setNested(tree, path.split('.'), { $type: token.$type, $value: token.$value })
-      count++
-    }
-  }
-
-  if (count === 0) return null
-
-  const parts = overlayLayerPath.split('/')
-  const [brand, theme] = parts.length === 2 ? parts : ['default', parts[0]]
-
-  return {
-    repoPath: joinPath(tokensPath, 'semantic', brand, `${theme}.json`),
-    content: JSON.stringify(tree, null, 2),
-  }
-}
-
 // ---------------------------------------------------------------------------
 // JSON file builder (nested tree from flat variables)
 // ---------------------------------------------------------------------------

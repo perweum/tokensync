@@ -4,16 +4,8 @@
 
   "version": "1.0.0",
 
-  "themes": ["original"],
+  "themes": ["original", "christmas"],
   "colorSchemes": ["light", "dark"],
-
-  "compositions": [
-    {
-      "name": "Christmas/Light",
-      "layers": ["default/light", "occasions/christmas"],
-      "$description": "Seasonal overlay: Christmas red accent over the light scheme."
-    }
-  ],
 
   "figma": {
     "$description": "Figma file and Variable Collection configuration.",

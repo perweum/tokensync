@@ -4,10 +4,11 @@
  * Collection topology:
  *   Primitives  — raw colour/geometry/typography values, 1 mode "Value"
  *   Global      — theme-invariant semantic tokens (spacing, typography), 1 mode "Value"
- *   Themes      — complete semantic token set per named theme (Original, Zero…)
+ *   Themes      — complete semantic token set per named theme (Original, Christmas…)
  *                 Each mode contains light.* and dark.* vars referencing Primitives.
- *   Semantic    — semantic colour roles (Light/Dark/Contrast…)
- *                 References {light.*} and {dark.*} into the Themes collection.
+ *                 Theme and color scheme are switched independently.
+ *   Semantic    — viewing-mode roles only: Light, Dark, Contrast…
+ *                 References {light.*} and {dark.*} into the active Themes mode.
  *                 Severity tokens (success/error/warning/info) reference Primitives directly.
  *
  * File layout on GitHub:
@@ -16,7 +17,6 @@
  *   semantic/themes/{name}.json   ← light.* + dark.* for each named theme
  *   semantic/light.json           ← {light.*} aliases + direct severity refs
  *   semantic/dark.json            ← {dark.*} aliases + direct severity refs
- *   semantic/{occasion}/*.json    ← composition overlays (sparse)
  */
 
 import type { GitHubFile, TokenTree, TokenValue } from './messages'
@@ -26,25 +26,12 @@ import { flattenTokens, resolveAllReferences } from './token-format'
 // Metadata type
 // ---------------------------------------------------------------------------
 
-export interface Composition {
-  /** Figma mode name this composition produces, e.g. "Christmas/Light" */
-  name: string
-  /**
-   * Ordered list of semantic layer paths to stack (relative to semantic/, no extension).
-   * e.g. ["default/light", "occasions/christmas"]
-   * Later layers override earlier ones. The last layer is the overlay file for push.
-   */
-  layers: string[]
-}
-
 export interface Metadata {
   version: string
   /** Named theme variants — each becomes a mode in the Themes collection. */
   themes: string[]
   /** Color scheme modes — each becomes a mode in the Semantic collection (light, dark, contrast…). */
   colorSchemes: string[]
-  /** Explicit multi-layer compositions. Produces additional Figma modes in Semantic. */
-  compositions?: Composition[]
   figma: {
     fileKey: string
     collections: { primitives: string; global: string; themes: string; semantic: string }
@@ -55,7 +42,6 @@ const DEFAULT_METADATA: Metadata = {
   version: '1.0.0',
   themes: ['default'],
   colorSchemes: ['light', 'dark'],
-  compositions: [],
   figma: {
     fileKey: '',
     collections: { primitives: 'Primitives', global: 'Global', themes: 'Themes', semantic: 'Semantic' },
@@ -153,7 +139,7 @@ export function parseRepository(
   const defaultThemeTree = layers.themes[firstThemeName] ?? {}
 
   for (const scheme of metadata.colorSchemes) {
-    const schemeTree = layers.semantic['default']?.[scheme]
+    const schemeTree = layers.semantic[scheme]
     if (!schemeTree) continue
 
     // rawTokens: no themes tree in merge — {light.*}/{dark.*} refs remain as literal strings
@@ -173,51 +159,6 @@ export function parseRepository(
     })
   }
 
-  // --- Legacy N×M semantic modes (backward compat for repos with old brand/theme pairs) ---
-  // Exclude directories that are used exclusively as composition overlay sources —
-  // those are sparse override files, not standalone Figma modes.
-  const compositionOverlayDirs = new Set(
-    (metadata.compositions ?? [])
-      .flatMap((c) => c.layers.slice(1))           // all layers except the base layer
-      .map((layer) => layer.split('/')[0])           // first path segment = directory
-      .filter((dir) => dir !== 'default'),
-  )
-  const legacyBrands = Object.keys(layers.semantic).filter(
-    (b) => b !== 'default' && !compositionOverlayDirs.has(b),
-  )
-  for (const brand of legacyBrands) {
-    for (const scheme of Object.keys(layers.semantic[brand])) {
-      const semanticTree = buildSemanticTree(layers, brand, scheme)
-      if (!semanticTree) continue
-
-      const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, semanticTree]))
-      const fullFlatResolved = resolveAllReferences(fullFlatUnresolved)
-      const semanticPaths = Object.keys(flattenTokens(semanticTree))
-      collections.push({
-        collectionName: metadata.figma.collections.semantic,
-        modeName: `${capitalise(brand)}/${capitalise(scheme)}`,
-        tokens: filterByPaths(fullFlatResolved, semanticPaths),
-        rawTokens: filterByPaths(fullFlatUnresolved, semanticPaths),
-      })
-    }
-  }
-
-  // --- Composition modes ---
-  for (const comp of (metadata.compositions ?? [])) {
-    const compTree = buildCompositionLayerTree(layers, comp.layers)
-    if (!compTree) continue
-
-    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, defaultThemeTree, globalTree, compTree]))
-    const fullFlatResolved = resolveAllReferences(fullFlatUnresolved)
-    const compPaths = Object.keys(flattenTokens(compTree))
-    collections.push({
-      collectionName: metadata.figma.collections.semantic,
-      modeName: comp.name,
-      tokens: filterByPaths(fullFlatResolved, compPaths),
-      rawTokens: filterByPaths(fullFlatUnresolved, compPaths),
-    })
-  }
-
   return { metadata, collections }
 }
 
@@ -230,15 +171,12 @@ interface Layers {
   global: Record<string, TokenTree>
   /** themeName → tree (semantic/themes/{name}.json) */
   themes: Record<string, TokenTree>
-  /** brand → colorScheme → tree (semantic/light.json → default/light, legacy: brand/scheme) */
-  semantic: Record<string, Record<string, TokenTree>>
+  /** colorScheme → tree (semantic/light.json, semantic/dark.json, …) */
+  semantic: Record<string, TokenTree>
 }
 
 function buildLayers(files: Map<string, string>): Layers {
   const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {} }
-
-  // Two-pass: process depth-3 paths first, then depth-2 (new flat files) can overwrite.
-  const depth2: Array<[string, TokenTree]> = []
 
   for (const [path, content] of files) {
     if (path === 'metadata.json') continue
@@ -258,56 +196,17 @@ function buildLayers(files: Map<string, string>): Layers {
     } else if (parts[0] === 'semantic' && parts[1] === 'global') {
       layers.global[parts[2]] = tree
     } else if (parts[0] === 'semantic' && parts[1] === 'themes') {
-      // New: semantic/themes/{themeName}.json
+      // semantic/themes/{themeName}.json — one file per named theme
+      layers.semantic[parts[2]] = layers.semantic[parts[2]] // keep TS happy
       layers.themes[parts[2]] = tree
-    } else if (parts[0] === 'semantic' && parts.length === 3) {
-      // Legacy: semantic/{brand}/{scheme}.json or semantic/{occasion}/{name}.json
-      const [, brand, scheme] = parts
-      if (!layers.semantic[brand]) layers.semantic[brand] = {}
-      layers.semantic[brand][scheme] = tree
     } else if (parts[0] === 'semantic' && parts.length === 2) {
-      // New flat: semantic/{scheme}.json → defer so it wins over legacy default/{scheme}
-      depth2.push([parts[1], tree])
+      // semantic/{colorScheme}.json — light.json, dark.json, contrast.json, …
+      layers.semantic[parts[1]] = tree
     }
-  }
-
-  // Apply new-style flat scheme files last (win over legacy semantic/default/{scheme}.json)
-  for (const [scheme, tree] of depth2) {
-    if (!layers.semantic['default']) layers.semantic['default'] = {}
-    layers.semantic['default'][scheme] = tree
+    // Any other path (e.g. unrecognised subdirectories) is silently ignored.
   }
 
   return layers
-}
-
-/**
- * Merge a stack of semantic layer paths into a single token tree.
- * Each path is relative to semantic/ without extension, e.g. "default/light".
- * Later layers override earlier ones (deep-merge at token level).
- */
-function buildCompositionLayerTree(layers: Layers, layerPaths: string[]): TokenTree | null {
-  let merged: TokenTree = {}
-  for (const layerPath of layerPaths) {
-    const parts = layerPath.split('/')
-    const [brand, scheme] = parts.length === 2 ? parts : ['default', parts[0]]
-    const tree = layers.semantic[brand]?.[scheme]
-    if (tree) merged = deepMergeTokenTrees(merged, tree)
-  }
-  return Object.keys(merged).length > 0 ? merged : null
-}
-
-function buildSemanticTree(
-  layers: Layers,
-  brand: string,
-  scheme: string,
-): TokenTree | null {
-  const defaultTree = layers.semantic['default']?.[scheme]
-  const brandTree = brand !== 'default' ? layers.semantic[brand]?.[scheme] : null
-
-  if (!defaultTree && !brandTree) return null
-  if (!brandTree) return defaultTree ?? null
-
-  return deepMergeTokenTrees(defaultTree ?? {}, brandTree)
 }
 
 // ---------------------------------------------------------------------------
@@ -373,11 +272,10 @@ function parseMetadata(files: Map<string, string>): Metadata {
   const raw = files.get('metadata.json')
   if (!raw) return DEFAULT_METADATA
   try {
-    const parsed = JSON.parse(raw) as Partial<Metadata> & { brands?: string[]; themes?: string[] }
+    const parsed = JSON.parse(raw) as Partial<Metadata> & { brands?: string[] }
 
     // Support legacy 'brands' field (renamed to 'themes')
     const themes = parsed.themes ?? parsed.brands ?? DEFAULT_METADATA.themes
-    // Support legacy 'themes: ["light", "dark"]' used as colorSchemes
     const colorSchemes = parsed.colorSchemes ?? DEFAULT_METADATA.colorSchemes
 
     const merged: Metadata = {

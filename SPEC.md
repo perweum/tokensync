@@ -27,8 +27,6 @@ tokens/
       {name}.json       Additional themes (Zero, Vanilla, …)
     light.json          Semantic colour roles — light color scheme
     dark.json           Semantic colour roles — dark color scheme
-    {occasion}/         Optional composition overlays (sparse overrides)
-      christmas.json
 
   metadata.json         Project config: themes, colorSchemes, Figma mapping, platform output
 ```
@@ -39,8 +37,7 @@ tokens/
 2. **Global semantics are color-scheme-invariant.** If a token value changes between light and dark, it does not belong in `global/`.
 3. **Theme files contain the complete light and dark semantic token set** for brand/neutral tokens. Each theme file has a `light` section and a `dark` section, each containing the full set of non-severity tokens.
 4. **Semantic files (`light.json`, `dark.json`) reference `{light.*}` and `{dark.*}`** for brand/neutral tokens. This is a cross-collection alias — the active theme's mode determines which values are resolved. Severity tokens (success/error/warning/info) reference primitives directly.
-5. **Composition overlays are sparse.** An overlay file only needs to contain tokens that differ from the base layer it stacks on top of.
-6. **Component code references semantic tokens only.** Never reference primitives or theme tokens directly in UI code.
+5. **Component code references semantic tokens only.** Never reference primitives or theme tokens directly in UI code.
 
 ---
 
@@ -243,36 +240,14 @@ icon.{role}.contrast         Icon on solid (base) surface
 
 ---
 
-## Composition Overlays
-
-Compositions produce additional themed modes by stacking sparse overlay files on top of a base scheme. Defined in `metadata.json`:
-
-```json
-{
-  "compositions": [
-    {
-      "name": "Christmas/Light",
-      "layers": ["default/light", "occasions/christmas"],
-      "$description": "Seasonal overlay: Christmas red accent over the light scheme."
-    }
-  ]
-}
-```
-
-`layers` is an ordered array of paths relative to `semantic/` (without `.json`). Later layers override earlier ones with a deep merge. Overlay files can override both semantic aliases and direct primitive references — for example, swapping `{light.base.brand.default}` to `{color.red.600}` for a seasonal brand colour.
-
-At build time, each composition produces an additional Figma mode in the Semantic collection.
-
----
-
 ## Figma Variables Mapping
 
 | Token layer | Figma collection | Modes |
 |---|---|---|
 | `primitives/` | `Primitives` | `Value` (single mode) |
 | `semantic/global/` | `Global` | `Value` (single mode) |
-| `semantic/themes/` | `Themes` | One mode per named theme: `Original`, `Zero`, … |
-| `semantic/light.json`, `dark.json`, compositions | `Semantic` | `Light`, `Dark`, + composition modes |
+| `semantic/themes/` | `Themes` | One mode per named theme: `Original`, `Christmas`, … |
+| `semantic/light.json`, `dark.json` | `Semantic` | `Light`, `Dark`, + any additional viewing modes |
 
 Variable groups in Figma mirror the JSON key hierarchy:
 - `surface/brand/hover` ↔ `surface.brand.hover`
@@ -295,15 +270,8 @@ Switching the active theme mode in Figma (or via `[data-theme]` in CSS) cascades
 {
   "$schema": "tokensync/v1",
   "version": "1.0.0",
-  "themes": ["original"],
+  "themes": ["original", "christmas"],
   "colorSchemes": ["light", "dark"],
-  "compositions": [
-    {
-      "name": "Christmas/Light",
-      "layers": ["default/light", "occasions/christmas"],
-      "$description": "Seasonal overlay: Christmas red accent over the light scheme."
-    }
-  ],
   "figma": {
     "fileKey": "abc123xyz",
     "collections": {
@@ -441,7 +409,6 @@ The build tool enforces these rules:
 4. Theme files must contain both a `light` and a `dark` section
 5. `metadata.json` must declare all themes that have files in `semantic/themes/`
 6. Severity roles (`success`, `error`, `warning`, `info`) in semantic files must reference primitives directly, not `{light.*}` or `{dark.*}` aliases
-7. Composition layer paths must reference files that exist in `semantic/`
 
 ---
 

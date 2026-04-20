@@ -9,9 +9,9 @@ import { fetchTokenFiles, fetchBranches, createBranch, createTokenPR } from '../
 import { useSendMessage, usePluginMessage } from '../hooks/usePlugin'
 import { buildFigmaFlatMaps } from '../hooks/useFigmaValues'
 import { parseRepository } from '../../shared/token-merger'
-import type { ParsedRepository, Metadata } from '../../shared/token-merger'
+import type { ParsedRepository } from '../../shared/token-merger'
 import { buildCollectionDiff } from '../../shared/token-diff'
-import { figmaToCollections, figmaToTokenFiles, buildCompositionOverlayFile } from '../../shared/figma-to-tokens'
+import { figmaToCollections, figmaToTokenFiles } from '../../shared/figma-to-tokens'
 import type { CollectionDiff } from '../../shared/token-diff'
 import { runTransformers } from '../../shared/transformer'
 import type { PluginMessage, FigmaVariableCollection, FigmaVariable, TokenTree } from '../../shared/messages'
@@ -443,31 +443,18 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
    * Build token files for the PR.
    * selectedKeys: set of "collectionName/modeName" pairs to include.
    * Writes ALL variables for selected collections (not just changed ones) so GitHub files stay complete.
-   * Composition modes are excluded from standard file writing and handled as sparse overlays instead.
    * Also runs platform transformers if configured in metadata.
    */
   function buildFilesFromDiffs(selectedKeys: Set<string>): Array<{ path: string; content: string }> {
     const raw = pendingFigmaRaw.current
     const parsed = pendingParsed.current
-    const compositionModeNames = new Set((parsed?.metadata.compositions ?? []).map((c) => c.name))
 
-    // Build filtered collections: only selected modes, with composition modes stripped from Semantic
+    // Build filtered collections: only selected modes
     const filteredCollections = raw?.collections
-      .map((col) => {
-        if (col.name === figmaCollectionNames.semantic) {
-          // Strip composition modes (written separately as sparse overlays) and unselected modes
-          const filteredModes = col.modes.filter(
-            (mode) =>
-              !compositionModeNames.has(mode.name) &&
-              selectedKeys.has(`${col.name}/${mode.name}`),
-          )
-          return { ...col, modes: filteredModes }
-        }
-        // Primitives / Global: keep if any mode is selected
-        return col.modes.some((mode) => selectedKeys.has(`${col.name}/${mode.name}`))
-          ? col
-          : { ...col, modes: [] }
-      })
+      .map((col) => ({
+        ...col,
+        modes: col.modes.filter((mode) => selectedKeys.has(`${col.name}/${mode.name}`)),
+      }))
       .filter((col) => col.modes.length > 0)
 
     const tokenFiles = (raw && filteredCollections)
@@ -475,66 +462,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           .map((f) => ({ path: f.repoPath, content: f.content }))
       : []
 
-    // Composition sparse overlay files
-    const compositionFiles = buildCompositionOverlayFiles(selectedKeys, parsed?.metadata)
-
     // Platform transformers always use the full collection set (they represent the full design system)
     const figmaCollections = pendingFigmaCollections.current
     if (figmaCollections && parsed) {
       const platformFiles = runTransformers(figmaCollections, parsed.metadata, project.tokensPath)
-      return [...tokenFiles, ...compositionFiles, ...platformFiles]
+      return [...tokenFiles, ...platformFiles]
     }
 
-    return [...tokenFiles, ...compositionFiles]
-  }
-
-  /** Convert a semantic layer path (e.g. "default/light") to its Figma mode name (e.g. "Light"). */
-  function layerPathToModeName(layerPath: string): string {
-    const parts = layerPath.split('/')
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase() + parts[0].slice(1)
-    const [brand, theme] = parts
-    const themeCapital = theme.charAt(0).toUpperCase() + theme.slice(1)
-    if (brand === 'default') return themeCapital
-    return `${brand.charAt(0).toUpperCase() + brand.slice(1)}/${themeCapital}`
-  }
-
-  /** Build sparse overlay files for each selected composition. */
-  function buildCompositionOverlayFiles(
-    selectedKeys: Set<string>,
-    metadata: Metadata | undefined,
-  ): Array<{ path: string; content: string }> {
-    if (!metadata?.compositions?.length) return []
-
-    const figmaCollections = pendingFigmaCollections.current
-    if (!figmaCollections) return []
-
-    const semanticName = metadata.figma.collections.semantic
-    const files: Array<{ path: string; content: string }> = []
-
-    for (const comp of metadata.compositions) {
-      if (!selectedKeys.has(`${semanticName}/${comp.name}`)) continue
-      if (comp.layers.length < 2) continue
-
-      const baseModeName = layerPathToModeName(comp.layers[0])
-      const baseCol = figmaCollections.find(
-        (c) => c.collectionName === semanticName && c.modeName === baseModeName,
-      )
-      const compCol = figmaCollections.find(
-        (c) => c.collectionName === semanticName && c.modeName === comp.name,
-      )
-      if (!baseCol || !compCol) continue
-
-      const lastLayer = comp.layers[comp.layers.length - 1]
-      const file = buildCompositionOverlayFile(
-        compCol.rawTokens,
-        baseCol.rawTokens,
-        lastLayer,
-        project.tokensPath,
-      )
-      if (file) files.push({ path: file.repoPath, content: file.content })
-    }
-
-    return files
+    return tokenFiles
   }
 
   // ---------------------------------------------------------------------------
