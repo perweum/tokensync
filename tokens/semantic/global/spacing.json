@@ -1,62 +1,130 @@
 {
-  "$description": "Semantic spacing tokens. Theme-invariant aliases over geometry.size primitives. Use these in components — never reference geometry.size directly.",
-
+  "borderWidth": {
+    "default": {
+      "$type": "string",
+      "$value": "{geometry.borderWidth.thin}"
+    },
+    "strong": {
+      "$type": "string",
+      "$value": "{geometry.borderWidth.medium}"
+    }
+  },
+  "radius": {
+    "full": {
+      "$type": "string",
+      "$value": "{geometry.radius.full}"
+    },
+    "lg": {
+      "$type": "string",
+      "$value": "{geometry.radius.3}"
+    },
+    "md": {
+      "$type": "string",
+      "$value": "{geometry.radius.2}"
+    },
+    "none": {
+      "$type": "string",
+      "$value": "{geometry.radius.none}"
+    },
+    "sm": {
+      "$type": "string",
+      "$value": "{geometry.radius.1}"
+    },
+    "xl": {
+      "$type": "string",
+      "$value": "{geometry.radius.4}"
+    }
+  },
   "spacing": {
-
     "component": {
-      "$description": "Spacing within UI components.",
-      "button": {
-        "paddingX": { "$type": "dimension", "$value": "{geometry.size.4}" },
-        "paddingY": { "$type": "dimension", "$value": "{geometry.size.2}" },
-        "gap":      { "$type": "dimension", "$value": "{geometry.size.2}" }
+      "badge": {
+        "paddingX": {
+          "$type": "string",
+          "$value": "{geometry.size.2}"
+        },
+        "paddingY": {
+          "$type": "string",
+          "$value": "{geometry.size.1}"
+        }
       },
-      "input": {
-        "paddingX": { "$type": "dimension", "$value": "{geometry.size.3}" },
-        "paddingY": { "$type": "dimension", "$value": "{geometry.size.2}" }
+      "button": {
+        "gap": {
+          "$type": "string",
+          "$value": "{geometry.size.2}"
+        },
+        "paddingX": {
+          "$type": "string",
+          "$value": "{geometry.size.4}"
+        },
+        "paddingY": {
+          "$type": "string",
+          "$value": "{geometry.size.2}"
+        }
       },
       "card": {
-        "padding": { "$type": "dimension", "$value": "{geometry.size.6}" },
-        "gap":     { "$type": "dimension", "$value": "{geometry.size.4}" }
+        "gap": {
+          "$type": "string",
+          "$value": "{geometry.size.4}"
+        },
+        "padding": {
+          "$type": "string",
+          "$value": "{geometry.size.6}"
+        }
       },
-      "badge": {
-        "paddingX": { "$type": "dimension", "$value": "{geometry.size.2}" },
-        "paddingY": { "$type": "dimension", "$value": "{geometry.size.1}" }
+      "input": {
+        "paddingX": {
+          "$type": "string",
+          "$value": "{geometry.size.3}"
+        },
+        "paddingY": {
+          "$type": "string",
+          "$value": "{geometry.size.2}"
+        }
       }
     },
-
-    "layout": {
-      "$description": "Page-level layout spacing.",
-      "section": { "$type": "dimension", "$value": "{geometry.size.16}" },
-      "content":  { "$type": "dimension", "$value": "{geometry.size.10}" },
-      "gap":      { "$type": "dimension", "$value": "{geometry.size.6}" }
-    },
-
     "inline": {
-      "$description": "Generic inline spacing scale for direct use.",
-      "1": { "$type": "dimension", "$value": "{geometry.size.1}" },
-      "2": { "$type": "dimension", "$value": "{geometry.size.2}" },
-      "3": { "$type": "dimension", "$value": "{geometry.size.3}" },
-      "4": { "$type": "dimension", "$value": "{geometry.size.4}" },
-      "5": { "$type": "dimension", "$value": "{geometry.size.5}" },
-      "6": { "$type": "dimension", "$value": "{geometry.size.6}" },
-      "8": { "$type": "dimension", "$value": "{geometry.size.8}" }
+      "1": {
+        "$type": "string",
+        "$value": "{geometry.size.1}"
+      },
+      "2": {
+        "$type": "string",
+        "$value": "{geometry.size.2}"
+      },
+      "3": {
+        "$type": "string",
+        "$value": "{geometry.size.3}"
+      },
+      "4": {
+        "$type": "string",
+        "$value": "{geometry.size.4}"
+      },
+      "5": {
+        "$type": "string",
+        "$value": "{geometry.size.5}"
+      },
+      "6": {
+        "$type": "string",
+        "$value": "{geometry.size.6}"
+      },
+      "8": {
+        "$type": "string",
+        "$value": "{geometry.size.8}"
+      }
+    },
+    "layout": {
+      "content": {
+        "$type": "string",
+        "$value": "{geometry.size.10}"
+      },
+      "gap": {
+        "$type": "string",
+        "$value": "{geometry.size.6}"
+      },
+      "section": {
+        "$type": "string",
+        "$value": "{geometry.size.16}"
+      }
     }
-
-  },
-
-  "radius": {
-    "$description": "Semantic border radius aliases. One source of truth for shape in components.",
-    "none": { "$type": "dimension", "$value": "{geometry.radius.none}" },
-    "sm":   { "$type": "dimension", "$value": "{geometry.radius.1}" },
-    "md":   { "$type": "dimension", "$value": "{geometry.radius.2}" },
-    "lg":   { "$type": "dimension", "$value": "{geometry.radius.3}" },
-    "xl":   { "$type": "dimension", "$value": "{geometry.radius.4}" },
-    "full": { "$type": "dimension", "$value": "{geometry.radius.full}" }
-  },
-
-  "borderWidth": {
-    "default": { "$type": "dimension", "$value": "{geometry.borderWidth.thin}" },
-    "strong":  { "$type": "dimension", "$value": "{geometry.borderWidth.medium}" }
   }
-
 }
