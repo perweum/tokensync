@@ -104,7 +104,8 @@ export async function applyTokensToCollection(
   let removed = 0
   const errors: string[] = []
 
-  // Clean apply: wipe all existing variables so they are recreated in sorted order
+  // Clean apply: wipe all variables and remove any modes that are not the current mode.
+  // This ensures leftover modes from old architectures don't persist alongside new ones.
   if (cleanApply) {
     for (const variable of collectionVars.values()) {
       try {
@@ -113,7 +114,17 @@ export async function applyTokensToCollection(
       } catch { /* already deleted */ }
     }
     collectionVars.clear()
-    console.log(`[TokenSync] Clean apply: cleared all variables from ${collectionId}`)
+
+    // Remove every mode except the one we are about to populate.
+    // Wrap each removal in try-catch: Figma may reject removal of the last mode.
+    for (const existingMode of [...collection.modes]) {
+      if (existingMode.modeId === modeId) continue
+      try {
+        collection.removeMode(existingMode.modeId)
+      } catch { /* ignore — can't remove last mode or already gone */ }
+    }
+
+    console.log(`[TokenSync] Clean apply: cleared variables and extra modes from ${collectionId}`)
   }
 
   // Sort paths numerically (25, 50, 100 … 950)

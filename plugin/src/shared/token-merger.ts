@@ -174,7 +174,17 @@ export function parseRepository(
   }
 
   // --- Legacy N×M semantic modes (backward compat for repos with old brand/theme pairs) ---
-  const legacyBrands = Object.keys(layers.semantic).filter((b) => b !== 'default')
+  // Exclude directories that are used exclusively as composition overlay sources —
+  // those are sparse override files, not standalone Figma modes.
+  const compositionOverlayDirs = new Set(
+    (metadata.compositions ?? [])
+      .flatMap((c) => c.layers.slice(1))           // all layers except the base layer
+      .map((layer) => layer.split('/')[0])           // first path segment = directory
+      .filter((dir) => dir !== 'default'),
+  )
+  const legacyBrands = Object.keys(layers.semantic).filter(
+    (b) => b !== 'default' && !compositionOverlayDirs.has(b),
+  )
   for (const brand of legacyBrands) {
     for (const scheme of Object.keys(layers.semantic[brand])) {
       const semanticTree = buildSemanticTree(layers, brand, scheme)
