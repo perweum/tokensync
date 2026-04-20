@@ -33,7 +33,7 @@ The plugin runs inside Figma and has direct access to Variables. It talks to Git
 
 ## Token format
 
-Tokens are organised in four layers:
+Tokens are organised in three layers:
 
 ```
 tokens/
@@ -42,35 +42,35 @@ tokens/
     geometry.json         Spacing scale, radius, border width
     typography.json       Font families, sizes, weights
 
-  semantic/               Meaning. References primitives.
-    global/               Never changes between themes
+  semantic/               Meaning. References primitives or themes.
+    global/               Never changes between themes or color schemes
       typography.json     Heading, body, label composites
       spacing.json        Component and layout spacing
-    brand/                Brand palette mappings
-      default.json        brand.N → color.blue.N (default brand)
-      green.json          brand.N → color.green.N
-      {name}.json         Additional brands
-    light.json            Semantic colour roles — light theme
-    dark.json             Semantic colour roles — dark theme
+    themes/               Complete light + dark token sets — one file per named theme
+      original.json       "Original" theme: light.* and dark.* sections
+      {name}.json         Additional themes (Zero, Vanilla, …)
+    light.json            Semantic colour roles — light color scheme
+    dark.json             Semantic colour roles — dark color scheme
     {occasion}/           Optional sparse overlays for compositions
       christmas.json
 
-  metadata.json           Project config: brands, Figma, GitHub, output
+  metadata.json           Project config: themes, Figma, GitHub, output
 ```
 
-### Why four collections?
-
-The architecture separates brand palette from semantic meaning. Semantic tokens reference `{brand.N}` — an indirection layer — instead of `{color.blue.N}` directly.
+### Three-layer architecture
 
 ```
-Primitives          Brand              Semantic
-color.blue.600  →   brand.600     →    base.brand.default
-color.green.600 →   brand.600 (green)
+Primitives              Themes                  Semantic
+color.blue.600   →   light.base.brand.default  →  base.brand.default (light)
+color.blue.500   →   dark.base.brand.default   →  base.brand.default (dark)
 ```
 
-Switching brand means changing which colour ramp `brand.N` points to. The semantic token layer never changes. This means:
-- One `light.json` and one `dark.json` serve all brands
-- Runtime brand switching works without regenerating CSS — just flip a `[data-brand]` attribute
+The **Themes** layer is the key. Each named theme (`original.json`, `zero.json`, …) contains a complete set of brand and neutral colour mappings for both light and dark color schemes. The Semantic layer aliases into the active theme via `{light.*}` and `{dark.*}` references.
+
+This means:
+- One `light.json` and one `dark.json` serve all themes
+- Runtime theme switching works without regenerating CSS — flip `[data-theme]` on any ancestor
+- Severity colours (success/error/warning/info) reference primitives directly and are identical across all themes
 
 ### Colour ramps
 
@@ -104,9 +104,9 @@ Standard [W3C DTCG](https://www.w3.org/community/design-tokens/) format:
   "base": {
     "$type": "color",
     "brand": {
-      "default": { "$value": "{brand.600}", "$description": "Primary button background" },
-      "hover":   { "$value": "{brand.700}" },
-      "active":  { "$value": "{brand.800}" }
+      "default": { "$value": "{light.base.brand.default}", "$description": "Primary button background" },
+      "hover":   { "$value": "{light.base.brand.hover}" },
+      "active":  { "$value": "{light.base.brand.active}" }
     }
   }
 }
@@ -120,16 +120,16 @@ References use `{dot.path.notation}` and resolve across all files in the token t
 
 ### What you get
 
-When tokens are built, you get a single CSS file that supports all brands and both themes via data attributes:
+When tokens are built, you get a single CSS file that supports all themes and both color schemes via data attributes:
 
 ```
 dist/
-  tokens.css     CSS custom properties (all brands + themes)
-  light.ts       TypeScript constants (default brand, light)
-  dark.ts        TypeScript constants (default brand, dark)
+  tokens.css     CSS custom properties (all themes + color schemes)
+  light.ts       TypeScript constants (default theme, light)
+  dark.ts        TypeScript constants (default theme, dark)
 ```
 
-### Web — brand and theme switching
+### Web — theme and color scheme switching
 
 **Step 1: Import the CSS**
 
@@ -146,11 +146,11 @@ import '@your-org/tokens/dist/tokens.css'
 **Step 2: Add data attributes to `<html>`**
 
 ```html
-<html data-color-scheme="auto" data-brand="default">
+<html data-color-scheme="auto" data-theme="original">
 ```
 
 - `data-color-scheme`: `"light"` | `"dark"` | `"auto"` (follows OS setting)
-- `data-brand`: `"default"` | `"green"` | `"sky"` | `"rose"` (or omit — defaults to the root palette)
+- `data-theme`: `"original"` | `"zero"` | `"vanilla"` | … (or omit — defaults to the first theme)
 
 **Step 3: Use CSS custom properties in your code**
 
@@ -168,13 +168,13 @@ import '@your-org/tokens/dist/tokens.css'
 }
 ```
 
-**Step 4: Switching brand and theme (JavaScript)**
+**Step 4: Switching theme and color scheme (JavaScript)**
 
 ```js
-function setBrand(brand) {
-  // brand: 'default' | 'green' | 'sky' | 'rose'
-  document.documentElement.setAttribute('data-brand', brand)
-  localStorage.setItem('brand', brand)
+function setTheme(theme) {
+  // theme: 'original' | 'zero' | 'vanilla' | ...
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('theme', theme)
 }
 
 function setColorScheme(scheme) {
@@ -184,31 +184,31 @@ function setColorScheme(scheme) {
 }
 
 // Restore on page load
-const savedBrand = localStorage.getItem('brand')
+const savedTheme  = localStorage.getItem('theme')
 const savedScheme = localStorage.getItem('color-scheme')
-if (savedBrand) document.documentElement.setAttribute('data-brand', savedBrand)
+if (savedTheme)  document.documentElement.setAttribute('data-theme', savedTheme)
 if (savedScheme) document.documentElement.setAttribute('data-color-scheme', savedScheme)
 ```
 
 The CSS handles the `auto` case for color scheme using `@media (prefers-color-scheme: dark)`. JavaScript only handles explicit user overrides.
 
-**Scoped brand switching**
+**Scoped theme switching**
 
-You can also switch brand on a subset of the page by placing `data-brand` on any container element:
+You can switch theme on a subset of the page by placing `data-theme` on any container element:
 
 ```html
-<!-- Most of the page uses the default brand -->
-<html data-color-scheme="auto" data-brand="default">
+<!-- Most of the page uses the original theme -->
+<html data-color-scheme="auto" data-theme="original">
   <body>
-    <!-- This section uses the green brand -->
-    <section data-brand="green">
-      <button class="button">Green brand button</button>
+    <!-- This section uses the zero theme -->
+    <section data-theme="zero">
+      <button class="button">Zero theme button</button>
     </section>
   </body>
 </html>
 ```
 
-All `var(--brand-N)` references inside the `[data-brand="green"]` container automatically cascade to the green palette. No additional CSS is required.
+All `var(--light-*)` and `var(--dark-*)` references inside the `[data-theme="zero"]` container automatically cascade to the Zero palette. No additional CSS is required.
 
 ---
 
@@ -222,21 +222,21 @@ import '@your-org/tokens/dist/tokens.css'
 import { createContext, useContext, useEffect, useState } from 'react'
 
 type ColorScheme = 'light' | 'dark' | 'auto'
-type Brand = 'default' | 'green' | 'sky' | 'rose'
+type Theme = 'original' | 'zero' | 'vanilla'
 
 const ThemeContext = createContext<{
   colorScheme: ColorScheme
-  brand: Brand
+  theme: Theme
   setColorScheme: (s: ColorScheme) => void
-  setBrand: (b: Brand) => void
-}>({ colorScheme: 'auto', brand: 'default', setColorScheme: () => {}, setBrand: () => {} })
+  setTheme: (t: Theme) => void
+}>({ colorScheme: 'auto', theme: 'original', setColorScheme: () => {}, setTheme: () => {} })
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [colorScheme, setColorScheme] = useState<ColorScheme>(
     () => (localStorage.getItem('color-scheme') as ColorScheme) ?? 'auto'
   )
-  const [brand, setBrand] = useState<Brand>(
-    () => (localStorage.getItem('brand') as Brand) ?? 'default'
+  const [theme, setTheme] = useState<Theme>(
+    () => (localStorage.getItem('theme') as Theme) ?? 'original'
   )
 
   useEffect(() => {
@@ -245,12 +245,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [colorScheme])
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-brand', brand)
-    localStorage.setItem('brand', brand)
-  }, [brand])
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
 
   return (
-    <ThemeContext.Provider value={{ colorScheme, brand, setColorScheme, setBrand }}>
+    <ThemeContext.Provider value={{ colorScheme, theme, setColorScheme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )
@@ -264,14 +264,14 @@ export const useTheme = () => useContext(ThemeContext)
 import { useTheme } from './ThemeProvider'
 
 function ThemeToggle() {
-  const { colorScheme, brand, setColorScheme, setBrand } = useTheme()
+  const { colorScheme, theme, setColorScheme, setTheme } = useTheme()
   return (
     <>
       <button onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}>
         {colorScheme === 'dark' ? 'Light mode' : 'Dark mode'}
       </button>
-      <button onClick={() => setBrand(brand === 'default' ? 'green' : 'default')}>
-        Switch brand
+      <button onClick={() => setTheme(theme === 'original' ? 'zero' : 'original')}>
+        Switch theme
       </button>
     </>
   )
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
 })
 ```
 
-JS/TS output resolves through the default brand. For React Native multi-brand, maintain separate JS/TS outputs per brand.
+JS/TS output resolves through the default theme. For React Native multi-theme, maintain separate JS/TS outputs per theme.
 
 ---
 
@@ -381,7 +381,7 @@ ThemeData _buildTheme(dynamic t) => ThemeData(
 Works the same as plain web — import CSS, use custom properties. No framework needed.
 
 ```html
-<html data-color-scheme="auto" data-brand="default">
+<html data-color-scheme="auto" data-theme="original">
 <head>
   <link rel="stylesheet" href="dist/tokens.css">
 </head>
@@ -415,23 +415,23 @@ my-button::part(root) {
 
 GitHub is always the source of truth. If Figma and GitHub conflict, GitHub wins.
 
-### Adding a new brand
+### Adding a new theme
 
-1. Generate the colour ramp in Themebuilder (produces `color.{name}.N` primitives)
-2. Add `tokens/semantic/brand/{name}.json` with `brand.N → {color.{name}.N}` aliases
-3. Add the brand name to `metadata.json` under `brands` and map roles under `roles`
-4. Commit and push — the plugin will pick up the new Brand mode on next pull
+1. Generate colour ramps in Themebuilder if the theme needs new palettes
+2. Create `tokens/semantic/themes/{name}.json` with `light` and `dark` sections, mapping all brand and neutral tokens to primitive steps
+3. Add the theme name to `metadata.json` under `themes`
+4. Commit and push — the plugin picks up the new Themes mode on the next pull
 
-No changes to `light.json` or `dark.json` are required because semantic tokens already reference `{brand.N}`.
+No changes to `light.json` or `dark.json` are required. Severity tokens are not part of themes and never need to change.
 
 ### Adding a composition (seasonal overlay)
 
-1. Create `tokens/semantic/{occasion}/{name}.json` with only the tokens that differ from the base theme
+1. Create `tokens/semantic/{occasion}/{name}.json` with only the tokens that differ from the base scheme
 2. Add an entry to `metadata.json` under `compositions`:
    ```json
    { "name": "Christmas/Light", "layers": ["default/light", "occasions/christmas"] }
    ```
-3. Commit and push — the plugin produces an additional Figma mode on next pull
+3. Commit and push — the plugin produces an additional Figma mode in the Semantic collection on the next pull
 
 ### First-time project setup
 
@@ -452,17 +452,23 @@ The Figma Variables REST API requires an Enterprise or Organisation plan for wri
 
 Design tokens power every product built on the design system. A bad push can break colour contrast, spacing, or typography across all platforms simultaneously. A Pull Request gives the team a mandatory review step.
 
-### Why a Brand collection and `{brand.N}` indirection?
+### Why a Themes collection and `{light.*}` / `{dark.*}` indirection?
 
-The naive multi-brand approach is N×M: two theme files per brand (`green/light.json`, `green/dark.json`, `sky/light.json`, …). This creates redundancy — the semantic structure of every brand is identical, only the colour ramp differs.
+The naive multi-theme approach is N×M: two semantic files per theme (`original/light.json`, `original/dark.json`, `zero/light.json`, …). This creates redundancy — the semantic structure of every theme is identical, only the colour mapping differs.
 
-The `brand.N` layer solves this: one `light.json` and one `dark.json` serve all brands. In Figma, the Brand collection's active mode determines which colour ramp `brand.N` resolves to. In CSS, `[data-brand]` on any ancestor does the same. Neither the semantic files nor the component code need to know about brands at all.
+The Themes layer solves this: one `light.json` and one `dark.json` serve all themes. Each theme file defines `light.*` and `dark.*` vars; the Semantic collection aliases into whichever theme is active. In Figma, the Themes collection's active mode determines which values cascade through. In CSS, `[data-theme]` on any ancestor does the same.
+
+Themes and color scheme are switched independently. `[data-theme]` controls which palette is used; `[data-color-scheme]` controls light vs. dark. Any combination works with zero extra CSS.
+
+### Why severity tokens reference primitives directly?
+
+Severity tokens (`success`, `error`, `warning`, `info`) are identical across all themes — a green success state is always green regardless of the brand palette. Putting them in theme files would require duplicating the same primitive references in every theme. Instead they reference `{color.green.N}` directly in `light.json` and `dark.json`, making the theme files smaller and the invariant explicit.
 
 ### Why not Token Studio format?
 
 Token Studio's `$themes.json` is a list of token set combinations with embedded Figma collection and mode IDs. It is practically unreadable without Token Studio open, and math expressions in token values are Token Studio extensions that no other tool understands.
 
-This tool uses explicit folder structure. `semantic/brand/green.json` is the green brand palette. `semantic/light.json` is the light theme. No abstraction needed.
+This tool uses explicit folder structure. `semantic/themes/original.json` is the Original theme palette. `semantic/light.json` is the light color scheme. No abstraction needed.
 
 ### Why 12-step colour ramps and not 16?
 
@@ -499,13 +505,13 @@ The two tools are separate but designed to work together:
 | Push diff view (Figma → GitHub) | Done |
 | Apply to Figma (pull) | Done |
 | Multi-project support | Done |
-| Brand + Semantic two-collection architecture | Done |
+| Primitives → Themes → Semantic three-layer architecture | Done |
 | Composition / seasonal overlay support | Done |
 | CSS platform transformer | Done |
 | JS / TypeScript platform transformer | Done |
 | Dart (Flutter) platform transformer | Done |
 | Swift platform transformer | Planned |
-| Branch switching per project | Planned |
+| Branch switching per project | Done |
 | Boolean and string token types in diff | Planned |
 | `$description` shown in diff UI | Planned |
 | Figma Styles export | Not planned |

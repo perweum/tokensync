@@ -28,7 +28,7 @@ export function generateCSS(collections: ResolvedCollection[]): string {
   const rootTokens: Record<string, TokenValue> = {
     ...(primitives?.tokens ?? {}),
     ...(global?.tokens ?? {}),
-    ...(defaultTheme?.rawTokens ?? {}),  // light.* and dark.* → resolved primitive values
+    ...(defaultTheme?.tokens ?? {}),  // light.* and dark.* → resolved primitive values
   }
   if (Object.keys(rootTokens).length > 0) {
     blocks.push(cssBlock(':root', rootTokens))
@@ -37,7 +37,7 @@ export function generateCSS(collections: ResolvedCollection[]): string {
   // Non-default theme overrides — only the vars that differ from the default theme
   for (const col of themeCols.slice(1)) {
     const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, '-')
-    blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, col.rawTokens))
+    blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, col.tokens))
   }
 
   // Semantic: Light/Dark modes — emit var(--light-*) / var(--dark-*) for theme-aliased tokens

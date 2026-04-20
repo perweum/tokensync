@@ -72,10 +72,7 @@ export function resolveReference(
     const path = match[1]
     const token = flat[path]
     if (!token) return null
-    if (token.$value.startsWith('{')) {
-      return resolveReference(token.$value, flat)
-    }
-    return token.$value
+    return resolveReference(token.$value, flat)
   }
 
   // Embedded references inside a composite value (e.g. shadow strings)
