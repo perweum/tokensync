@@ -76,7 +76,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const figmaCollectionNames = {
     primitives: 'Primitives',
     global: 'Global',
-    brand: 'Brand',
+    themes: 'Themes',
     semantic: 'Semantic',
   }
 

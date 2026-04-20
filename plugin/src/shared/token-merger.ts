@@ -1,22 +1,22 @@
 /**
  * Merges token files from GitHub into resolved flat maps per collection.
  *
- * Collection topology (new architecture):
+ * Collection topology:
  *   Primitives  — raw colour/geometry/typography values, 1 mode "Value"
  *   Global      — theme-invariant semantic tokens (spacing, typography), 1 mode "Value"
- *   Brand       — palette aliases (brand.25 … brand.950), one mode per brand
- *   Semantic    — semantic colour roles referencing {brand.N}, 2 modes: Light / Dark
+ *   Themes      — complete semantic token set per named theme (Original, Zero…)
+ *                 Each mode contains light.* and dark.* vars referencing Primitives.
+ *   Semantic    — semantic colour roles (Light/Dark/Contrast…)
+ *                 References {light.*} and {dark.*} into the Themes collection.
+ *                 Severity tokens (success/error/warning/info) reference Primitives directly.
  *
  * File layout on GitHub:
  *   primitives/{name}.json
  *   semantic/global/{name}.json
- *   semantic/brand/{brand}.json   ← brand.N → color.X.N aliases
- *   semantic/light.json           ← uses {brand.N} refs for brand-coloured slots
- *   semantic/dark.json
- *
- * Legacy layout (also supported during migration):
- *   semantic/default/light.json   ← maps to layers.semantic['default']['light']
- *   semantic/{brand}/{theme}.json ← sparse override (old N×M model)
+ *   semantic/themes/{name}.json   ← light.* + dark.* for each named theme
+ *   semantic/light.json           ← {light.*} aliases + direct severity refs
+ *   semantic/dark.json            ← {dark.*} aliases + direct severity refs
+ *   semantic/{occasion}/*.json    ← composition overlays (sparse)
  */
 
 import type { GitHubFile, TokenTree, TokenValue } from './messages'
@@ -39,27 +39,27 @@ export interface Composition {
 
 export interface Metadata {
   version: string
-  brands: string[]
+  /** Named theme variants — each becomes a mode in the Themes collection. */
   themes: string[]
-  /** Explicit multi-dimensional theme compositions. Produces additional Figma modes. */
+  /** Color scheme modes — each becomes a mode in the Semantic collection (light, dark, contrast…). */
+  colorSchemes: string[]
+  /** Explicit multi-layer compositions. Produces additional Figma modes in Semantic. */
   compositions?: Composition[]
   figma: {
     fileKey: string
-    collections: { primitives: string; global: string; brand: string; semantic: string }
+    collections: { primitives: string; global: string; themes: string; semantic: string }
   }
-  roles: Record<string, Record<string, string>>
 }
 
 const DEFAULT_METADATA: Metadata = {
   version: '1.0.0',
-  brands: ['default'],
-  themes: ['light', 'dark'],
+  themes: ['default'],
+  colorSchemes: ['light', 'dark'],
   compositions: [],
   figma: {
     fileKey: '',
-    collections: { primitives: 'Primitives', global: 'Global', brand: 'Brand', semantic: 'Semantic' },
+    collections: { primitives: 'Primitives', global: 'Global', themes: 'Themes', semantic: 'Semantic' },
   },
-  roles: {},
 }
 
 // ---------------------------------------------------------------------------
@@ -69,11 +69,11 @@ const DEFAULT_METADATA: Metadata = {
 export interface ResolvedCollection {
   /** Matches figma collection name from metadata */
   collectionName: string
-  /** e.g. "Value" for primitives/global, "Default" for brand, "Light" for semantic */
+  /** e.g. "Value" for primitives/global, "Original" for themes, "Light" for semantic */
   modeName: string
   /** Flat, fully-resolved token map: path → { $type, $value } — used for diff comparison */
   tokens: Record<string, TokenValue>
-  /** Flat, unresolved token map: $value may contain "{brand.600}" or "{color.blue.200}" refs — used for Figma alias creation */
+  /** Flat, unresolved token map: $value may contain "{light.X}" or "{color.X.N}" refs — used for Figma alias creation */
   rawTokens: Record<string, TokenValue>
 }
 
@@ -93,8 +93,8 @@ export interface ParsedRepository {
  * Emits collections in the order Figma needs to apply them:
  *   1. Primitives (no deps)
  *   2. Global (refs primitives)
- *   3. Brand (refs primitives) ← must exist before Semantic is applied
- *   4. Semantic (refs brand + primitives via cross-collection aliases)
+ *   3. Themes (refs primitives) ← must exist before Semantic aliases can resolve
+ *   4. Semantic (refs themes + primitives via cross-collection aliases)
  */
 export function parseRepository(
   files: GitHubFile[],
@@ -130,52 +130,54 @@ export function parseRepository(
     rawTokens: filterByPaths(globalWithPrimitivesFlat, globalPaths),
   })
 
-  // --- Brand collection (one mode per brand) ---
-  // Each brand file defines brand.N → color.X.N aliases.
-  // Resolved: brand.600 = #1a52d8.  Raw: brand.600 = {color.blue.600}.
-  for (const [brandName, brandTree] of Object.entries(layers.brand)) {
-    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, brandTree]))
+  // --- Themes collection (one mode per named theme) ---
+  // Each theme file has light.* and dark.* groups referencing Primitives.
+  // rawTokens keep {color.X.N} refs so the plugin creates Primitives→Themes cross-collection aliases.
+  for (const [themeName, themeTree] of Object.entries(layers.themes)) {
+    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, themeTree]))
     const fullFlatResolved = resolveAllReferences(fullFlatUnresolved)
-    const brandPaths = Object.keys(flattenTokens(brandTree))
+    const themePaths = Object.keys(flattenTokens(themeTree))
     collections.push({
-      collectionName: metadata.figma.collections.brand,
-      modeName: capitalise(brandName),
-      tokens: filterByPaths(fullFlatResolved, brandPaths),
-      rawTokens: filterByPaths(fullFlatUnresolved, brandPaths),
+      collectionName: metadata.figma.collections.themes,
+      modeName: capitalise(themeName),
+      tokens: filterByPaths(fullFlatResolved, themePaths),
+      rawTokens: filterByPaths(fullFlatUnresolved, themePaths),
     })
   }
 
-  // --- Semantic collection (one mode per theme, brand-agnostic) ---
-  // rawTokens keeps {brand.N} refs unresolved so the plugin creates cross-collection aliases.
-  // tokens resolves through the default brand for diff comparison / display.
-  const defaultBrandTree = layers.brand['default'] ?? {}
-  for (const theme of metadata.themes) {
-    const themeTree = layers.semantic['default']?.[theme]
-    if (!themeTree) continue
+  // --- Semantic collection (one mode per color scheme) ---
+  // rawTokens keep {light.*} and {dark.*} refs unresolved so the plugin creates
+  // Themes→Semantic cross-collection aliases. Severity tokens ref Primitives directly.
+  // Resolved tokens substitute the first theme for diff comparison and display.
+  const firstThemeName = metadata.themes[0] ?? 'default'
+  const defaultThemeTree = layers.themes[firstThemeName] ?? {}
 
-    // rawTokens: NO brand tree in merge — {brand.N} refs remain as literal strings
-    const rawFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, themeTree]))
-    const themePaths = Object.keys(flattenTokens(themeTree))
+  for (const scheme of metadata.colorSchemes) {
+    const schemeTree = layers.semantic['default']?.[scheme]
+    if (!schemeTree) continue
 
-    // resolved tokens: include default brand so {brand.600} → {color.blue.600} → #1a52d8
+    // rawTokens: no themes tree in merge — {light.*}/{dark.*} refs remain as literal strings
+    const rawFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, schemeTree]))
+    const schemePaths = Object.keys(flattenTokens(schemeTree))
+
+    // resolved: include default theme so {light.background.brand} → {color.blue.25} → #hex
     const resolvedFlat = resolveAllReferences(
-      flattenTokens(mergeTrees([primitivesTree, defaultBrandTree, globalTree, themeTree]))
+      flattenTokens(mergeTrees([primitivesTree, defaultThemeTree, globalTree, schemeTree]))
     )
 
     collections.push({
       collectionName: metadata.figma.collections.semantic,
-      modeName: capitalise(theme),
-      tokens: filterByPaths(resolvedFlat, themePaths),
-      rawTokens: filterByPaths(rawFlatUnresolved, themePaths),
+      modeName: capitalise(scheme),
+      tokens: filterByPaths(resolvedFlat, schemePaths),
+      rawTokens: filterByPaths(rawFlatUnresolved, schemePaths),
     })
   }
 
-  // --- Legacy N×M semantic modes (old-style brand/theme pairs, for backward compat) ---
-  // Only emitted when a repo still uses semantic/{brand}/{theme}.json (brand ≠ 'default').
+  // --- Legacy N×M semantic modes (backward compat for repos with old brand/theme pairs) ---
   const legacyBrands = Object.keys(layers.semantic).filter((b) => b !== 'default')
   for (const brand of legacyBrands) {
-    for (const theme of Object.keys(layers.semantic[brand])) {
-      const semanticTree = buildSemanticTree(layers, brand, theme)
+    for (const scheme of Object.keys(layers.semantic[brand])) {
+      const semanticTree = buildSemanticTree(layers, brand, scheme)
       if (!semanticTree) continue
 
       const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, semanticTree]))
@@ -183,7 +185,7 @@ export function parseRepository(
       const semanticPaths = Object.keys(flattenTokens(semanticTree))
       collections.push({
         collectionName: metadata.figma.collections.semantic,
-        modeName: `${capitalise(brand)}/${capitalise(theme)}`,
+        modeName: `${capitalise(brand)}/${capitalise(scheme)}`,
         tokens: filterByPaths(fullFlatResolved, semanticPaths),
         rawTokens: filterByPaths(fullFlatUnresolved, semanticPaths),
       })
@@ -195,7 +197,7 @@ export function parseRepository(
     const compTree = buildCompositionLayerTree(layers, comp.layers)
     if (!compTree) continue
 
-    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, compTree]))
+    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, defaultThemeTree, globalTree, compTree]))
     const fullFlatResolved = resolveAllReferences(fullFlatUnresolved)
     const compPaths = Object.keys(flattenTokens(compTree))
     collections.push({
@@ -216,14 +218,14 @@ export function parseRepository(
 interface Layers {
   primitives: Record<string, TokenTree>
   global: Record<string, TokenTree>
-  /** brandName → tree (new architecture: semantic/brand/{name}.json) */
-  brand: Record<string, TokenTree>
-  /** brand → theme → tree (legacy N×M + new flat semantic files at 'default' key) */
+  /** themeName → tree (semantic/themes/{name}.json) */
+  themes: Record<string, TokenTree>
+  /** brand → colorScheme → tree (semantic/light.json → default/light, legacy: brand/scheme) */
   semantic: Record<string, Record<string, TokenTree>>
 }
 
 function buildLayers(files: Map<string, string>): Layers {
-  const layers: Layers = { primitives: {}, global: {}, brand: {}, semantic: {} }
+  const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {} }
 
   // Two-pass: process depth-3 paths first, then depth-2 (new flat files) can overwrite.
   const depth2: Array<[string, TokenTree]> = []
@@ -245,24 +247,24 @@ function buildLayers(files: Map<string, string>): Layers {
       layers.primitives[parts[1]] = tree
     } else if (parts[0] === 'semantic' && parts[1] === 'global') {
       layers.global[parts[2]] = tree
-    } else if (parts[0] === 'semantic' && parts[1] === 'brand') {
-      // New: semantic/brand/{brandName}.json
-      layers.brand[parts[2]] = tree
+    } else if (parts[0] === 'semantic' && parts[1] === 'themes') {
+      // New: semantic/themes/{themeName}.json
+      layers.themes[parts[2]] = tree
     } else if (parts[0] === 'semantic' && parts.length === 3) {
-      // Legacy: semantic/{brand}/{theme}.json
-      const [, brand, theme] = parts
+      // Legacy: semantic/{brand}/{scheme}.json or semantic/{occasion}/{name}.json
+      const [, brand, scheme] = parts
       if (!layers.semantic[brand]) layers.semantic[brand] = {}
-      layers.semantic[brand][theme] = tree
+      layers.semantic[brand][scheme] = tree
     } else if (parts[0] === 'semantic' && parts.length === 2) {
-      // New flat: semantic/{theme}.json → defer so it wins over legacy default/{theme}
+      // New flat: semantic/{scheme}.json → defer so it wins over legacy default/{scheme}
       depth2.push([parts[1], tree])
     }
   }
 
-  // Apply new-style flat theme files last (win over legacy semantic/default/{theme}.json)
-  for (const [theme, tree] of depth2) {
+  // Apply new-style flat scheme files last (win over legacy semantic/default/{scheme}.json)
+  for (const [scheme, tree] of depth2) {
     if (!layers.semantic['default']) layers.semantic['default'] = {}
-    layers.semantic['default'][theme] = tree
+    layers.semantic['default'][scheme] = tree
   }
 
   return layers
@@ -277,8 +279,8 @@ function buildCompositionLayerTree(layers: Layers, layerPaths: string[]): TokenT
   let merged: TokenTree = {}
   for (const layerPath of layerPaths) {
     const parts = layerPath.split('/')
-    const [brand, theme] = parts.length === 2 ? parts : ['default', parts[0]]
-    const tree = layers.semantic[brand]?.[theme]
+    const [brand, scheme] = parts.length === 2 ? parts : ['default', parts[0]]
+    const tree = layers.semantic[brand]?.[scheme]
     if (tree) merged = deepMergeTokenTrees(merged, tree)
   }
   return Object.keys(merged).length > 0 ? merged : null
@@ -287,10 +289,10 @@ function buildCompositionLayerTree(layers: Layers, layerPaths: string[]): TokenT
 function buildSemanticTree(
   layers: Layers,
   brand: string,
-  theme: string,
+  scheme: string,
 ): TokenTree | null {
-  const defaultTree = layers.semantic['default']?.[theme]
-  const brandTree = brand !== 'default' ? layers.semantic[brand]?.[theme] : null
+  const defaultTree = layers.semantic['default']?.[scheme]
+  const brandTree = brand !== 'default' ? layers.semantic[brand]?.[scheme] : null
 
   if (!defaultTree && !brandTree) return null
   if (!brandTree) return defaultTree ?? null
@@ -361,9 +363,19 @@ function parseMetadata(files: Map<string, string>): Metadata {
   const raw = files.get('metadata.json')
   if (!raw) return DEFAULT_METADATA
   try {
-    const parsed = JSON.parse(raw) as Partial<Metadata>
-    // Deep-merge figma.collections so repos that don't yet have 'brand' still get a default
-    const merged: Metadata = { ...DEFAULT_METADATA, ...parsed }
+    const parsed = JSON.parse(raw) as Partial<Metadata> & { brands?: string[]; themes?: string[] }
+
+    // Support legacy 'brands' field (renamed to 'themes')
+    const themes = parsed.themes ?? parsed.brands ?? DEFAULT_METADATA.themes
+    // Support legacy 'themes: ["light", "dark"]' used as colorSchemes
+    const colorSchemes = parsed.colorSchemes ?? DEFAULT_METADATA.colorSchemes
+
+    const merged: Metadata = {
+      ...DEFAULT_METADATA,
+      ...parsed,
+      themes,
+      colorSchemes,
+    }
     if (parsed.figma) {
       merged.figma = {
         ...DEFAULT_METADATA.figma,

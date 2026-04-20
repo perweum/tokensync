@@ -1,55 +1,19 @@
 {
   "$schema": "tokensync/v1",
-  "$description": "Project configuration for the token sync pipeline. Defines brands, themes, Figma mapping, and platform output.",
+  "$description": "Project configuration for the token sync pipeline.",
 
   "version": "1.0.0",
 
-  "brands": ["default", "green", "sky", "rose"],
-  "themes": ["light", "dark"],
+  "themes": ["original"],
+  "colorSchemes": ["light", "dark"],
 
   "compositions": [
     {
       "name": "Christmas/Light",
       "layers": ["default/light", "occasions/christmas"],
-      "$description": "Seasonal overlay: default brand with Christmas red accent. The overlay file only contains the tokens that differ from default/light."
+      "$description": "Seasonal overlay: Christmas red accent over the light scheme."
     }
   ],
-
-  "roles": {
-    "$description": "Maps semantic colour roles to primitive palette names per brand. Used by platform transformers and documentation.",
-    "default": {
-      "brand":   "color.blue",
-      "neutral": "color.neutral",
-      "success": "color.green",
-      "error":   "color.red",
-      "warning": "color.amber",
-      "info":    "color.sky"
-    },
-    "green": {
-      "brand":   "color.green",
-      "neutral": "color.neutral",
-      "success": "color.green",
-      "error":   "color.red",
-      "warning": "color.amber",
-      "info":    "color.sky"
-    },
-    "sky": {
-      "brand":   "color.sky",
-      "neutral": "color.neutral",
-      "success": "color.green",
-      "error":   "color.red",
-      "warning": "color.amber",
-      "info":    "color.sky"
-    },
-    "rose": {
-      "brand":   "color.red",
-      "neutral": "color.neutral",
-      "success": "color.green",
-      "error":   "color.red",
-      "warning": "color.amber",
-      "info":    "color.sky"
-    }
-  },
 
   "figma": {
     "$description": "Figma file and Variable Collection configuration.",
@@ -57,10 +21,10 @@
     "collections": {
       "primitives": "Primitives",
       "global":     "Global",
-      "brand":      "Brand",
+      "themes":     "Themes",
       "semantic":   "Semantic"
     },
-    "$note": "Brand collection modes: Default, Green, Sky, Rose. Semantic collection modes: Light, Dark. Switch brand and theme independently in Figma."
+    "$note": "Themes collection modes: one per named theme (Original, Zero…). Semantic collection modes: Light, Dark (+ any user-added modes like Contrast). Switch theme and color scheme independently in Figma."
   },
 
   "github": {
@@ -71,39 +35,37 @@
   },
 
   "platforms": {
-    "$description": "Output configuration per target platform. Path tokens support {brand} and {theme} placeholders.",
+    "$description": "Output configuration per target platform.",
 
     "css": {
       "enabled": true,
-      "output":  "dist/{brand}/{theme}.css",
-      "prefix":  "--",
-      "$description": "CSS custom properties. Import in web projects. Supports data-attribute theming."
+      "output":  "dist/tokens.css",
+      "$description": "Single CSS file. Use [data-theme] and [data-color-scheme] attributes for switching."
     },
 
     "js": {
       "enabled": true,
-      "output":  "dist/{brand}/{theme}.js",
+      "output":  "dist/{colorScheme}.js",
       "format":  "esm",
-      "$description": "ES module with named exports. Use in React, Vue, Svelte etc."
+      "$description": "ES module per color scheme, resolved through the first theme."
     },
 
     "ts": {
       "enabled": true,
-      "output":  "dist/{brand}/{theme}.ts",
-      "$description": "TypeScript with full type definitions. Import for type-safe token access."
+      "output":  "dist/{colorScheme}.ts",
+      "$description": "TypeScript constants per color scheme."
     },
 
     "dart": {
       "enabled": false,
-      "output":  "lib/src/tokens/{brand}_{theme}.dart",
-      "$description": "Dart constants for Flutter. Enable when building a Flutter app."
+      "output":  "lib/src/tokens/{colorScheme}.dart",
+      "$description": "Dart constants for Flutter."
     },
 
     "swift": {
       "enabled": false,
-      "output":  "Sources/Tokens/{brand}/{theme}.swift",
-      "$description": "Swift constants for iOS/macOS native apps."
+      "output":  "Sources/Tokens/{colorScheme}.swift",
+      "$description": "Swift constants for iOS/macOS."
     }
   }
-
 }

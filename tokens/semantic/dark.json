@@ -1,11 +1,11 @@
 {
-  "$description": "Semantic colour tokens — dark theme. Brand-coloured slots reference {brand.N} which resolves to the active Brand collection mode. All other tokens reference primitives directly.",
+  "$description": "Semantic colour tokens — dark mode. Brand/neutral tokens alias into the active Theme via {dark.*}. Severity tokens reference primitives directly (identical across all themes).",
 
   "background": {
     "$type": "color",
-    "default":  { "$value": "{color.neutral.950}" },
-    "subtle":   { "$value": "{color.neutral.900}" },
-    "brand":    { "$value": "{brand.950}" },
+    "default":  { "$value": "{dark.background.default}" },
+    "subtle":   { "$value": "{dark.background.subtle}" },
+    "brand":    { "$value": "{dark.background.brand}" },
     "success":  { "$value": "{color.green.950}" },
     "error":    { "$value": "{color.red.950}" },
     "warning":  { "$value": "{color.amber.950}" },
@@ -14,14 +14,19 @@
 
   "surface": {
     "$type": "color",
-    "default":  { "$value": "{color.neutral.900}" },
-    "raised":   { "$value": "{color.neutral.800}" },
-    "overlay":  { "$value": "{color.neutral.800}" },
-    "disabled": { "$value": "{color.neutral.800}" },
+    "default":  { "$value": "{dark.surface.default}" },
+    "raised":   { "$value": "{dark.surface.raised}" },
+    "overlay":  { "$value": "{dark.surface.overlay}" },
+    "disabled": { "$value": "{dark.surface.disabled}" },
     "brand": {
-      "default": { "$value": "{brand.900}" },
-      "hover":   { "$value": "{brand.800}" },
-      "active":  { "$value": "{brand.700}" }
+      "default": { "$value": "{dark.surface.brand.default}" },
+      "hover":   { "$value": "{dark.surface.brand.hover}" },
+      "active":  { "$value": "{dark.surface.brand.active}" }
+    },
+    "neutral": {
+      "default": { "$value": "{dark.surface.neutral.default}" },
+      "hover":   { "$value": "{dark.surface.neutral.hover}" },
+      "active":  { "$value": "{dark.surface.neutral.active}" }
     },
     "success": {
       "default": { "$value": "{color.green.900}" },
@@ -47,14 +52,14 @@
 
   "border": {
     "$type": "color",
-    "subtle":   { "$value": "{color.neutral.800}" },
-    "default":  { "$value": "{color.neutral.700}" },
-    "strong":   { "$value": "{color.neutral.500}" },
-    "disabled": { "$value": "{color.neutral.700}" },
-    "focus":    { "$value": "{brand.400}" },
+    "subtle":   { "$value": "{dark.border.subtle}" },
+    "default":  { "$value": "{dark.border.default}" },
+    "strong":   { "$value": "{dark.border.strong}" },
+    "disabled": { "$value": "{dark.border.disabled}" },
+    "focus":    { "$value": "{dark.border.focus}" },
     "brand": {
-      "default": { "$value": "{brand.700}" },
-      "hover":   { "$value": "{brand.500}" }
+      "default": { "$value": "{dark.border.brand.default}" },
+      "hover":   { "$value": "{dark.border.brand.hover}" }
     },
     "success":  { "default": { "$value": "{color.green.700}" } },
     "error":    { "default": { "$value": "{color.red.700}" } },
@@ -64,16 +69,16 @@
 
   "base": {
     "$type": "color",
-    "disabled": { "$value": "{color.neutral.700}" },
+    "disabled": { "$value": "{dark.base.disabled}" },
     "brand": {
-      "default": { "$value": "{brand.500}" },
-      "hover":   { "$value": "{brand.400}" },
-      "active":  { "$value": "{brand.300}" }
+      "default": { "$value": "{dark.base.brand.default}" },
+      "hover":   { "$value": "{dark.base.brand.hover}" },
+      "active":  { "$value": "{dark.base.brand.active}" }
     },
     "neutral": {
-      "default": { "$value": "{color.neutral.500}" },
-      "hover":   { "$value": "{color.neutral.400}" },
-      "active":  { "$value": "{color.neutral.300}" }
+      "default": { "$value": "{dark.base.neutral.default}" },
+      "hover":   { "$value": "{dark.base.neutral.hover}" },
+      "active":  { "$value": "{dark.base.neutral.active}" }
     },
     "success": {
       "default": { "$value": "{color.green.500}" },
@@ -99,13 +104,13 @@
 
   "text": {
     "$type": "color",
-    "default":  { "$value": "{color.neutral.50}" },
-    "subtle":   { "$value": "{color.neutral.400}" },
-    "disabled": { "$value": "{color.neutral.600}" },
-    "inverse":  { "$value": "{color.neutral.950}" },
+    "default":  { "$value": "{dark.text.default}" },
+    "subtle":   { "$value": "{dark.text.subtle}" },
+    "disabled": { "$value": "{dark.text.disabled}" },
+    "inverse":  { "$value": "{dark.text.inverse}" },
     "brand": {
-      "default":  { "$value": "{brand.300}" },
-      "contrast": { "$value": "{color.neutral.950}", "$description": "Text placed on base.brand surface — always near-black in dark mode" }
+      "default":  { "$value": "{dark.text.brand.default}" },
+      "contrast": { "$value": "{dark.text.brand.contrast}" }
     },
     "success": {
       "default":  { "$value": "{color.green.300}" },
@@ -127,43 +132,40 @@
 
   "icon": {
     "$type": "color",
-    "default":  { "$value": "{text.default}" },
-    "subtle":   { "$value": "{text.subtle}" },
-    "disabled": { "$value": "{text.disabled}" },
-    "inverse":  { "$value": "{text.inverse}" },
+    "default":  { "$value": "{dark.icon.default}" },
+    "subtle":   { "$value": "{dark.icon.subtle}" },
+    "disabled": { "$value": "{dark.icon.disabled}" },
+    "inverse":  { "$value": "{dark.icon.inverse}" },
     "brand": {
-      "default":  { "$value": "{text.brand.default}" },
-      "contrast": { "$value": "{text.brand.contrast}" }
+      "default":  { "$value": "{dark.icon.brand.default}" },
+      "contrast": { "$value": "{dark.icon.brand.contrast}" }
     },
     "success": {
-      "default":  { "$value": "{text.success.default}" },
-      "contrast": { "$value": "{text.success.contrast}" }
+      "default":  { "$value": "{color.green.300}" },
+      "contrast": { "$value": "{color.neutral.950}" }
     },
     "error": {
-      "default":  { "$value": "{text.error.default}" },
-      "contrast": { "$value": "{text.error.contrast}" }
+      "default":  { "$value": "{color.red.300}" },
+      "contrast": { "$value": "{color.neutral.950}" }
     },
     "warning": {
-      "default":  { "$value": "{text.warning.default}" },
-      "contrast": { "$value": "{text.warning.contrast}" }
+      "default":  { "$value": "{color.amber.300}" },
+      "contrast": { "$value": "{color.neutral.950}" }
     },
     "info": {
-      "default":  { "$value": "{text.info.default}" },
-      "contrast": { "$value": "{text.info.contrast}" }
+      "default":  { "$value": "{color.sky.300}" },
+      "contrast": { "$value": "{color.neutral.950}" }
     }
   },
 
   "elevation": {
-    "$description": "Shadow levels for depth.",
-    "1": { "$type": "shadow", "$value": "0 1px 2px {color.black.200}, 0 1px 3px {color.black.300}" },
-    "2": { "$type": "shadow", "$value": "0 4px 6px {color.black.300}, 0 2px 4px {color.black.200}" },
-    "3": { "$type": "shadow", "$value": "0 10px 15px {color.black.300}, 0 4px 6px {color.black.200}" },
-    "4": { "$type": "shadow", "$value": "0 20px 25px {color.black.300}, 0 8px 10px {color.black.200}" }
+    "1": { "$type": "shadow", "$value": "{dark.elevation.1}" },
+    "2": { "$type": "shadow", "$value": "{dark.elevation.2}" },
+    "3": { "$type": "shadow", "$value": "{dark.elevation.3}" },
+    "4": { "$type": "shadow", "$value": "{dark.elevation.4}" }
   },
 
   "overlay": {
-    "$description": "Scrim/overlay behind modals and drawers.",
-    "default": { "$type": "color", "$value": "{color.black.300}" }
+    "default": { "$type": "color", "$value": "{dark.overlay.default}" }
   }
-
 }

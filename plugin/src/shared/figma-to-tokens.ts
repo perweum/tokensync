@@ -28,7 +28,7 @@ export interface TokenFile {
 export function figmaToCollections(
   collections: FigmaVariableCollection[],
   variables: FigmaVariable[],
-  figmaCollectionNames: { primitives: string; global: string; brand: string; semantic: string },
+  figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
 ): ResolvedCollection[] {
   const varById = new Map(variables.map((v) => [v.id, v]))
   const result: ResolvedCollection[] = []
@@ -39,11 +39,7 @@ export function figmaToCollections(
     for (const mode of collection.modes) {
       const tokens = buildFlatTokens(collVars, mode.modeId, varById)
 
-      // Determine the canonical collection name for diffing
-      const collectionName = resolveCollectionName(
-        collection.name,
-        figmaCollectionNames,
-      )
+      const collectionName = resolveCollectionName(collection.name, figmaCollectionNames)
 
       result.push({
         collectionName,
@@ -64,7 +60,7 @@ export function figmaToTokenFiles(
   collections: FigmaVariableCollection[],
   variables: FigmaVariable[],
   tokensPath: string,
-  figmaCollectionNames: { primitives: string; global: string; brand: string; semantic: string },
+  figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
 ): TokenFile[] {
   const varById = new Map(variables.map((v) => [v.id, v]))
   const files: TokenFile[] = []
@@ -77,9 +73,9 @@ export function figmaToTokenFiles(
       files.push(...buildPrimitiveFiles(collVars, collection.modes[0].modeId, varById, tokensPath))
     } else if (kind === 'global') {
       files.push(...buildGlobalFiles(collVars, collection.modes[0].modeId, varById, tokensPath))
-    } else if (kind === 'brand') {
+    } else if (kind === 'themes') {
       for (const mode of collection.modes) {
-        const file = buildBrandFile(collVars, mode, varById, tokensPath)
+        const file = buildThemeFile(collVars, mode, varById, tokensPath)
         if (file) files.push(file)
       }
     } else if (kind === 'semantic') {
@@ -143,7 +139,6 @@ function buildGlobalFiles(
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile[] {
-  // Heuristic grouping for global semantic tokens
   const typoSegments = new Set(['text', 'fontFamily', 'fontWeight', 'heading', 'body', 'label', 'code'])
   const spacingSegments = new Set(['spacing', 'radius', 'borderWidth', 'inline', 'layout', 'component'])
 
@@ -164,25 +159,28 @@ function buildGlobalFiles(
   return files
 }
 
-/** Write a Brand collection mode to semantic/brand/{brand}.json */
-function buildBrandFile(
+/**
+ * Write a Themes collection mode to semantic/themes/{name}.json.
+ * The file contains the full light.* + dark.* token set for this theme variant.
+ */
+function buildThemeFile(
   vars: FigmaVariable[],
   mode: { modeId: string; name: string },
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile | null {
   if (vars.length === 0) return null
-  const brandName = mode.name.toLowerCase()  // "Default" → "default"
+  const themeName = mode.name.toLowerCase().replace(/\s+/g, '-')
   return {
-    repoPath: joinPath(tokensPath, 'semantic/brand', `${brandName}.json`),
+    repoPath: joinPath(tokensPath, 'semantic/themes', `${themeName}.json`),
     content: buildJsonFile(vars, mode.modeId, varById),
   }
 }
 
 /**
- * Write a Semantic collection mode to the appropriate GitHub path.
- * New flat layout: Light → semantic/light.json, Dark → semantic/dark.json.
- * Legacy brand-qualified modes (e.g. "Green/Light") still write to semantic/{brand}/{theme}.json.
+ * Write a Semantic collection mode to the appropriate path.
+ * Light → semantic/light.json, Dark → semantic/dark.json.
+ * Legacy brand-qualified modes still write to semantic/{brand}/{scheme}.json.
  */
 function buildSemanticFile(
   vars: FigmaVariable[],
@@ -195,14 +193,14 @@ function buildSemanticFile(
   const { brand, theme } = parseModeName(mode.name)
 
   if (brand === 'default') {
-    // New flat layout: semantic/light.json, semantic/dark.json
+    // Flat layout: semantic/light.json, semantic/dark.json
     return {
       repoPath: joinPath(tokensPath, 'semantic', `${theme}.json`),
       content: buildJsonFile(vars, mode.modeId, varById),
     }
   }
 
-  // Legacy brand-qualified modes (e.g. "Green/Light") → semantic/green/light.json
+  // Legacy brand-qualified modes → semantic/{brand}/{theme}.json
   return {
     repoPath: joinPath(tokensPath, 'semantic', brand, `${theme}.json`),
     content: buildJsonFile(vars, mode.modeId, varById),
@@ -212,7 +210,6 @@ function buildSemanticFile(
 /**
  * Build a sparse overlay file for a composition.
  * Compares comp-mode rawTokens vs base-mode rawTokens and writes only entries that differ.
- * overlayLayerPath: the last layer in the composition (e.g. "occasions/christmas"), determines file path.
  */
 export function buildCompositionOverlayFile(
   compTokens: Record<string, TokenValue>,
@@ -333,14 +330,14 @@ function inferType(name: string, resolvedType: string): string {
 // Collection kind detection
 // ---------------------------------------------------------------------------
 
-type CollectionKind = 'primitives' | 'global' | 'brand' | 'semantic' | 'unknown'
+type CollectionKind = 'primitives' | 'global' | 'themes' | 'semantic' | 'unknown'
 
-type CollectionNames = { primitives: string; global: string; brand: string; semantic: string }
+type CollectionNames = { primitives: string; global: string; themes: string; semantic: string }
 
 function collectionKind(name: string, names: CollectionNames): CollectionKind {
   if (name === names.primitives) return 'primitives'
   if (name === names.global) return 'global'
-  if (name === names.brand) return 'brand'
+  if (name === names.themes) return 'themes'
   if (name === names.semantic) return 'semantic'
   return 'unknown'
 }
@@ -348,7 +345,7 @@ function collectionKind(name: string, names: CollectionNames): CollectionKind {
 function resolveCollectionName(name: string, names: CollectionNames): string {
   if (name === names.primitives) return names.primitives
   if (name === names.global) return names.global
-  if (name === names.brand) return names.brand
+  if (name === names.themes) return names.themes
   if (name === names.semantic) return names.semantic
   return name
 }

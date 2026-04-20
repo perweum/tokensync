@@ -1,15 +1,15 @@
 /**
  * CSS transformer — generates CSS custom properties.
  *
- * Output structure (Brand + Semantic architecture):
- *   :root { ... }                             ← primitives + global + default brand palette (brand.N vars)
- *   [data-brand="green"] { --brand-N: … }     ← brand palette overrides
- *   [data-color-scheme="light"] { --background-brand: var(--brand-25); … }
- *   [data-color-scheme="dark"]  { … }
- *   [data-color-scheme="auto"] + @media prefers-color-scheme
+ * Output structure (Primitives → Themes → Semantic):
+ *   :root { ... }                              ← primitives + global + first theme's light.* and dark.* vars
+ *   [data-theme="zero"] { ... }                ← non-default theme overrides (only what differs)
+ *   [data-color-scheme="light"] { ... }        ← semantic roles → var(--light-*) + resolved severity
+ *   [data-color-scheme="dark"] { ... }         ← semantic roles → var(--dark-*) + resolved severity
+ *   [data-color-scheme="auto"] + @media        ← follows OS preference
  *
- * Brand-coloured semantic tokens emit var(--brand-N) so switching [data-brand] on any
- * ancestor automatically cascades through all semantic tokens without extra selectors.
+ * Theme switching cascades automatically: changing [data-theme] on any ancestor
+ * updates all --light-* and --dark-* CSS vars, which Semantic selectors pick up.
  */
 
 import type { ResolvedCollection } from '../token-merger'
@@ -20,28 +20,27 @@ export function generateCSS(collections: ResolvedCollection[]): string {
 
   const primitives   = collections.find((c) => isPrimitivesCollection(c))
   const global       = collections.find((c) => isGlobalCollection(c))
-  const brandCols    = collections.filter((c) => isBrandCollection(c))
+  const themeCols    = collections.filter((c) => isThemesCollection(c))
   const semanticCols = collections.filter((c) => isSemanticCollection(c))
 
-  // :root — primitives, global, and the default brand's palette vars
-  const defaultBrand = brandCols.find((c) => c.modeName.toLowerCase() === 'default')
+  // :root — primitives, global, and the default (first) theme's complete light/dark vars
+  const defaultTheme = themeCols[0]
   const rootTokens: Record<string, TokenValue> = {
     ...(primitives?.tokens ?? {}),
     ...(global?.tokens ?? {}),
-    ...(defaultBrand?.rawTokens ?? {}),  // brand.N = {color.X.N} → resolved hex via cascade
+    ...(defaultTheme?.rawTokens ?? {}),  // light.* and dark.* → resolved primitive values
   }
   if (Object.keys(rootTokens).length > 0) {
     blocks.push(cssBlock(':root', rootTokens))
   }
 
-  // Non-default brand overrides — only the brand.N vars need to change
-  for (const col of brandCols) {
-    if (col.modeName.toLowerCase() === 'default') continue
-    const brandSlug = col.modeName.toLowerCase().replace(/\s+/g, '-')
-    blocks.push(cssBlock(`[data-brand="${brandSlug}"]`, col.rawTokens))
+  // Non-default theme overrides — only the vars that differ from the default theme
+  for (const col of themeCols.slice(1)) {
+    const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, '-')
+    blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, col.rawTokens))
   }
 
-  // Semantic: Light / Dark modes — emit var(--brand-N) for brand-coloured tokens
+  // Semantic: Light/Dark modes — emit var(--light-*) / var(--dark-*) for theme-aliased tokens
   const lightCol = semanticCols.find((c) => c.modeName.toLowerCase() === 'light')
   const darkCol  = semanticCols.find((c) => c.modeName.toLowerCase() === 'dark')
 
@@ -54,7 +53,7 @@ export function generateCSS(collections: ResolvedCollection[]): string {
     blocks.push(semanticMediaBlock('(prefers-color-scheme: dark)', '[data-color-scheme="auto"]', darkCol))
   }
 
-  // Legacy N×M brand×theme modes (backward compat if old-style modes are present)
+  // Legacy N×M brand×theme modes (backward compat)
   const legacyModes = semanticCols.filter(
     (c) => c.modeName.toLowerCase() !== 'light' && c.modeName.toLowerCase() !== 'dark',
   )
@@ -79,8 +78,8 @@ export function generateCSS(collections: ResolvedCollection[]): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Semantic block: emits var(--brand-N) for {brand.N} raw values so brand switching
- * cascades automatically, and resolved hex for all other tokens.
+ * Semantic block: emits var(--light-*) / var(--dark-*) for {light.*} / {dark.*} raw refs
+ * so theme switching cascades automatically, and resolved hex for all other tokens.
  */
 function semanticBlock(selector: string, col: ResolvedCollection): string {
   const entries = Object.entries(col.tokens).filter(([, t]) => t.$type !== 'boolean')
@@ -89,7 +88,7 @@ function semanticBlock(selector: string, col: ResolvedCollection): string {
   const lines = entries.map(([path, token]) => {
     const varName = toCSSVar(path)
     const rawValue = col.rawTokens[path]?.$value
-    const value = toBrandAwareValue(token.$value, rawValue)
+    const value = toThemeAwareValue(token.$value, rawValue)
     return `  ${varName}: ${value};`
   })
 
@@ -125,10 +124,14 @@ function cssHeader(): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Convert a {brand.N} raw value to var(--brand-N) for CSS cascade, or return the resolved hex. */
-function toBrandAwareValue(resolvedValue: string, rawValue: string | undefined): string {
-  if (rawValue && /^\{brand\.\d+\}$/.test(rawValue)) {
-    return `var(${toCSSVar(rawValue.slice(1, -1))})`  // "{brand.600}" → "var(--brand-600)"
+/**
+ * Convert a {light.X} or {dark.X} raw ref to var(--light-X) / var(--dark-X) for the CSS cascade.
+ * All other values are returned as-is (resolved hex, dimension, etc.).
+ */
+function toThemeAwareValue(resolvedValue: string, rawValue: string | undefined): string {
+  if (rawValue && /^\{(light|dark)\.[^}]+\}$/.test(rawValue)) {
+    // "{light.background.brand}" → "var(--light-background-brand)"
+    return `var(${toCSSVar(rawValue.slice(1, -1))})`
   }
   return resolvedValue
 }
@@ -156,10 +159,10 @@ function isGlobalCollection(c: ResolvedCollection): boolean {
   return c.collectionName.toLowerCase() === 'global'
 }
 
-function isBrandCollection(c: ResolvedCollection): boolean {
-  return c.collectionName.toLowerCase() === 'brand'
+function isThemesCollection(c: ResolvedCollection): boolean {
+  return c.collectionName.toLowerCase() === 'themes'
 }
 
 function isSemanticCollection(c: ResolvedCollection): boolean {
-  return !isPrimitivesCollection(c) && !isGlobalCollection(c) && !isBrandCollection(c)
+  return !isPrimitivesCollection(c) && !isGlobalCollection(c) && !isThemesCollection(c)
 }
