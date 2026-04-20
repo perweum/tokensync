@@ -1,55 +1,114 @@
 {
   "typography": {
-
     "fontFamily": {
-      "$type": "fontFamily",
-      "$description": "Use the exact font name as it appears in Figma (must be installed).",
-      "sans":  { "$value": "Inter" },
-      "serif": { "$value": "Georgia" },
-      "mono":  { "$value": "Fira Code" }
+      "mono": {
+        "$type": "fontFamily",
+        "$value": "Fira Code"
+      },
+      "sans": {
+        "$type": "fontFamily",
+        "$value": "Inter"
+      },
+      "serif": {
+        "$type": "fontFamily",
+        "$value": "Georgia"
+      }
     },
-
-    "fontWeight": {
-      "$type": "fontWeight",
-      "$description": "Named weights matching the font's style names in Figma.",
-      "regular":  { "$value": "Regular" },
-      "medium":   { "$value": "Medium" },
-      "semibold": { "$value": "SemiBold" },
-      "bold":     { "$value": "Bold" }
-    },
-
     "fontSize": {
-      "$type": "dimension",
-      "$description": "Font sizes in px (converted from rem at 16px base).",
-      "xs":  { "$value": "12" },
-      "sm":  { "$value": "14" },
-      "md":  { "$value": "16" },
-      "lg":  { "$value": "18" },
-      "xl":  { "$value": "20" },
-      "2xl": { "$value": "24" },
-      "3xl": { "$value": "30" },
-      "4xl": { "$value": "36" },
-      "5xl": { "$value": "48" },
-      "6xl": { "$value": "60" }
+      "2xl": {
+        "$type": "fontFamily",
+        "$value": "24"
+      },
+      "3xl": {
+        "$type": "fontFamily",
+        "$value": "30"
+      },
+      "4xl": {
+        "$type": "fontFamily",
+        "$value": "36"
+      },
+      "5xl": {
+        "$type": "fontFamily",
+        "$value": "48"
+      },
+      "6xl": {
+        "$type": "fontFamily",
+        "$value": "60"
+      },
+      "lg": {
+        "$type": "fontFamily",
+        "$value": "18"
+      },
+      "md": {
+        "$type": "fontFamily",
+        "$value": "16"
+      },
+      "sm": {
+        "$type": "fontFamily",
+        "$value": "14"
+      },
+      "xl": {
+        "$type": "fontFamily",
+        "$value": "20"
+      },
+      "xs": {
+        "$type": "fontFamily",
+        "$value": "12"
+      }
     },
-
-    "lineHeight": {
-      "$type": "number",
-      "$description": "Line height as percentage value (e.g. 150 = 150%).",
-      "tight":   { "$value": "120" },
-      "snug":    { "$value": "135" },
-      "normal":  { "$value": "150" },
-      "relaxed": { "$value": "165" }
+    "fontWeight": {
+      "bold": {
+        "$type": "fontFamily",
+        "$value": "Bold"
+      },
+      "medium": {
+        "$type": "fontFamily",
+        "$value": "Medium"
+      },
+      "regular": {
+        "$type": "fontFamily",
+        "$value": "Regular"
+      },
+      "semibold": {
+        "$type": "fontFamily",
+        "$value": "SemiBold"
+      }
     },
-
     "letterSpacing": {
-      "$type": "number",
-      "$description": "Letter spacing as percentage (e.g. -2 = -2%).",
-      "tight":  { "$value": "-2" },
-      "normal": { "$value": "0" },
-      "wide":   { "$value": "4" },
-      "wider":  { "$value": "8" }
+      "normal": {
+        "$type": "string",
+        "$value": "0"
+      },
+      "tight": {
+        "$type": "string",
+        "$value": "-2"
+      },
+      "wide": {
+        "$type": "string",
+        "$value": "4"
+      },
+      "wider": {
+        "$type": "string",
+        "$value": "8"
+      }
+    },
+    "lineHeight": {
+      "normal": {
+        "$type": "string",
+        "$value": "150"
+      },
+      "relaxed": {
+        "$type": "string",
+        "$value": "165"
+      },
+      "snug": {
+        "$type": "string",
+        "$value": "135"
+      },
+      "tight": {
+        "$type": "string",
+        "$value": "120"
+      }
     }
-
   }
 }
