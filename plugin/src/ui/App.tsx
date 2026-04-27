@@ -5,84 +5,84 @@
  * because localStorage is disabled in Figma's data: URL iframe environment.
  */
 
-import { useState, useEffect, useCallback } from 'react'
-import { Setup } from './views/Setup'
-import { Sync } from './views/Sync'
-import { useSendMessage, usePluginMessage } from './hooks/usePlugin'
-import type { PluginMessage } from '../shared/messages'
+import { useState, useEffect, useCallback } from "react";
+import { Setup } from "./views/Setup";
+import { Sync } from "./views/Sync";
+import { useSendMessage, usePluginMessage } from "./hooks/usePlugin";
+import type { PluginMessage } from "../shared/messages";
 
 export interface Project {
-  id: string
-  name: string
-  pat: string
-  repo: string
-  branch: string
-  tokensPath: string
-  figmaFileKey: string
+  id: string;
+  name: string;
+  pat: string;
+  repo: string;
+  branch: string;
+  tokensPath: string;
+  figmaFileKey: string;
 }
 
-const PROJECTS_KEY = 'tokensync:projects'
-const ACTIVE_KEY   = 'tokensync:activeProject'
+const PROJECTS_KEY = "tokensync:projects";
+const ACTIVE_KEY = "tokensync:activeProject";
 
 export default function App() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [showSetup, setShowSetup] = useState(false)
-  const [loading, setLoading] = useState(true)   // waiting for clientStorage
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
+  const [loading, setLoading] = useState(true); // waiting for clientStorage
 
-  const send = useSendMessage()
+  const send = useSendMessage();
 
   // -------------------------------------------------------------------------
   // Bootstrap: load persisted state from figma.clientStorage
   // -------------------------------------------------------------------------
 
   useEffect(() => {
-    send({ type: 'LOAD_STORAGE', key: PROJECTS_KEY })
-    send({ type: 'LOAD_STORAGE', key: ACTIVE_KEY })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    send({ type: "LOAD_STORAGE", key: PROJECTS_KEY });
+    send({ type: "LOAD_STORAGE", key: ACTIVE_KEY });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Track how many keys have loaded (need both before we stop the spinner)
-  const [loadedKeys, setLoadedKeys] = useState(0)
+  const [loadedKeys, setLoadedKeys] = useState(0);
 
   usePluginMessage(
     useCallback((msg: PluginMessage) => {
-      if (msg.type === 'STORAGE_LOADED') {
+      if (msg.type === "STORAGE_LOADED") {
         if (msg.key === PROJECTS_KEY) {
           try {
-            const parsed = JSON.parse(msg.value ?? '[]') as Project[]
-            setProjects(parsed)
+            const parsed = JSON.parse(msg.value ?? "[]") as Project[];
+            setProjects(parsed);
           } catch {
-            setProjects([])
+            setProjects([]);
           }
         }
         if (msg.key === ACTIVE_KEY) {
-          setActiveId(msg.value)
+          setActiveId(msg.value);
         }
-        setLoadedKeys((n) => n + 1)
+        setLoadedKeys((n) => n + 1);
       }
     }, []),
-  )
+  );
 
   useEffect(() => {
-    if (loadedKeys >= 2) setLoading(false)
-  }, [loadedKeys])
+    if (loadedKeys >= 2) setLoading(false);
+  }, [loadedKeys]);
 
   // -------------------------------------------------------------------------
   // Persist on change
   // -------------------------------------------------------------------------
 
   useEffect(() => {
-    if (loading) return
-    send({ type: 'SAVE_STORAGE', key: PROJECTS_KEY, value: JSON.stringify(projects) })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, loading])
+    if (loading) return;
+    send({ type: "SAVE_STORAGE", key: PROJECTS_KEY, value: JSON.stringify(projects) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, loading]);
 
   useEffect(() => {
-    if (loading || activeId === null) return
-    send({ type: 'SAVE_STORAGE', key: ACTIVE_KEY, value: activeId })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, loading])
+    if (loading || activeId === null) return;
+    send({ type: "SAVE_STORAGE", key: ACTIVE_KEY, value: activeId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, loading]);
 
   // -------------------------------------------------------------------------
   // Handlers
@@ -90,24 +90,24 @@ export default function App() {
 
   function handleSaveProject(project: Project) {
     setProjects((prev) => {
-      const idx = prev.findIndex((p) => p.id === project.id)
+      const idx = prev.findIndex((p) => p.id === project.id);
       if (idx >= 0) {
-        const updated = [...prev]
-        updated[idx] = project
-        return updated
+        const updated = [...prev];
+        updated[idx] = project;
+        return updated;
       }
-      return [...prev, project]
-    })
-    setActiveId(project.id)
-    setShowSetup(false)
+      return [...prev, project];
+    });
+    setActiveId(project.id);
+    setShowSetup(false);
   }
 
   function handleDeleteProject(id: string) {
     setProjects((prev) => {
-      const remaining = prev.filter((p) => p.id !== id)
-      if (activeId === id) setActiveId(remaining[0]?.id ?? null)
-      return remaining
-    })
+      const remaining = prev.filter((p) => p.id !== id);
+      if (activeId === id) setActiveId(remaining[0]?.id ?? null);
+      return remaining;
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -116,13 +116,22 @@ export default function App() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#888', fontSize: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          color: "#888",
+          fontSize: 12,
+        }}
+      >
         Loading…
       </div>
-    )
+    );
   }
 
-  const activeProject = projects.find((p) => p.id === activeId) ?? null
+  const activeProject = projects.find((p) => p.id === activeId) ?? null;
 
   if (projects.length === 0 || showSetup) {
     return (
@@ -131,12 +140,12 @@ export default function App() {
         onCancel={projects.length > 0 ? () => setShowSetup(false) : undefined}
         existing={showSetup ? activeProject : null}
       />
-    )
+    );
   }
 
   if (activeProject) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
         {projects.length > 1 && (
           <ProjectSwitcher
             projects={projects}
@@ -151,10 +160,10 @@ export default function App() {
           onDeleteProject={() => handleDeleteProject(activeProject.id)}
         />
       </div>
-    )
+    );
   }
 
-  return <Setup onSave={handleSaveProject} />
+  return <Setup onSave={handleSaveProject} />;
 }
 
 function ProjectSwitcher({
@@ -163,25 +172,42 @@ function ProjectSwitcher({
   onSelect,
   onAdd,
 }: {
-  projects: Project[]
-  activeId: string
-  onSelect: (id: string) => void
-  onAdd: () => void
+  projects: Project[];
+  activeId: string;
+  onSelect: (id: string) => void;
+  onAdd: () => void;
 }) {
   return (
     <div style={s.bar}>
       <select style={s.select} value={activeId} onChange={(e) => onSelect(e.target.value)}>
         {projects.map((p) => (
-          <option key={p.id} value={p.id}>{p.name}</option>
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
         ))}
       </select>
-      <button style={s.addBtn} onClick={onAdd}>+ Add</button>
+      <button style={s.addBtn} onClick={onAdd}>
+        + Add
+      </button>
     </div>
-  )
+  );
 }
 
 const s: Record<string, React.CSSProperties> = {
-  bar:    { display: 'flex', gap: '8px', padding: '12px 20px 0', alignItems: 'center' },
-  select: { flex: 1, fontSize: '12px', padding: '6px 8px', borderRadius: '6px', border: '1px solid #ddd' },
-  addBtn: { fontSize: '12px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ddd', background: 'none', cursor: 'pointer' },
-}
+  bar: { display: "flex", gap: "8px", padding: "12px 20px 0", alignItems: "center" },
+  select: {
+    flex: 1,
+    fontSize: "12px",
+    padding: "6px 8px",
+    borderRadius: "6px",
+    border: "1px solid #ddd",
+  },
+  addBtn: {
+    fontSize: "12px",
+    padding: "6px 10px",
+    borderRadius: "6px",
+    border: "1px solid #ddd",
+    background: "none",
+    cursor: "pointer",
+  },
+};

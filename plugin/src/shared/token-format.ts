@@ -3,20 +3,20 @@
  * Shared between the plugin sandbox and the React UI — no Figma or browser APIs here.
  */
 
-import type { TokenTree, TokenValue } from './messages'
+import type { TokenTree, TokenValue } from "./messages";
 
 // ---------------------------------------------------------------------------
 // Type guards
 // ---------------------------------------------------------------------------
 
 export function isTokenValue(value: unknown): value is TokenValue {
-  if (typeof value !== 'object' || value === null) return false
-  return '$value' in value
+  if (typeof value !== "object" || value === null) return false;
+  return "$value" in value;
 }
 
 export function isTokenTree(value: unknown): value is TokenTree {
-  if (typeof value !== 'object' || value === null) return false
-  return !('$value' in value)
+  if (typeof value !== "object" || value === null) return false;
+  return !("$value" in value);
 }
 
 // ---------------------------------------------------------------------------
@@ -31,26 +31,26 @@ export function isTokenTree(value: unknown): value is TokenTree {
  */
 export function flattenTokens(
   tree: TokenTree,
-  prefix = '',
-  inheritedType = '',
+  prefix = "",
+  inheritedType = "",
 ): Record<string, TokenValue> {
-  const result: Record<string, TokenValue> = {}
-  const groupType = (tree as Record<string, unknown>)['$type'] as string | undefined
-  const effectiveType = groupType ?? inheritedType
+  const result: Record<string, TokenValue> = {};
+  const groupType = (tree as Record<string, unknown>)["$type"] as string | undefined;
+  const effectiveType = groupType ?? inheritedType;
 
   for (const [key, value] of Object.entries(tree)) {
-    if (key.startsWith('$')) continue // skip $type, $description group-level fields
-    const path = prefix ? `${prefix}.${key}` : key
+    if (key.startsWith("$")) continue; // skip $type, $description group-level fields
+    const path = prefix ? `${prefix}.${key}` : key;
 
     if (isTokenValue(value)) {
       // Propagate group-level $type if the token doesn't have its own
-      result[path] = value.$type ? value : { ...value, $type: effectiveType }
+      result[path] = value.$type ? value : { ...value, $type: effectiveType };
     } else if (isTokenTree(value)) {
-      Object.assign(result, flattenTokens(value, path, effectiveType))
+      Object.assign(result, flattenTokens(value, path, effectiveType));
     }
   }
 
-  return result
+  return result;
 }
 
 /**
@@ -62,30 +62,27 @@ export function flattenTokens(
  *
  * Returns the resolved string, or null if a pure ref target is missing.
  */
-export function resolveReference(
-  ref: string,
-  flat: Record<string, TokenValue>,
-): string | null {
-  const match = ref.match(/^\{(.+)\}$/)
+export function resolveReference(ref: string, flat: Record<string, TokenValue>): string | null {
+  const match = ref.match(/^\{(.+)\}$/);
   if (match) {
     // Pure reference — look up and recurse
-    const path = match[1]
-    const token = flat[path]
-    if (!token) return null
-    return resolveReference(token.$value, flat)
+    const path = match[1];
+    const token = flat[path];
+    if (!token) return null;
+    return resolveReference(token.$value, flat);
   }
 
   // Embedded references inside a composite value (e.g. shadow strings)
-  if (ref.includes('{')) {
+  if (ref.includes("{")) {
     return ref.replace(/\{([^}]+)\}/g, (_match, refPath: string) => {
-      const token = flat[refPath]
-      if (!token) return _match
-      const resolved = resolveReference(token.$value, flat)
-      return resolved ?? _match
-    })
+      const token = flat[refPath];
+      if (!token) return _match;
+      const resolved = resolveReference(token.$value, flat);
+      return resolved ?? _match;
+    });
   }
 
-  return ref // not a reference — return as-is
+  return ref; // not a reference — return as-is
 }
 
 /**
@@ -93,15 +90,13 @@ export function resolveReference(
  * Returns a new map with all $value fields fully resolved to raw values.
  * Unresolvable references are left as-is (they will fail validation).
  */
-export function resolveAllReferences(
-  flat: Record<string, TokenValue>,
-): Record<string, TokenValue> {
+export function resolveAllReferences(flat: Record<string, TokenValue>): Record<string, TokenValue> {
   return Object.fromEntries(
     Object.entries(flat).map(([path, token]) => {
-      const resolved = resolveReference(token.$value, flat)
-      return [path, { ...token, $value: resolved ?? token.$value }]
+      const resolved = resolveReference(token.$value, flat);
+      return [path, { ...token, $value: resolved ?? token.$value }];
     }),
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -114,8 +109,8 @@ export function resolveAllReferences(
  * 'color.base.brand.default' → '--color-base-brand-default'
  * 'radius.md'               → '--radius-md'
  */
-export function toCSSVar(path: string, prefix = '--'): string {
-  return prefix + path.replace(/\./g, '-')
+export function toCSSVar(path: string, prefix = "--"): string {
+  return prefix + path.replace(/\./g, "-");
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +123,7 @@ export function toCSSVar(path: string, prefix = '--'): string {
  * 'color.base.brand.default' → 'color/base/brand/default'
  */
 export function toFigmaVarName(path: string): string {
-  return path.replace(/\./g, '/')
+  return path.replace(/\./g, "/");
 }
 
 /**
@@ -137,5 +132,5 @@ export function toFigmaVarName(path: string): string {
  * 'color/base/brand/default' → 'color.base.brand.default'
  */
 export function fromFigmaVarName(name: string): string {
-  return name.replace(/\//g, '.')
+  return name.replace(/\//g, ".");
 }

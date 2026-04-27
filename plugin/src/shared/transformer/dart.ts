@@ -11,34 +11,36 @@
  *   class DesignTokensDark { ... }
  */
 
-import type { ResolvedCollection } from '../token-merger'
-import type { TokenValue } from '../messages'
+import type { ResolvedCollection } from "../token-merger";
+import type { TokenValue } from "../messages";
 
 export function generateDart(collections: ResolvedCollection[]): string {
-  const blocks: string[] = [dartHeader()]
+  const blocks: string[] = [dartHeader()];
 
   const primitives = collections.find(
-    (c) => c.modeName === 'Value' && c.collectionName.toLowerCase() === 'primitives',
-  )
+    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "primitives",
+  );
   const global = collections.find(
-    (c) => c.modeName === 'Value' && c.collectionName.toLowerCase() === 'global',
-  )
+    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "global",
+  );
   const semantic = collections.filter(
-    (c) => c.collectionName.toLowerCase() !== 'primitives' && c.collectionName.toLowerCase() !== 'global',
-  )
+    (c) =>
+      c.collectionName.toLowerCase() !== "primitives" &&
+      c.collectionName.toLowerCase() !== "global",
+  );
 
   if (primitives) {
-    blocks.push(dartClass('DesignTokensPrimitives', primitives.tokens))
+    blocks.push(dartClass("DesignTokensPrimitives", primitives.tokens));
   }
   if (global) {
-    blocks.push(dartClass('DesignTokensGlobal', global.tokens))
+    blocks.push(dartClass("DesignTokensGlobal", global.tokens));
   }
   for (const col of semantic) {
-    const className = 'DesignTokens' + dartClassName(col.modeName)
-    blocks.push(dartClass(className, col.tokens))
+    const className = "DesignTokens" + dartClassName(col.modeName);
+    blocks.push(dartClass(className, col.tokens));
   }
 
-  return blocks.join('\n\n') + '\n'
+  return blocks.join("\n\n") + "\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -46,19 +48,19 @@ export function generateDart(collections: ResolvedCollection[]): string {
 // ---------------------------------------------------------------------------
 
 function dartClass(className: string, tokens: Record<string, TokenValue>): string {
-  const lines: string[] = [`class ${className} {`]
+  const lines: string[] = [`class ${className} {`];
 
   for (const [path, token] of Object.entries(tokens)) {
-    const fieldName = toDartFieldName(path)
-    const dartValue = toDartValue(token)
-    if (dartValue === null) continue
+    const fieldName = toDartFieldName(path);
+    const dartValue = toDartValue(token);
+    if (dartValue === null) continue;
 
-    const type = dartType(token)
-    lines.push(`  static const ${type} ${fieldName} = ${dartValue};`)
+    const type = dartType(token);
+    lines.push(`  static const ${type} ${fieldName} = ${dartValue};`);
   }
 
-  lines.push('}')
-  return lines.join('\n')
+  lines.push("}");
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -66,45 +68,45 @@ function dartClass(className: string, tokens: Record<string, TokenValue>): strin
 // ---------------------------------------------------------------------------
 
 function toDartValue(token: TokenValue): string | null {
-  const v = token.$value
+  const v = token.$value;
 
   // Boolean
-  if (token.$type === 'boolean') return v === 'true' ? 'true' : 'false'
+  if (token.$type === "boolean") return v === "true" ? "true" : "false";
 
   // Color: #rrggbb or #rrggbbaa
-  const hexMatch = v.match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i)
+  const hexMatch = v.match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i);
   if (hexMatch) {
-    const hex = hexMatch[1]
-    const alpha = hexMatch[2] ?? 'ff'
-    return `Color(0x${alpha.toUpperCase()}${hex.toUpperCase()})`
+    const hex = hexMatch[1];
+    const alpha = hexMatch[2] ?? "ff";
+    return `Color(0x${alpha.toUpperCase()}${hex.toUpperCase()})`;
   }
 
   // Color: rgba(r, g, b, a)
-  const rgbaMatch = v.match(/^rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\s*\)$/)
+  const rgbaMatch = v.match(/^rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\s*\)$/);
   if (rgbaMatch) {
-    const [, r, g, b, a] = rgbaMatch
-    return `Color.fromRGBO(${r}, ${g}, ${b}, ${a})`
+    const [, r, g, b, a] = rgbaMatch;
+    return `Color.fromRGBO(${r}, ${g}, ${b}, ${a})`;
   }
 
   // Dimension: "16px" → 16.0
-  const pxMatch = v.match(/^([\d.]+)px$/)
-  if (pxMatch) return `${parseFloat(pxMatch[1])}`
+  const pxMatch = v.match(/^([\d.]+)px$/);
+  if (pxMatch) return `${parseFloat(pxMatch[1])}`;
 
   // Number string
-  if (/^[\d.]+$/.test(v)) return v
+  if (/^[\d.]+$/.test(v)) return v;
 
   // String
-  if (typeof v === 'string') return `'${v.replace(/'/g, "\\'")}'`
+  if (typeof v === "string") return `'${v.replace(/'/g, "\\'")}'`;
 
-  return null
+  return null;
 }
 
 function dartType(token: TokenValue): string {
-  if (token.$type === 'boolean') return 'bool'
-  const v = token.$value
-  if (v.startsWith('#') || v.startsWith('rgba(')) return 'Color'
-  if (/^[\d.]+px$/.test(v) || /^[\d.]+$/.test(v)) return 'double'
-  return 'String'
+  if (token.$type === "boolean") return "bool";
+  const v = token.$value;
+  if (v.startsWith("#") || v.startsWith("rgba(")) return "Color";
+  if (/^[\d.]+px$/.test(v) || /^[\d.]+$/.test(v)) return "double";
+  return "String";
 }
 
 // ---------------------------------------------------------------------------
@@ -114,26 +116,31 @@ function dartType(token: TokenValue): string {
 function toDartFieldName(path: string): string {
   // "color.brand.500" → "colorBrand500"
   return path
-    .split('.')
+    .split(".")
     .map((segment, i) =>
       i === 0
-        ? segment.toLowerCase().replace(/[^a-z0-9]/g, '')
-        : segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase().replace(/[^a-zA-Z0-9]/g, ''),
+        ? segment.toLowerCase().replace(/[^a-z0-9]/g, "")
+        : segment.charAt(0).toUpperCase() +
+          segment
+            .slice(1)
+            .toLowerCase()
+            .replace(/[^a-zA-Z0-9]/g, ""),
     )
-    .join('')
+    .join("");
 }
 
 function dartClassName(modeName: string): string {
   // "Light" → "Light", "Default/Light" → "Light", "Brand-A/Dark" → "BrandADark"
-  return modeName
-    .split('/')
-    .map((p) => p.replace(/[^a-zA-Z0-9]+(.)?/g, (_, c: string) => (c ? c.toUpperCase() : '')))
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join('')
-    .replace('Default', '')
-    || 'Default'
+  return (
+    modeName
+      .split("/")
+      .map((p) => p.replace(/[^a-zA-Z0-9]+(.)?/g, (_, c: string) => (c ? c.toUpperCase() : "")))
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join("")
+      .replace("Default", "") || "Default"
+  );
 }
 
 function dartHeader(): string {
-  return `// Design tokens — generated by Token Sync\n// Do not edit manually.\n\nimport 'package:flutter/material.dart';`
+  return `// Design tokens — generated by Token Sync\n// Do not edit manually.\n\nimport 'package:flutter/material.dart';`;
 }

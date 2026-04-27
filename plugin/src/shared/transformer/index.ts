@@ -6,14 +6,14 @@
  * the token JSON files.
  */
 
-import type { ResolvedCollection, Metadata } from '../token-merger'
-import { generateCSS } from './css'
-import { generateJS } from './js'
-import { generateDart } from './dart'
+import type { ResolvedCollection, Metadata } from "../token-merger";
+import { generateCSS } from "./css";
+import { generateJS } from "./js";
+import { generateDart } from "./dart";
 
 export interface TransformedFile {
-  path: string
-  content: string
+  path: string;
+  content: string;
 }
 
 export function runTransformers(
@@ -21,30 +21,30 @@ export function runTransformers(
   metadata: Metadata,
   tokensPath: string,
 ): TransformedFile[] {
-  const files: TransformedFile[] = []
+  const files: TransformedFile[] = [];
 
-  const platforms = (metadata as MetadataWithPlatforms).platforms
-  if (!platforms) return files
+  const platforms = (metadata as MetadataWithPlatforms).platforms;
+  if (!platforms) return files;
 
   if (platforms.css?.enabled) {
-    const output = generateCSS(collections)
-    const outPath = resolvePath(platforms.css.output, tokensPath, 'dist/tokens.css')
-    files.push({ path: outPath, content: output })
+    const output = generateCSS(collections);
+    const outPath = resolvePath(platforms.css.output, tokensPath, "dist/tokens.css");
+    files.push({ path: outPath, content: output });
   }
 
   if (platforms.js?.enabled) {
-    const output = generateJS(collections)
-    const outPath = resolvePath(platforms.js.output, tokensPath, 'dist/tokens.ts')
-    files.push({ path: outPath, content: output })
+    const output = generateJS(collections);
+    const outPath = resolvePath(platforms.js.output, tokensPath, "dist/tokens.ts");
+    files.push({ path: outPath, content: output });
   }
 
   if (platforms.dart?.enabled) {
-    const output = generateDart(collections)
-    const outPath = resolvePath(platforms.dart.output, tokensPath, 'lib/src/design_tokens.dart')
-    files.push({ path: outPath, content: output })
+    const output = generateDart(collections);
+    const outPath = resolvePath(platforms.dart.output, tokensPath, "lib/src/design_tokens.dart");
+    files.push({ path: outPath, content: output });
   }
 
-  return files
+  return files;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,16 +52,16 @@ export function runTransformers(
 // ---------------------------------------------------------------------------
 
 interface PlatformConfig {
-  enabled: boolean
-  output?: string  // metadata.json uses "output"
+  enabled: boolean;
+  output?: string; // metadata.json uses "output"
 }
 
 interface MetadataWithPlatforms extends Metadata {
   platforms?: {
-    css?: PlatformConfig
-    js?: PlatformConfig
-    dart?: PlatformConfig
-  }
+    css?: PlatformConfig;
+    js?: PlatformConfig;
+    dart?: PlatformConfig;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -69,8 +69,8 @@ interface MetadataWithPlatforms extends Metadata {
 // ---------------------------------------------------------------------------
 
 function resolvePath(configured: string | undefined, tokensPath: string, fallback: string): string {
-  if (configured) return configured
+  if (configured) return configured;
   // Default: sibling to tokens folder
-  const base = tokensPath.replace(/\/$/, '').split('/').slice(0, -1).join('/')
-  return base ? `${base}/${fallback}` : fallback
+  const base = tokensPath.replace(/\/$/, "").split("/").slice(0, -1).join("/");
+  return base ? `${base}/${fallback}` : fallback;
 }

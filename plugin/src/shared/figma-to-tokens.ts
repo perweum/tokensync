@@ -9,13 +9,13 @@ import type {
   FigmaVariableCollection,
   FigmaVariableValue,
   TokenValue,
-} from './messages'
-import type { ResolvedCollection } from './token-merger'
-import { fromFigmaVarName } from './token-format'
+} from "./messages";
+import type { ResolvedCollection } from "./token-merger";
+import { fromFigmaVarName } from "./token-format";
 
 export interface TokenFile {
-  repoPath: string  // e.g. "tokens/primitives/color.json"
-  content: string   // formatted JSON
+  repoPath: string; // e.g. "tokens/primitives/color.json"
+  content: string; // formatted JSON
 }
 
 // ---------------------------------------------------------------------------
@@ -30,27 +30,27 @@ export function figmaToCollections(
   variables: FigmaVariable[],
   figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
 ): ResolvedCollection[] {
-  const varById = new Map(variables.map((v) => [v.id, v]))
-  const result: ResolvedCollection[] = []
+  const varById = new Map(variables.map((v) => [v.id, v]));
+  const result: ResolvedCollection[] = [];
 
   for (const collection of collections) {
-    const collVars = variables.filter((v) => v.collectionId === collection.id)
+    const collVars = variables.filter((v) => v.collectionId === collection.id);
 
     for (const mode of collection.modes) {
-      const tokens = buildFlatTokens(collVars, mode.modeId, varById)
+      const tokens = buildFlatTokens(collVars, mode.modeId, varById);
 
-      const collectionName = resolveCollectionName(collection.name, figmaCollectionNames)
+      const collectionName = resolveCollectionName(collection.name, figmaCollectionNames);
 
       result.push({
         collectionName,
         modeName: mode.name,
         tokens,
-        rawTokens: tokens,  // Figma values already have refs as {path} strings; raw === resolved in push direction
-      })
+        rawTokens: tokens, // Figma values already have refs as {path} strings; raw === resolved in push direction
+      });
     }
   }
 
-  return result
+  return result;
 }
 
 /**
@@ -62,31 +62,31 @@ export function figmaToTokenFiles(
   tokensPath: string,
   figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
 ): TokenFile[] {
-  const varById = new Map(variables.map((v) => [v.id, v]))
-  const files: TokenFile[] = []
+  const varById = new Map(variables.map((v) => [v.id, v]));
+  const files: TokenFile[] = [];
 
   for (const collection of collections) {
-    const collVars = variables.filter((v) => v.collectionId === collection.id)
-    const kind = collectionKind(collection.name, figmaCollectionNames)
+    const collVars = variables.filter((v) => v.collectionId === collection.id);
+    const kind = collectionKind(collection.name, figmaCollectionNames);
 
-    if (kind === 'primitives') {
-      files.push(...buildPrimitiveFiles(collVars, collection.modes[0].modeId, varById, tokensPath))
-    } else if (kind === 'global') {
-      files.push(...buildGlobalFiles(collVars, collection.modes[0].modeId, varById, tokensPath))
-    } else if (kind === 'themes') {
+    if (kind === "primitives") {
+      files.push(...buildPrimitiveFiles(collVars, collection.modes[0].modeId, varById, tokensPath));
+    } else if (kind === "global") {
+      files.push(...buildGlobalFiles(collVars, collection.modes[0].modeId, varById, tokensPath));
+    } else if (kind === "themes") {
       for (const mode of collection.modes) {
-        const file = buildThemeFile(collVars, mode, varById, tokensPath)
-        if (file) files.push(file)
+        const file = buildThemeFile(collVars, mode, varById, tokensPath);
+        if (file) files.push(file);
       }
-    } else if (kind === 'semantic') {
+    } else if (kind === "semantic") {
       for (const mode of collection.modes) {
-        const file = buildSemanticFile(collVars, mode, varById, tokensPath)
-        if (file) files.push(file)
+        const file = buildSemanticFile(collVars, mode, varById, tokensPath);
+        if (file) files.push(file);
       }
     }
   }
 
-  return files
+  return files;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,21 +98,21 @@ function buildFlatTokens(
   modeId: string,
   varById: Map<string, FigmaVariable>,
 ): Record<string, TokenValue> {
-  const result: Record<string, TokenValue> = {}
+  const result: Record<string, TokenValue> = {};
 
   for (const v of vars) {
-    const raw = v.valuesByMode[modeId]
-    if (raw === undefined) continue
+    const raw = v.valuesByMode[modeId];
+    if (raw === undefined) continue;
 
-    const path = fromFigmaVarName(v.name)
-    const $type = inferType(v.name, v.resolvedType)
-    const $value = rawToTokenValue(raw, $type, varById)
-    if ($value === null) continue
+    const path = fromFigmaVarName(v.name);
+    const $type = inferType(v.name, v.resolvedType);
+    const $value = rawToTokenValue(raw, $type, varById);
+    if ($value === null) continue;
 
-    result[path] = { $type, $value }
+    result[path] = { $type, $value };
   }
 
-  return result
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,11 +126,11 @@ function buildPrimitiveFiles(
   tokensPath: string,
 ): TokenFile[] {
   // Group by first path segment: color → color.json, geometry → geometry.json
-  const groups = groupByFirstSegment(vars)
+  const groups = groupByFirstSegment(vars);
   return Object.entries(groups).map(([segment, segVars]) => ({
-    repoPath: joinPath(tokensPath, 'primitives', `${segment}.json`),
+    repoPath: joinPath(tokensPath, "primitives", `${segment}.json`),
     content: buildJsonFile(segVars, modeId, varById),
-  }))
+  }));
 }
 
 function buildGlobalFiles(
@@ -139,24 +139,48 @@ function buildGlobalFiles(
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile[] {
-  const typoSegments = new Set(['text', 'fontFamily', 'fontWeight', 'heading', 'body', 'label', 'code'])
-  const spacingSegments = new Set(['spacing', 'radius', 'borderWidth', 'inline', 'layout', 'component'])
+  const typoSegments = new Set([
+    "text",
+    "fontFamily",
+    "fontWeight",
+    "heading",
+    "body",
+    "label",
+    "code",
+  ]);
+  const spacingSegments = new Set([
+    "spacing",
+    "radius",
+    "borderWidth",
+    "inline",
+    "layout",
+    "component",
+  ]);
 
-  const typoVars = vars.filter((v) => typoSegments.has(firstSegment(v.name)))
-  const spacingVars = vars.filter((v) => spacingSegments.has(firstSegment(v.name)))
+  const typoVars = vars.filter((v) => typoSegments.has(firstSegment(v.name)));
+  const spacingVars = vars.filter((v) => spacingSegments.has(firstSegment(v.name)));
   const otherVars = vars.filter(
     (v) => !typoSegments.has(firstSegment(v.name)) && !spacingSegments.has(firstSegment(v.name)),
-  )
+  );
 
-  const files: TokenFile[] = []
+  const files: TokenFile[] = [];
   if (typoVars.length > 0)
-    files.push({ repoPath: joinPath(tokensPath, 'semantic/global', 'typography.json'), content: buildJsonFile(typoVars, modeId, varById) })
+    files.push({
+      repoPath: joinPath(tokensPath, "semantic/global", "typography.json"),
+      content: buildJsonFile(typoVars, modeId, varById),
+    });
   if (spacingVars.length > 0)
-    files.push({ repoPath: joinPath(tokensPath, 'semantic/global', 'spacing.json'), content: buildJsonFile(spacingVars, modeId, varById) })
+    files.push({
+      repoPath: joinPath(tokensPath, "semantic/global", "spacing.json"),
+      content: buildJsonFile(spacingVars, modeId, varById),
+    });
   if (otherVars.length > 0)
-    files.push({ repoPath: joinPath(tokensPath, 'semantic/global', 'other.json'), content: buildJsonFile(otherVars, modeId, varById) })
+    files.push({
+      repoPath: joinPath(tokensPath, "semantic/global", "other.json"),
+      content: buildJsonFile(otherVars, modeId, varById),
+    });
 
-  return files
+  return files;
 }
 
 /**
@@ -169,12 +193,12 @@ function buildThemeFile(
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile | null {
-  if (vars.length === 0) return null
-  const themeName = mode.name.toLowerCase().replace(/\s+/g, '-')
+  if (vars.length === 0) return null;
+  const themeName = mode.name.toLowerCase().replace(/\s+/g, "-");
   return {
-    repoPath: joinPath(tokensPath, 'semantic/themes', `${themeName}.json`),
+    repoPath: joinPath(tokensPath, "semantic/themes", `${themeName}.json`),
     content: buildJsonFile(vars, mode.modeId, varById),
-  }
+  };
 }
 
 /**
@@ -188,23 +212,23 @@ function buildSemanticFile(
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile | null {
-  if (vars.length === 0) return null
+  if (vars.length === 0) return null;
 
-  const { brand, theme } = parseModeName(mode.name)
+  const { brand, theme } = parseModeName(mode.name);
 
-  if (brand === 'default') {
+  if (brand === "default") {
     // Flat layout: semantic/light.json, semantic/dark.json
     return {
-      repoPath: joinPath(tokensPath, 'semantic', `${theme}.json`),
+      repoPath: joinPath(tokensPath, "semantic", `${theme}.json`),
       content: buildJsonFile(vars, mode.modeId, varById),
-    }
+    };
   }
 
   // Legacy brand-qualified modes → semantic/{brand}/{theme}.json
   return {
-    repoPath: joinPath(tokensPath, 'semantic', brand, `${theme}.json`),
+    repoPath: joinPath(tokensPath, "semantic", brand, `${theme}.json`),
     content: buildJsonFile(vars, mode.modeId, varById),
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -216,21 +240,21 @@ function buildJsonFile(
   modeId: string,
   varById: Map<string, FigmaVariable>,
 ): string {
-  const tree: Record<string, unknown> = {}
+  const tree: Record<string, unknown> = {};
 
   for (const v of vars) {
-    const raw = v.valuesByMode[modeId]
-    if (raw === undefined) continue
+    const raw = v.valuesByMode[modeId];
+    if (raw === undefined) continue;
 
-    const $type = inferType(v.name, v.resolvedType)
-    const $value = rawToTokenValue(raw, $type, varById)
-    if ($value === null) continue
+    const $type = inferType(v.name, v.resolvedType);
+    const $value = rawToTokenValue(raw, $type, varById);
+    if ($value === null) continue;
 
-    const path = fromFigmaVarName(v.name)
-    setNested(tree, path.split('.'), { $type, $value })
+    const path = fromFigmaVarName(v.name);
+    setNested(tree, path.split("."), { $type, $value });
   }
 
-  return JSON.stringify(tree, null, 2)
+  return JSON.stringify(tree, null, 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -243,34 +267,37 @@ function rawToTokenValue(
   varById: Map<string, FigmaVariable>,
 ): string | null {
   // Alias → reference
-  if (typeof raw === 'object' && raw !== null && 'type' in raw && raw.type === 'VARIABLE_ALIAS') {
-    const target = varById.get(raw.id)
-    if (!target) return null
-    return `{${fromFigmaVarName(target.name)}}`
+  if (typeof raw === "object" && raw !== null && "type" in raw && raw.type === "VARIABLE_ALIAS") {
+    const target = varById.get(raw.id);
+    if (!target) return null;
+    return `{${fromFigmaVarName(target.name)}}`;
   }
 
   // Color
-  if ($type === 'color' && typeof raw === 'object' && raw !== null && 'r' in raw) {
-    const c = raw as { r: number; g: number; b: number; a?: number }
-    const a = c.a ?? 1
-    const hex = (n: number) => Math.round(n * 255).toString(16).padStart(2, '0')
-    if (Math.round(a * 255) === 255) return `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`
-    return `rgba(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}, ${a.toFixed(2)})`
+  if ($type === "color" && typeof raw === "object" && raw !== null && "r" in raw) {
+    const c = raw as { r: number; g: number; b: number; a?: number };
+    const a = c.a ?? 1;
+    const hex = (n: number) =>
+      Math.round(n * 255)
+        .toString(16)
+        .padStart(2, "0");
+    if (Math.round(a * 255) === 255) return `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`;
+    return `rgba(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}, ${a.toFixed(2)})`;
   }
 
   // Boolean
-  if (typeof raw === 'boolean') return String(raw)
+  if (typeof raw === "boolean") return String(raw);
 
   // Number → dimension string or plain number
-  if (typeof raw === 'number') {
-    if ($type === 'dimension') return `${raw}px`
-    if ($type === 'fontWeight') return String(raw)
-    return String(raw)
+  if (typeof raw === "number") {
+    if ($type === "dimension") return `${raw}px`;
+    if ($type === "fontWeight") return String(raw);
+    return String(raw);
   }
 
-  if (typeof raw === 'string') return raw
+  if (typeof raw === "string") return raw;
 
-  return null
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,44 +305,44 @@ function rawToTokenValue(
 // ---------------------------------------------------------------------------
 
 function inferType(name: string, resolvedType: string): string {
-  if (resolvedType === 'COLOR') return 'color'
-  if (resolvedType === 'BOOLEAN') return 'boolean'
-  if (resolvedType === 'STRING') {
-    if (/family|font/i.test(name)) return 'fontFamily'
-    return 'string'
+  if (resolvedType === "COLOR") return "color";
+  if (resolvedType === "BOOLEAN") return "boolean";
+  if (resolvedType === "STRING") {
+    if (/family|font/i.test(name)) return "fontFamily";
+    return "string";
   }
-  if (resolvedType === 'FLOAT') {
-    if (/size|spacing|padding|radius|width|height|border|gap/i.test(name)) return 'dimension'
-    if (/weight/i.test(name)) return 'fontWeight'
-    if (/lineHeight|line.height/i.test(name)) return 'number'
-    if (/letterSpacing|letter.spacing/i.test(name)) return 'dimension'
-    return 'number'
+  if (resolvedType === "FLOAT") {
+    if (/size|spacing|padding|radius|width|height|border|gap/i.test(name)) return "dimension";
+    if (/weight/i.test(name)) return "fontWeight";
+    if (/lineHeight|line.height/i.test(name)) return "number";
+    if (/letterSpacing|letter.spacing/i.test(name)) return "dimension";
+    return "number";
   }
-  return 'unknown'
+  return "unknown";
 }
 
 // ---------------------------------------------------------------------------
 // Collection kind detection
 // ---------------------------------------------------------------------------
 
-type CollectionKind = 'primitives' | 'global' | 'themes' | 'semantic' | 'unknown'
+type CollectionKind = "primitives" | "global" | "themes" | "semantic" | "unknown";
 
-type CollectionNames = { primitives: string; global: string; themes: string; semantic: string }
+type CollectionNames = { primitives: string; global: string; themes: string; semantic: string };
 
 function collectionKind(name: string, names: CollectionNames): CollectionKind {
-  if (name === names.primitives) return 'primitives'
-  if (name === names.global) return 'global'
-  if (name === names.themes) return 'themes'
-  if (name === names.semantic) return 'semantic'
-  return 'unknown'
+  if (name === names.primitives) return "primitives";
+  if (name === names.global) return "global";
+  if (name === names.themes) return "themes";
+  if (name === names.semantic) return "semantic";
+  return "unknown";
 }
 
 function resolveCollectionName(name: string, names: CollectionNames): string {
-  if (name === names.primitives) return names.primitives
-  if (name === names.global) return names.global
-  if (name === names.themes) return names.themes
-  if (name === names.semantic) return names.semantic
-  return name
+  if (name === names.primitives) return names.primitives;
+  if (name === names.global) return names.global;
+  if (name === names.themes) return names.themes;
+  if (name === names.semantic) return names.semantic;
+  return name;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,43 +350,43 @@ function resolveCollectionName(name: string, names: CollectionNames): string {
 // ---------------------------------------------------------------------------
 
 function groupByFirstSegment(vars: FigmaVariable[]): Record<string, FigmaVariable[]> {
-  const groups: Record<string, FigmaVariable[]> = {}
+  const groups: Record<string, FigmaVariable[]> = {};
   for (const v of vars) {
-    const seg = firstSegment(v.name)
-    if (!groups[seg]) groups[seg] = []
-    groups[seg].push(v)
+    const seg = firstSegment(v.name);
+    if (!groups[seg]) groups[seg] = [];
+    groups[seg].push(v);
   }
-  return groups
+  return groups;
 }
 
 function firstSegment(varName: string): string {
-  return varName.split('/')[0]
+  return varName.split("/")[0];
 }
 
 function parseModeName(modeName: string): { brand: string; theme: string } {
-  const parts = modeName.split('/')
+  const parts = modeName.split("/");
   if (parts.length === 1) {
-    return { brand: 'default', theme: parts[0].toLowerCase() }
+    return { brand: "default", theme: parts[0].toLowerCase() };
   }
-  const brand = parts[0].toLowerCase().replace(/\s+/g, '-')
-  const theme = parts[1].toLowerCase()
-  return { brand: brand === 'default' ? 'default' : brand, theme }
+  const brand = parts[0].toLowerCase().replace(/\s+/g, "-");
+  const theme = parts[1].toLowerCase();
+  return { brand: brand === "default" ? "default" : brand, theme };
 }
 
 function joinPath(...parts: string[]): string {
   return parts
-    .map((p) => p.replace(/^\/|\/$/g, ''))
+    .map((p) => p.replace(/^\/|\/$/g, ""))
     .filter(Boolean)
-    .join('/')
+    .join("/");
 }
 
 function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): void {
-  let current = obj
+  let current = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    if (typeof current[keys[i]] !== 'object' || current[keys[i]] === null) {
-      current[keys[i]] = {}
+    if (typeof current[keys[i]] !== "object" || current[keys[i]] === null) {
+      current[keys[i]] = {};
     }
-    current = current[keys[i]] as Record<string, unknown>
+    current = current[keys[i]] as Record<string, unknown>;
   }
-  current[keys[keys.length - 1]] = value
+  current[keys[keys.length - 1]] = value;
 }

@@ -12,65 +12,73 @@
  * updates all --light-* and --dark-* CSS vars, which Semantic selectors pick up.
  */
 
-import type { ResolvedCollection } from '../token-merger'
-import type { TokenValue } from '../messages'
+import type { ResolvedCollection } from "../token-merger";
+import type { TokenValue } from "../messages";
 
 export function generateCSS(collections: ResolvedCollection[]): string {
-  const blocks: string[] = [cssHeader()]
+  const blocks: string[] = [cssHeader()];
 
-  const primitives   = collections.find((c) => isPrimitivesCollection(c))
-  const global       = collections.find((c) => isGlobalCollection(c))
-  const themeCols    = collections.filter((c) => isThemesCollection(c))
-  const semanticCols = collections.filter((c) => isSemanticCollection(c))
+  const primitives = collections.find((c) => isPrimitivesCollection(c));
+  const global = collections.find((c) => isGlobalCollection(c));
+  const themeCols = collections.filter((c) => isThemesCollection(c));
+  const semanticCols = collections.filter((c) => isSemanticCollection(c));
 
   // :root — primitives, global, and the default (first) theme's complete light/dark vars
-  const defaultTheme = themeCols[0]
+  const defaultTheme = themeCols[0];
   const rootTokens: Record<string, TokenValue> = {
     ...(primitives?.tokens ?? {}),
     ...(global?.tokens ?? {}),
-    ...(defaultTheme?.tokens ?? {}),  // light.* and dark.* → resolved primitive values
-  }
+    ...(defaultTheme?.tokens ?? {}), // light.* and dark.* → resolved primitive values
+  };
   if (Object.keys(rootTokens).length > 0) {
-    blocks.push(cssBlock(':root', rootTokens))
+    blocks.push(cssBlock(":root", rootTokens));
   }
 
   // Non-default theme overrides — only the vars that differ from the default theme
   for (const col of themeCols.slice(1)) {
-    const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, '-')
-    blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, col.tokens))
+    const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
+    blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, col.tokens));
   }
 
   // Semantic: Light/Dark modes — emit var(--light-*) / var(--dark-*) for theme-aliased tokens
-  const lightCol = semanticCols.find((c) => c.modeName.toLowerCase() === 'light')
-  const darkCol  = semanticCols.find((c) => c.modeName.toLowerCase() === 'dark')
+  const lightCol = semanticCols.find((c) => c.modeName.toLowerCase() === "light");
+  const darkCol = semanticCols.find((c) => c.modeName.toLowerCase() === "dark");
 
   if (lightCol) {
-    blocks.push(semanticBlock('[data-color-scheme="light"]', lightCol))
-    blocks.push(semanticBlock('[data-color-scheme="auto"]', lightCol))
+    blocks.push(semanticBlock('[data-color-scheme="light"]', lightCol));
+    blocks.push(semanticBlock('[data-color-scheme="auto"]', lightCol));
   }
   if (darkCol) {
-    blocks.push(semanticBlock('[data-color-scheme="dark"]', darkCol))
-    blocks.push(semanticMediaBlock('(prefers-color-scheme: dark)', '[data-color-scheme="auto"]', darkCol))
+    blocks.push(semanticBlock('[data-color-scheme="dark"]', darkCol));
+    blocks.push(
+      semanticMediaBlock("(prefers-color-scheme: dark)", '[data-color-scheme="auto"]', darkCol),
+    );
   }
 
   // Legacy N×M brand×theme modes (backward compat)
   const legacyModes = semanticCols.filter(
-    (c) => c.modeName.toLowerCase() !== 'light' && c.modeName.toLowerCase() !== 'dark',
-  )
+    (c) => c.modeName.toLowerCase() !== "light" && c.modeName.toLowerCase() !== "dark",
+  );
   for (const col of legacyModes) {
-    const brand = modeBrand(col.modeName)
-    const theme = modeTheme(col.modeName)
-    const selector = `[data-brand="${brand}"][data-color-scheme="${theme}"]`
-    blocks.push(cssBlock(selector, col.tokens))
-    if (theme === 'light') {
-      blocks.push(cssBlock(`[data-brand="${brand}"][data-color-scheme="auto"]`, col.tokens))
+    const brand = modeBrand(col.modeName);
+    const theme = modeTheme(col.modeName);
+    const selector = `[data-brand="${brand}"][data-color-scheme="${theme}"]`;
+    blocks.push(cssBlock(selector, col.tokens));
+    if (theme === "light") {
+      blocks.push(cssBlock(`[data-brand="${brand}"][data-color-scheme="auto"]`, col.tokens));
     }
-    if (theme === 'dark') {
-      blocks.push(mediaBlock('(prefers-color-scheme: dark)', `[data-brand="${brand}"][data-color-scheme="auto"]`, col.tokens))
+    if (theme === "dark") {
+      blocks.push(
+        mediaBlock(
+          "(prefers-color-scheme: dark)",
+          `[data-brand="${brand}"][data-color-scheme="auto"]`,
+          col.tokens,
+        ),
+      );
     }
   }
 
-  return blocks.filter(Boolean).join('\n\n') + '\n'
+  return blocks.filter(Boolean).join("\n\n") + "\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -82,42 +90,48 @@ export function generateCSS(collections: ResolvedCollection[]): string {
  * so theme switching cascades automatically, and resolved hex for all other tokens.
  */
 function semanticBlock(selector: string, col: ResolvedCollection): string {
-  const entries = Object.entries(col.tokens).filter(([, t]) => t.$type !== 'boolean')
-  if (entries.length === 0) return ''
+  const entries = Object.entries(col.tokens).filter(([, t]) => t.$type !== "boolean");
+  if (entries.length === 0) return "";
 
   const lines = entries.map(([path, token]) => {
-    const varName = toCSSVar(path)
-    const rawValue = col.rawTokens[path]?.$value
-    const value = toThemeAwareValue(token.$value, rawValue)
-    return `  ${varName}: ${value};`
-  })
+    const varName = toCSSVar(path);
+    const rawValue = col.rawTokens[path]?.$value;
+    const value = toThemeAwareValue(token.$value, rawValue);
+    return `  ${varName}: ${value};`;
+  });
 
-  return `${selector} {\n${lines.join('\n')}\n}`
+  return `${selector} {\n${lines.join("\n")}\n}`;
 }
 
 function semanticMediaBlock(query: string, selector: string, col: ResolvedCollection): string {
-  const inner = semanticBlock(selector, col)
-  if (!inner) return ''
-  const indented = inner.split('\n').map((l) => `  ${l}`).join('\n')
-  return `@media ${query} {\n${indented}\n}`
+  const inner = semanticBlock(selector, col);
+  if (!inner) return "";
+  const indented = inner
+    .split("\n")
+    .map((l) => `  ${l}`)
+    .join("\n");
+  return `@media ${query} {\n${indented}\n}`;
 }
 
 function cssBlock(selector: string, tokens: Record<string, TokenValue>): string {
-  const entries = Object.entries(tokens).filter(([, t]) => t.$type !== 'boolean')
-  if (entries.length === 0) return ''
-  const lines = entries.map(([path, token]) => `  ${toCSSVar(path)}: ${token.$value};`)
-  return `${selector} {\n${lines.join('\n')}\n}`
+  const entries = Object.entries(tokens).filter(([, t]) => t.$type !== "boolean");
+  if (entries.length === 0) return "";
+  const lines = entries.map(([path, token]) => `  ${toCSSVar(path)}: ${token.$value};`);
+  return `${selector} {\n${lines.join("\n")}\n}`;
 }
 
 function mediaBlock(query: string, selector: string, tokens: Record<string, TokenValue>): string {
-  const inner = cssBlock(selector, tokens)
-  if (!inner) return ''
-  const indented = inner.split('\n').map((l) => `  ${l}`).join('\n')
-  return `@media ${query} {\n${indented}\n}`
+  const inner = cssBlock(selector, tokens);
+  if (!inner) return "";
+  const indented = inner
+    .split("\n")
+    .map((l) => `  ${l}`)
+    .join("\n");
+  return `@media ${query} {\n${indented}\n}`;
 }
 
 function cssHeader(): string {
-  return `/**\n * Design tokens — generated by Token Sync\n * Do not edit manually.\n */`
+  return `/**\n * Design tokens — generated by Token Sync\n * Do not edit manually.\n */`;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,38 +145,38 @@ function cssHeader(): string {
 function toThemeAwareValue(resolvedValue: string, rawValue: string | undefined): string {
   if (rawValue && /^\{(light|dark)\.[^}]+\}$/.test(rawValue)) {
     // "{light.background.brand}" → "var(--light-background-brand)"
-    return `var(${toCSSVar(rawValue.slice(1, -1))})`
+    return `var(${toCSSVar(rawValue.slice(1, -1))})`;
   }
-  return resolvedValue
+  return resolvedValue;
 }
 
 function toCSSVar(path: string): string {
-  return '--' + path.replace(/\./g, '-')
+  return "--" + path.replace(/\./g, "-");
 }
 
 function modeBrand(modeName: string): string {
-  const parts = modeName.split('/')
-  if (parts.length === 1) return 'default'
-  return parts[0].toLowerCase().replace(/\s+/g, '-')
+  const parts = modeName.split("/");
+  if (parts.length === 1) return "default";
+  return parts[0].toLowerCase().replace(/\s+/g, "-");
 }
 
 function modeTheme(modeName: string): string {
-  const parts = modeName.split('/')
-  return parts[parts.length - 1].toLowerCase()
+  const parts = modeName.split("/");
+  return parts[parts.length - 1].toLowerCase();
 }
 
 function isPrimitivesCollection(c: ResolvedCollection): boolean {
-  return c.collectionName.toLowerCase() === 'primitives'
+  return c.collectionName.toLowerCase() === "primitives";
 }
 
 function isGlobalCollection(c: ResolvedCollection): boolean {
-  return c.collectionName.toLowerCase() === 'global'
+  return c.collectionName.toLowerCase() === "global";
 }
 
 function isThemesCollection(c: ResolvedCollection): boolean {
-  return c.collectionName.toLowerCase() === 'themes'
+  return c.collectionName.toLowerCase() === "themes";
 }
 
 function isSemanticCollection(c: ResolvedCollection): boolean {
-  return !isPrimitivesCollection(c) && !isGlobalCollection(c) && !isThemesCollection(c)
+  return !isPrimitivesCollection(c) && !isGlobalCollection(c) && !isThemesCollection(c);
 }

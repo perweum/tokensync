@@ -5,8 +5,8 @@
  * Communicates with the React UI via postMessage.
  */
 
-import type { UIMessage, PluginMessage } from '../shared/messages'
-import { getCollectionsAndVariables, applyTokensToCollection } from './figma-variables'
+import type { UIMessage, PluginMessage } from "../shared/messages";
+import { getCollectionsAndVariables, applyTokensToCollection } from "./figma-variables";
 
 // ---------------------------------------------------------------------------
 // Plugin initialisation
@@ -15,8 +15,8 @@ import { getCollectionsAndVariables, applyTokensToCollection } from './figma-var
 figma.showUI(__html__, {
   width: 480,
   height: 640,
-  title: 'Token Sync',
-})
+  title: "Token Sync",
+});
 
 // ---------------------------------------------------------------------------
 // Serial apply queue
@@ -26,27 +26,31 @@ figma.showUI(__html__, {
 // Primitives variables exist in Figma before Semantic aliases look them up.
 // ---------------------------------------------------------------------------
 
-type ApplyTask = () => Promise<void>
-const applyQueue: ApplyTask[] = []
-let applyBusy = false
+type ApplyTask = () => Promise<void>;
+const applyQueue: ApplyTask[] = [];
+let applyBusy = false;
 
 function enqueueApply(task: ApplyTask) {
-  applyQueue.push(task)
-  if (!applyBusy) drainApplyQueue()
+  applyQueue.push(task);
+  if (!applyBusy) drainApplyQueue();
 }
 
 async function drainApplyQueue() {
-  applyBusy = true
+  applyBusy = true;
   while (applyQueue.length > 0) {
-    const task = applyQueue.shift()!
+    const task = applyQueue.shift()!;
     try {
-      await task()
+      await task();
     } catch (err) {
       // Unexpected error in task — report to UI and continue draining
-      send({ type: 'ERROR', message: err instanceof Error ? err.message : String(err), context: 'APPLY_TOKENS' })
+      send({
+        type: "ERROR",
+        message: err instanceof Error ? err.message : String(err),
+        context: "APPLY_TOKENS",
+      });
     }
   }
-  applyBusy = false
+  applyBusy = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,13 +60,13 @@ async function drainApplyQueue() {
 figma.ui.onmessage = async (msg: UIMessage) => {
   try {
     switch (msg.type) {
-      case 'GET_COLLECTIONS': {
-        const { collections, variables } = await getCollectionsAndVariables()
-        send({ type: 'COLLECTIONS_LOADED', collections, variables })
-        break
+      case "GET_COLLECTIONS": {
+        const { collections, variables } = await getCollectionsAndVariables();
+        send({ type: "COLLECTIONS_LOADED", collections, variables });
+        break;
       }
 
-      case 'APPLY_TOKENS': {
+      case "APPLY_TOKENS": {
         enqueueApply(async () => {
           const { count, removed, errors } = await applyTokensToCollection(
             msg.tokens,
@@ -71,38 +75,38 @@ figma.ui.onmessage = async (msg: UIMessage) => {
             msg.removedPaths,
             msg.cleanApply,
             msg.resolvedValues,
-          )
-          send({ type: 'TOKENS_APPLIED', count, removed, errors })
-        })
-        break
+          );
+          send({ type: "TOKENS_APPLIED", count, removed, errors });
+        });
+        break;
       }
 
-      case 'LOAD_STORAGE': {
-        const value = await figma.clientStorage.getAsync(msg.key) as string | undefined
-        send({ type: 'STORAGE_LOADED', key: msg.key, value: value ?? null })
-        break
+      case "LOAD_STORAGE": {
+        const value = (await figma.clientStorage.getAsync(msg.key)) as string | undefined;
+        send({ type: "STORAGE_LOADED", key: msg.key, value: value ?? null });
+        break;
       }
 
-      case 'SAVE_STORAGE': {
-        await figma.clientStorage.setAsync(msg.key, msg.value)
-        break
+      case "SAVE_STORAGE": {
+        await figma.clientStorage.setAsync(msg.key, msg.value);
+        break;
       }
 
-      case 'CLOSE': {
-        figma.closePlugin()
-        break
+      case "CLOSE": {
+        figma.closePlugin();
+        break;
       }
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    send({ type: 'ERROR', message, context: msg.type })
+    const message = err instanceof Error ? err.message : String(err);
+    send({ type: "ERROR", message, context: msg.type });
   }
-}
+};
 
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
 
 function send(msg: PluginMessage) {
-  figma.ui.postMessage(msg)
+  figma.ui.postMessage(msg);
 }

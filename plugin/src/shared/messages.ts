@@ -10,9 +10,9 @@
 // ---------------------------------------------------------------------------
 
 export interface GitHubFile {
-  path: string
-  content: string  // decoded UTF-8 content
-  sha: string      // needed for updates
+  path: string;
+  content: string; // decoded UTF-8 content
+  sha: string; // needed for updates
 }
 
 // ---------------------------------------------------------------------------
@@ -20,38 +20,38 @@ export interface GitHubFile {
 // ---------------------------------------------------------------------------
 
 export interface TokenValue {
-  $type: string
-  $value: string
-  $description?: string
+  $type: string;
+  $value: string;
+  $description?: string;
 }
 
 export interface TokenTree {
-  [key: string]: TokenValue | TokenTree
+  [key: string]: TokenValue | TokenTree;
 }
 
 export interface FigmaVariable {
-  id: string
-  name: string
-  resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN'
+  id: string;
+  name: string;
+  resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN";
   /** Raw Figma values per modeId. May be RGBA, number, string, or VariableAlias. */
-  valuesByMode: Record<string, FigmaVariableValue>
-  collectionId: string
-  collectionName: string
+  valuesByMode: Record<string, FigmaVariableValue>;
+  collectionId: string;
+  collectionName: string;
 }
 
 /** Possible raw value types returned by the Figma Variables API. */
 export type FigmaVariableValue =
-  | { r: number; g: number; b: number; a?: number }  // COLOR (alpha optional — Figma returns RGB or RGBA)
-  | number                                             // FLOAT
-  | string                                             // STRING
-  | boolean                                            // BOOLEAN
-  | { type: 'VARIABLE_ALIAS'; id: string }             // alias reference
+  | { r: number; g: number; b: number; a?: number } // COLOR (alpha optional — Figma returns RGB or RGBA)
+  | number // FLOAT
+  | string // STRING
+  | boolean // BOOLEAN
+  | { type: "VARIABLE_ALIAS"; id: string }; // alias reference
 
 export interface FigmaVariableCollection {
-  id: string
-  name: string
-  modes: Array<{ modeId: string; name: string }>
-  variableIds: string[]
+  id: string;
+  name: string;
+  modes: Array<{ modeId: string; name: string }>;
+  variableIds: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -60,43 +60,43 @@ export interface FigmaVariableCollection {
 
 export type PluginMessage =
   | {
-      type: 'COLLECTIONS_LOADED'
-      collections: FigmaVariableCollection[]
-      variables: FigmaVariable[]
+      type: "COLLECTIONS_LOADED";
+      collections: FigmaVariableCollection[];
+      variables: FigmaVariable[];
     }
   | {
-      type: 'TOKENS_APPLIED'
-      count: number
-      removed: number
-      errors: string[]
+      type: "TOKENS_APPLIED";
+      count: number;
+      removed: number;
+      errors: string[];
     }
   | {
-      type: 'STORAGE_LOADED'
-      key: string
-      value: string | null
+      type: "STORAGE_LOADED";
+      key: string;
+      value: string | null;
     }
   | {
-      type: 'ERROR'
-      message: string
-      context?: string
-    }
+      type: "ERROR";
+      message: string;
+      context?: string;
+    };
 
 // ---------------------------------------------------------------------------
 // Messages from UI → Plugin
 // ---------------------------------------------------------------------------
 
 export type UIMessage =
-  | { type: 'GET_COLLECTIONS' }
+  | { type: "GET_COLLECTIONS" }
   | {
-      type: 'APPLY_TOKENS'
-      tokens: TokenTree
+      type: "APPLY_TOKENS";
+      tokens: TokenTree;
       /** Resolved values for tokens that contain {refs} — used as fallback when alias target not found. */
-      resolvedValues?: Record<string, string>
-      collectionId: string
-      modeId: string
-      removedPaths?: string[]  // dot-notation paths of tokens removed from GitHub
-      cleanApply?: boolean     // delete all existing variables first, then recreate sorted
+      resolvedValues?: Record<string, string>;
+      collectionId: string;
+      modeId: string;
+      removedPaths?: string[]; // dot-notation paths of tokens removed from GitHub
+      cleanApply?: boolean; // delete all existing variables first, then recreate sorted
     }
-  | { type: 'LOAD_STORAGE'; key: string }
-  | { type: 'SAVE_STORAGE'; key: string; value: string }
-  | { type: 'CLOSE' }
+  | { type: "LOAD_STORAGE"; key: string }
+  | { type: "SAVE_STORAGE"; key: string; value: string }
+  | { type: "CLOSE" };

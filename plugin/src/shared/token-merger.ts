@@ -19,34 +19,39 @@
  *   semantic/dark.json            ← {dark.*} aliases + direct severity refs
  */
 
-import type { GitHubFile, TokenTree, TokenValue } from './messages'
-import { flattenTokens, resolveAllReferences } from './token-format'
+import type { GitHubFile, TokenTree, TokenValue } from "./messages";
+import { flattenTokens, resolveAllReferences } from "./token-format";
 
 // ---------------------------------------------------------------------------
 // Metadata type
 // ---------------------------------------------------------------------------
 
 export interface Metadata {
-  version: string
+  version: string;
   /** Named theme variants — each becomes a mode in the Themes collection. */
-  themes: string[]
+  themes: string[];
   /** Color scheme modes — each becomes a mode in the Semantic collection (light, dark, contrast…). */
-  colorSchemes: string[]
+  colorSchemes: string[];
   figma: {
-    fileKey: string
-    collections: { primitives: string; global: string; themes: string; semantic: string }
-  }
+    fileKey: string;
+    collections: { primitives: string; global: string; themes: string; semantic: string };
+  };
 }
 
 const DEFAULT_METADATA: Metadata = {
-  version: '1.0.0',
-  themes: ['default'],
-  colorSchemes: ['light', 'dark'],
+  version: "1.0.0",
+  themes: ["default"],
+  colorSchemes: ["light", "dark"],
   figma: {
-    fileKey: '',
-    collections: { primitives: 'Primitives', global: 'Global', themes: 'Themes', semantic: 'Semantic' },
+    fileKey: "",
+    collections: {
+      primitives: "Primitives",
+      global: "Global",
+      themes: "Themes",
+      semantic: "Semantic",
+    },
   },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Parsed repository structure
@@ -54,18 +59,18 @@ const DEFAULT_METADATA: Metadata = {
 
 export interface ResolvedCollection {
   /** Matches figma collection name from metadata */
-  collectionName: string
+  collectionName: string;
   /** e.g. "Value" for primitives/global, "Original" for themes, "Light" for semantic */
-  modeName: string
+  modeName: string;
   /** Flat, fully-resolved token map: path → { $type, $value } — used for diff comparison */
-  tokens: Record<string, TokenValue>
+  tokens: Record<string, TokenValue>;
   /** Flat, unresolved token map: $value may contain "{light.X}" or "{color.X.N}" refs — used for Figma alias creation */
-  rawTokens: Record<string, TokenValue>
+  rawTokens: Record<string, TokenValue>;
 }
 
 export interface ParsedRepository {
-  metadata: Metadata
-  collections: ResolvedCollection[]
+  metadata: Metadata;
+  collections: ResolvedCollection[];
 }
 
 // ---------------------------------------------------------------------------
@@ -82,84 +87,81 @@ export interface ParsedRepository {
  *   3. Themes (refs primitives) ← must exist before Semantic aliases can resolve
  *   4. Semantic (refs themes + primitives via cross-collection aliases)
  */
-export function parseRepository(
-  files: GitHubFile[],
-  tokensPath: string,
-): ParsedRepository {
-  const stripped = stripTokensPath(files, tokensPath)
+export function parseRepository(files: GitHubFile[], tokensPath: string): ParsedRepository {
+  const stripped = stripTokensPath(files, tokensPath);
 
-  const metadata = parseMetadata(stripped)
-  const layers = buildLayers(stripped)
+  const metadata = parseMetadata(stripped);
+  const layers = buildLayers(stripped);
 
-  const collections: ResolvedCollection[] = []
+  const collections: ResolvedCollection[] = [];
 
   // --- Primitives collection ---
-  const primitivesTree = deepMergeTrees(Object.values(layers.primitives))
-  const primitivesFlatRaw = flattenTokens(primitivesTree)
-  const primitivesFlat = resolveAllReferences(primitivesFlatRaw)
+  const primitivesTree = deepMergeTrees(Object.values(layers.primitives));
+  const primitivesFlatRaw = flattenTokens(primitivesTree);
+  const primitivesFlat = resolveAllReferences(primitivesFlatRaw);
   collections.push({
     collectionName: metadata.figma.collections.primitives,
-    modeName: 'Value',
+    modeName: "Value",
     tokens: primitivesFlat,
     rawTokens: primitivesFlatRaw,
-  })
+  });
 
   // --- Global collection ---
-  const globalTree = mergeTrees(Object.values(layers.global))
-  const globalWithPrimitivesFlat = flattenTokens(mergeTrees([primitivesTree, globalTree]))
-  const globalResolved = resolveAllReferences(globalWithPrimitivesFlat)
-  const globalPaths = Object.keys(flattenTokens(globalTree))
+  const globalTree = mergeTrees(Object.values(layers.global));
+  const globalWithPrimitivesFlat = flattenTokens(mergeTrees([primitivesTree, globalTree]));
+  const globalResolved = resolveAllReferences(globalWithPrimitivesFlat);
+  const globalPaths = Object.keys(flattenTokens(globalTree));
   collections.push({
     collectionName: metadata.figma.collections.global,
-    modeName: 'Value',
+    modeName: "Value",
     tokens: filterByPaths(globalResolved, globalPaths),
     rawTokens: filterByPaths(globalWithPrimitivesFlat, globalPaths),
-  })
+  });
 
   // --- Themes collection (one mode per named theme) ---
   // Each theme file has light.* and dark.* groups referencing Primitives.
   // rawTokens keep {color.X.N} refs so the plugin creates Primitives→Themes cross-collection aliases.
   for (const [themeName, themeTree] of Object.entries(layers.themes)) {
-    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, themeTree]))
-    const fullFlatResolved = resolveAllReferences(fullFlatUnresolved)
-    const themePaths = Object.keys(flattenTokens(themeTree))
+    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, themeTree]));
+    const fullFlatResolved = resolveAllReferences(fullFlatUnresolved);
+    const themePaths = Object.keys(flattenTokens(themeTree));
     collections.push({
       collectionName: metadata.figma.collections.themes,
       modeName: capitalise(themeName),
       tokens: filterByPaths(fullFlatResolved, themePaths),
       rawTokens: filterByPaths(fullFlatUnresolved, themePaths),
-    })
+    });
   }
 
   // --- Semantic collection (one mode per color scheme) ---
   // rawTokens keep {light.*} and {dark.*} refs unresolved so the plugin creates
   // Themes→Semantic cross-collection aliases. Severity tokens ref Primitives directly.
   // Resolved tokens substitute the first theme for diff comparison and display.
-  const firstThemeName = metadata.themes[0] ?? 'default'
-  const defaultThemeTree = layers.themes[firstThemeName] ?? {}
+  const firstThemeName = metadata.themes[0] ?? "default";
+  const defaultThemeTree = layers.themes[firstThemeName] ?? {};
 
   for (const scheme of metadata.colorSchemes) {
-    const schemeTree = layers.semantic[scheme]
-    if (!schemeTree) continue
+    const schemeTree = layers.semantic[scheme];
+    if (!schemeTree) continue;
 
     // rawTokens: no themes tree in merge — {light.*}/{dark.*} refs remain as literal strings
-    const rawFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, schemeTree]))
-    const schemePaths = Object.keys(flattenTokens(schemeTree))
+    const rawFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, schemeTree]));
+    const schemePaths = Object.keys(flattenTokens(schemeTree));
 
     // resolved: include default theme so {light.background.brand} → {color.blue.25} → #hex
     const resolvedFlat = resolveAllReferences(
-      flattenTokens(mergeTrees([primitivesTree, defaultThemeTree, globalTree, schemeTree]))
-    )
+      flattenTokens(mergeTrees([primitivesTree, defaultThemeTree, globalTree, schemeTree])),
+    );
 
     collections.push({
       collectionName: metadata.figma.collections.semantic,
       modeName: capitalise(scheme),
       tokens: filterByPaths(resolvedFlat, schemePaths),
       rawTokens: filterByPaths(rawFlatUnresolved, schemePaths),
-    })
+    });
   }
 
-  return { metadata, collections }
+  return { metadata, collections };
 }
 
 // ---------------------------------------------------------------------------
@@ -167,46 +169,46 @@ export function parseRepository(
 // ---------------------------------------------------------------------------
 
 interface Layers {
-  primitives: Record<string, TokenTree>
-  global: Record<string, TokenTree>
+  primitives: Record<string, TokenTree>;
+  global: Record<string, TokenTree>;
   /** themeName → tree (semantic/themes/{name}.json) */
-  themes: Record<string, TokenTree>
+  themes: Record<string, TokenTree>;
   /** colorScheme → tree (semantic/light.json, semantic/dark.json, …) */
-  semantic: Record<string, TokenTree>
+  semantic: Record<string, TokenTree>;
 }
 
 function buildLayers(files: Map<string, string>): Layers {
-  const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {} }
+  const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {} };
 
   for (const [path, content] of files) {
-    if (path === 'metadata.json') continue
+    if (path === "metadata.json") continue;
 
-    let tree: TokenTree
+    let tree: TokenTree;
     try {
-      tree = JSON.parse(content) as TokenTree
+      tree = JSON.parse(content) as TokenTree;
     } catch {
-      console.warn(`[TokenSync] Failed to parse ${path}`)
-      continue
+      console.warn(`[TokenSync] Failed to parse ${path}`);
+      continue;
     }
 
-    const parts = path.replace('.json', '').split('/')
+    const parts = path.replace(".json", "").split("/");
 
-    if (parts[0] === 'primitives') {
-      layers.primitives[parts[1]] = tree
-    } else if (parts[0] === 'semantic' && parts[1] === 'global') {
-      layers.global[parts[2]] = tree
-    } else if (parts[0] === 'semantic' && parts[1] === 'themes') {
+    if (parts[0] === "primitives") {
+      layers.primitives[parts[1]] = tree;
+    } else if (parts[0] === "semantic" && parts[1] === "global") {
+      layers.global[parts[2]] = tree;
+    } else if (parts[0] === "semantic" && parts[1] === "themes") {
       // semantic/themes/{themeName}.json — one file per named theme
-      layers.semantic[parts[2]] = layers.semantic[parts[2]] // keep TS happy
-      layers.themes[parts[2]] = tree
-    } else if (parts[0] === 'semantic' && parts.length === 2) {
+      layers.semantic[parts[2]] = layers.semantic[parts[2]]; // keep TS happy
+      layers.themes[parts[2]] = tree;
+    } else if (parts[0] === "semantic" && parts.length === 2) {
       // semantic/{colorScheme}.json — light.json, dark.json, contrast.json, …
-      layers.semantic[parts[1]] = tree
+      layers.semantic[parts[1]] = tree;
     }
     // Any other path (e.g. unrecognised subdirectories) is silently ignored.
   }
 
-  return layers
+  return layers;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,19 +217,19 @@ function buildLayers(files: Map<string, string>): Layers {
 
 /** Shallow-merge multiple TokenTree objects (later wins at key level). */
 function mergeTrees(trees: TokenTree[]): TokenTree {
-  const result: TokenTree = {}
+  const result: TokenTree = {};
   for (const tree of trees) {
     for (const [k, v] of Object.entries(tree)) {
-      if (k.startsWith('$')) continue
-      result[k] = v
+      if (k.startsWith("$")) continue;
+      result[k] = v;
     }
   }
-  return result
+  return result;
 }
 
 /** Deep-merge multiple TokenTree objects. */
 function deepMergeTrees(trees: TokenTree[]): TokenTree {
-  return trees.reduce<TokenTree>((acc, tree) => deepMergeTokenTrees(acc, tree), {})
+  return trees.reduce<TokenTree>((acc, tree) => deepMergeTokenTrees(acc, tree), {});
 }
 
 /**
@@ -235,24 +237,17 @@ function deepMergeTrees(trees: TokenTree[]): TokenTree {
  * the override wins. Groups are merged recursively.
  */
 function deepMergeTokenTrees(base: TokenTree, override: TokenTree): TokenTree {
-  const result: TokenTree = { ...base }
+  const result: TokenTree = { ...base };
   for (const [key, value] of Object.entries(override)) {
-    if (key.startsWith('$')) continue
-    const baseValue = base[key]
-    if (
-      baseValue &&
-      !('$value' in baseValue) &&
-      !('$value' in (value as object))
-    ) {
-      result[key] = deepMergeTokenTrees(
-        baseValue as TokenTree,
-        value as TokenTree,
-      )
+    if (key.startsWith("$")) continue;
+    const baseValue = base[key];
+    if (baseValue && !("$value" in baseValue) && !("$value" in (value as object))) {
+      result[key] = deepMergeTokenTrees(baseValue as TokenTree, value as TokenTree);
     } else {
-      result[key] = value
+      result[key] = value;
     }
   }
-  return result
+  return result;
 }
 
 /** Keep only the paths that appear in the allowlist. */
@@ -260,8 +255,8 @@ function filterByPaths(
   flat: Record<string, TokenValue>,
   paths: string[],
 ): Record<string, TokenValue> {
-  const set = new Set(paths)
-  return Object.fromEntries(Object.entries(flat).filter(([k]) => set.has(k)))
+  const set = new Set(paths);
+  return Object.fromEntries(Object.entries(flat).filter(([k]) => set.has(k)));
 }
 
 // ---------------------------------------------------------------------------
@@ -269,21 +264,21 @@ function filterByPaths(
 // ---------------------------------------------------------------------------
 
 function parseMetadata(files: Map<string, string>): Metadata {
-  const raw = files.get('metadata.json')
-  if (!raw) return DEFAULT_METADATA
+  const raw = files.get("metadata.json");
+  if (!raw) return DEFAULT_METADATA;
   try {
-    const parsed = JSON.parse(raw) as Partial<Metadata> & { brands?: string[] }
+    const parsed = JSON.parse(raw) as Partial<Metadata> & { brands?: string[] };
 
     // Support legacy 'brands' field (renamed to 'themes')
-    const themes = parsed.themes ?? parsed.brands ?? DEFAULT_METADATA.themes
-    const colorSchemes = parsed.colorSchemes ?? DEFAULT_METADATA.colorSchemes
+    const themes = parsed.themes ?? parsed.brands ?? DEFAULT_METADATA.themes;
+    const colorSchemes = parsed.colorSchemes ?? DEFAULT_METADATA.colorSchemes;
 
     const merged: Metadata = {
       ...DEFAULT_METADATA,
       ...parsed,
       themes,
       colorSchemes,
-    }
+    };
     if (parsed.figma) {
       merged.figma = {
         ...DEFAULT_METADATA.figma,
@@ -292,11 +287,11 @@ function parseMetadata(files: Map<string, string>): Metadata {
           ...DEFAULT_METADATA.figma.collections,
           ...parsed.figma.collections,
         },
-      }
+      };
     }
-    return merged
+    return merged;
   } catch {
-    return DEFAULT_METADATA
+    return DEFAULT_METADATA;
   }
 }
 
@@ -306,16 +301,16 @@ function parseMetadata(files: Map<string, string>): Metadata {
 
 /** Strip the tokensPath prefix from all file paths and return a name→content map. */
 function stripTokensPath(files: GitHubFile[], tokensPath: string): Map<string, string> {
-  const prefix = tokensPath.endsWith('/') ? tokensPath : tokensPath + '/'
-  const map = new Map<string, string>()
+  const prefix = tokensPath.endsWith("/") ? tokensPath : tokensPath + "/";
+  const map = new Map<string, string>();
   for (const f of files) {
     if (f.path.startsWith(prefix)) {
-      map.set(f.path.slice(prefix.length), f.content)
+      map.set(f.path.slice(prefix.length), f.content);
     }
   }
-  return map
+  return map;
 }
 
 function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { viteSingleFile } from 'vite-plugin-singlefile'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { viteSingleFile } from "vite-plugin-singlefile";
 
 /**
  * Builds the React UI into a single self-contained index.html.
@@ -10,15 +10,15 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
   build: {
-    outDir: 'dist',
+    outDir: "dist",
     emptyOutDir: false, // plugin/main.js is written separately by esbuild
-    target: 'es6',
+    target: "es6",
     rollupOptions: {
-      input: 'index.html',
+      input: "index.html",
       output: {
-        format: 'iife',  // no <script type="module"> — required for Figma plugin iframe
+        format: "iife", // no <script type="module"> — required for Figma plugin iframe
         inlineDynamicImports: true,
       },
     },
   },
-})
+});

@@ -7,47 +7,45 @@
  *   export type Theme = keyof typeof tokens
  */
 
-import type { ResolvedCollection } from '../token-merger'
-import type { TokenValue } from '../messages'
+import type { ResolvedCollection } from "../token-merger";
+import type { TokenValue } from "../messages";
 
 export function generateJS(collections: ResolvedCollection[]): string {
-  const blocks: string[] = [jsHeader()]
+  const blocks: string[] = [jsHeader()];
 
   const primitives = collections.find(
-    (c) => c.modeName === 'Value' && c.collectionName.toLowerCase() === 'primitives',
-  )
+    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "primitives",
+  );
   const global = collections.find(
-    (c) => c.modeName === 'Value' && c.collectionName.toLowerCase() === 'global',
-  )
+    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "global",
+  );
   const semantic = collections.filter(
-    (c) => c.collectionName.toLowerCase() !== 'primitives' && c.collectionName.toLowerCase() !== 'global',
-  )
+    (c) =>
+      c.collectionName.toLowerCase() !== "primitives" &&
+      c.collectionName.toLowerCase() !== "global",
+  );
 
   if (primitives) {
-    blocks.push(
-      `export const primitives = ${flatToNested(primitives.tokens)} as const`,
-    )
+    blocks.push(`export const primitives = ${flatToNested(primitives.tokens)} as const`);
   }
 
   if (global) {
-    blocks.push(
-      `export const globalTokens = ${flatToNested(global.tokens)} as const`,
-    )
+    blocks.push(`export const globalTokens = ${flatToNested(global.tokens)} as const`);
   }
 
   if (semantic.length > 0) {
     const modeEntries = semantic
       .map((col) => {
-        const key = modeKey(col.modeName)
-        return `  ${key}: ${flatToNested(col.tokens)}`
+        const key = modeKey(col.modeName);
+        return `  ${key}: ${flatToNested(col.tokens)}`;
       })
-      .join(',\n')
+      .join(",\n");
 
-    blocks.push(`export const tokens = {\n${modeEntries}\n} as const`)
-    blocks.push(`export type Theme = keyof typeof tokens`)
+    blocks.push(`export const tokens = {\n${modeEntries}\n} as const`);
+    blocks.push(`export type Theme = keyof typeof tokens`);
   }
 
-  return blocks.join('\n\n') + '\n'
+  return blocks.join("\n\n") + "\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -56,64 +54,64 @@ export function generateJS(collections: ResolvedCollection[]): string {
 
 /** Convert flat token map to nested JS object literal string */
 function flatToNested(tokens: Record<string, TokenValue>): string {
-  const nested: Record<string, unknown> = {}
+  const nested: Record<string, unknown> = {};
 
   for (const [path, token] of Object.entries(tokens)) {
-    const keys = path.split('.')
+    const keys = path.split(".");
     // Boolean tokens are stored as "true"/"false" strings in JSON — convert to JS boolean
-    const value = token.$type === 'boolean' ? token.$value === 'true' : token.$value
-    setNested(nested, keys, value)
+    const value = token.$type === "boolean" ? token.$value === "true" : token.$value;
+    setNested(nested, keys, value);
   }
 
-  return serialize(nested, 0)
+  return serialize(nested, 0);
 }
 
 function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): void {
-  let current = obj
+  let current = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    const k = safeKey(keys[i])
-    if (typeof current[k] !== 'object' || current[k] === null) {
-      current[k] = {}
+    const k = safeKey(keys[i]);
+    if (typeof current[k] !== "object" || current[k] === null) {
+      current[k] = {};
     }
-    current = current[k] as Record<string, unknown>
+    current = current[k] as Record<string, unknown>;
   }
-  current[safeKey(keys[keys.length - 1])] = value
+  current[safeKey(keys[keys.length - 1])] = value;
 }
 
 function safeKey(k: string): string {
   // Wrap numeric-ish keys: "500" → keep as-is (valid as quoted property)
-  return k
+  return k;
 }
 
 function serialize(obj: unknown, indent: number): string {
-  if (typeof obj === 'string') return JSON.stringify(obj)
-  if (typeof obj === 'number') return String(obj)
-  if (typeof obj === 'boolean') return String(obj)
-  if (typeof obj !== 'object' || obj === null) return String(obj)
+  if (typeof obj === "string") return JSON.stringify(obj);
+  if (typeof obj === "number") return String(obj);
+  if (typeof obj === "boolean") return String(obj);
+  if (typeof obj !== "object" || obj === null) return String(obj);
 
-  const pad = '  '.repeat(indent + 1)
-  const closePad = '  '.repeat(indent)
-  const entries = Object.entries(obj as Record<string, unknown>)
-  if (entries.length === 0) return '{}'
+  const pad = "  ".repeat(indent + 1);
+  const closePad = "  ".repeat(indent);
+  const entries = Object.entries(obj as Record<string, unknown>);
+  if (entries.length === 0) return "{}";
 
   const lines = entries.map(([k, v]) => {
-    const key = /^\d/.test(k) ? `"${k}"` : k
-    return `${pad}${key}: ${serialize(v, indent + 1)}`
-  })
+    const key = /^\d/.test(k) ? `"${k}"` : k;
+    return `${pad}${key}: ${serialize(v, indent + 1)}`;
+  });
 
-  return `{\n${lines.join(',\n')}\n${closePad}}`
+  return `{\n${lines.join(",\n")}\n${closePad}}`;
 }
 
 function modeKey(modeName: string): string {
   // "Light" → "light", "Default/Light" → "light", "Brand-A/Dark" → "brandA_dark"
-  const parts = modeName.split('/')
-  if (parts.length === 1) return parts[0].toLowerCase()
+  const parts = modeName.split("/");
+  if (parts.length === 1) return parts[0].toLowerCase();
 
-  const brand = parts[0].toLowerCase().replace(/[^a-z0-9]+(.)/g, (_, c: string) => c.toUpperCase())
-  const theme = parts[1].toLowerCase()
-  return brand === 'default' ? theme : `${brand}_${theme}`
+  const brand = parts[0].toLowerCase().replace(/[^a-z0-9]+(.)/g, (_, c: string) => c.toUpperCase());
+  const theme = parts[1].toLowerCase();
+  return brand === "default" ? theme : `${brand}_${theme}`;
 }
 
 function jsHeader(): string {
-  return `/**\n * Design tokens — generated by Token Sync\n * Do not edit manually.\n */`
+  return `/**\n * Design tokens — generated by Token Sync\n * Do not edit manually.\n */`;
 }
