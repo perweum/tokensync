@@ -199,7 +199,6 @@ function buildLayers(files: Map<string, string>): Layers {
       layers.global[parts[2]] = tree;
     } else if (parts[0] === "semantic" && parts[1] === "themes") {
       // semantic/themes/{themeName}.json — one file per named theme
-      layers.semantic[parts[2]] = layers.semantic[parts[2]]; // keep TS happy
       layers.themes[parts[2]] = tree;
     } else if (parts[0] === "semantic" && parts.length === 2) {
       // semantic/{colorScheme}.json — light.json, dark.json, contrast.json, …

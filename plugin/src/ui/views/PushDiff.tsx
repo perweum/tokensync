@@ -25,7 +25,8 @@ export function PushDiff({ diffs, onCreatePR, onBack, creating }: Props) {
   function toggleKey(key: string) {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -174,7 +175,8 @@ function DiffList({ entries }: { entries: DiffEntry[] }) {
   function toggle(cat: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      next.has(cat) ? next.delete(cat) : next.add(cat);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
       return next;
     });
   }
