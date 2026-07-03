@@ -39,6 +39,7 @@ export async function getCollectionsAndVariables(): Promise<{
     valuesByMode: v.valuesByMode,
     collectionId: v.variableCollectionId,
     collectionName: rawCollections.find((c) => c.id === v.variableCollectionId)?.name ?? "",
+    description: v.description,
   }));
 
   return { collections, variables };

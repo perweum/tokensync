@@ -9,7 +9,7 @@ import { fetchTokenFiles, fetchBranches, createBranch, createTokenPR } from "../
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
-import type { ParsedRepository } from "../../shared/token-merger";
+import type { ParsedRepository, Metadata } from "../../shared/token-merger";
 import { buildCollectionDiff } from "../../shared/token-diff";
 import { figmaToCollections, figmaToTokenFiles } from "../../shared/figma-to-tokens";
 import type { CollectionDiff } from "../../shared/token-diff";
@@ -83,12 +83,16 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   const send = useSendMessage();
 
-  const figmaCollectionNames = {
+  const [metadata, setMetadata] = useState<Metadata | null>(null);
+
+  const DEFAULT_COLLECTIONS = {
     primitives: "Primitives",
     global: "Global",
     themes: "Themes",
     semantic: "Semantic",
   };
+
+  const figmaCollectionNames = metadata?.figma?.collections ?? DEFAULT_COLLECTIONS;
 
   // ---------------------------------------------------------------------------
   // Last sync state — load on mount, save after successful operations
@@ -230,6 +234,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setStatus({ kind: "loading", message: `Parsing ${files.length} token files…` });
       const parsed = parseRepository(files, project.tokensPath);
       pendingGitHub.current = parsed;
+      setMetadata(parsed.metadata);
 
       setStatus({ kind: "loading", message: "Reading Figma variables…" });
       pendingAction.current = "pull";
@@ -250,7 +255,19 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     const figmaMaps = buildFigmaFlatMaps(figmaCollections, figmaVariables);
 
-    const result = github.collections.map((githubCol) => {
+    const ignoredKeys = github.metadata.ignoredCollections ?? [];
+    const isIgnored = (collectionName: string) => {
+      const key = Object.keys(figmaCollectionNames).find(
+        (k) => figmaCollectionNames[k as keyof typeof figmaCollectionNames] === collectionName,
+      );
+      return key && ignoredKeys.includes(key);
+    };
+
+    const filteredGithubCollections = github.collections.filter(
+      (c) => !isIgnored(c.collectionName),
+    );
+
+    const result = filteredGithubCollections.map((githubCol) => {
       const figmaMap = figmaMaps.find(
         (m) => m.collectionName === githubCol.collectionName && m.modeName === githubCol.modeName,
       );
@@ -387,6 +404,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     // GitHub side: parse existing token files
     const githubParsed = parseRepository(githubFiles, project.tokensPath);
     pendingParsed.current = githubParsed;
+    setMetadata(githubParsed.metadata);
 
     // Figma side: convert to same ResolvedCollection shape
     const figmaCollectionData = figmaToCollections(
@@ -398,9 +416,21 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     // Keep raw data for writing complete token files to GitHub (not just diff entries)
     pendingFigmaRaw.current = { collections: figmaCollections, variables: figmaVariables };
 
+    const ignoredKeys = githubParsed.metadata.ignoredCollections ?? [];
+    const isIgnored = (collectionName: string) => {
+      const key = Object.keys(figmaCollectionNames).find(
+        (k) => figmaCollectionNames[k as keyof typeof figmaCollectionNames] === collectionName,
+      );
+      return key && ignoredKeys.includes(key);
+    };
+
+    const filteredFigmaCollectionData = figmaCollectionData.filter(
+      (c) => !isIgnored(c.collectionName),
+    );
+
     // Diff: Figma (new) vs GitHub (current)
     // githubValue = current state in GitHub, figmaValue = new state from Figma
-    const result: CollectionDiff[] = figmaCollectionData.map((figmaCol) => {
+    const result: CollectionDiff[] = filteredFigmaCollectionData.map((figmaCol) => {
       const githubCol = githubParsed.collections.find(
         (c) => c.collectionName === figmaCol.collectionName && c.modeName === figmaCol.modeName,
       );

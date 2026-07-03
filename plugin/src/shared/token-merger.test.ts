@@ -121,6 +121,17 @@ describe("parseRepository — metadata", () => {
     );
     expect(metadata.themes).toEqual(["classic", "modern"]);
   });
+
+  it("reads ignoredCollections from metadata.json", () => {
+    const meta = {
+      ignoredCollections: ["primitives", "global"],
+    };
+    const { metadata } = parseRepository(
+      [...makeFiles(), file("tokens/metadata.json", meta)],
+      tokensPath,
+    );
+    expect(metadata.ignoredCollections).toEqual(["primitives", "global"]);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────

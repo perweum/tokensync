@@ -11,23 +11,16 @@
  *   class DesignTokensDark { ... }
  */
 
-import type { ResolvedCollection } from "../token-merger";
+import type { ResolvedCollection, Metadata } from "../token-merger";
 import type { TokenValue } from "../messages";
 
-export function generateDart(collections: ResolvedCollection[]): string {
+export function generateDart(collections: ResolvedCollection[], metadata: Metadata): string {
   const blocks: string[] = [dartHeader()];
 
-  const primitives = collections.find(
-    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "primitives",
-  );
-  const global = collections.find(
-    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "global",
-  );
-  const semantic = collections.filter(
-    (c) =>
-      c.collectionName.toLowerCase() !== "primitives" &&
-      c.collectionName.toLowerCase() !== "global",
-  );
+  const names = metadata.figma.collections;
+  const primitives = collections.find((c) => c.collectionName === names.primitives);
+  const global = collections.find((c) => c.collectionName === names.global);
+  const semantic = collections.filter((c) => c.collectionName === names.semantic);
 
   if (primitives) {
     blocks.push(dartClass("DesignTokensPrimitives", primitives.tokens));

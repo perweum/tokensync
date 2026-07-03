@@ -116,16 +116,23 @@ References use `{dot.path.notation}` and resolve across all files in the token t
 
 ## For developers
 
-### What you get
-
-When tokens are built, you get a single CSS file that supports all themes and both color schemes via data attributes:
+When tokens are built, you get CSS, JS/TS, Dart, and Swift assets compiled sibling to your token repository:
 
 ```
 dist/
-  tokens.css     CSS custom properties (all themes + color schemes)
-  light.ts       TypeScript constants (default theme, light)
-  dark.ts        TypeScript constants (default theme, dark)
+  tokens.css       CSS custom properties (all themes + color schemes)
+  light.ts         TypeScript constants (default theme, light)
+  dark.ts          TypeScript constants (default theme, dark)
+  light.js         JavaScript constants (default theme, light)
+  dark.js          JavaScript constants (default theme, dark)
+ios/
+  light.swift      Swift constants (default theme, light)
+  dark.swift       Swift constants (default theme, dark)
+lib/src/
+  design_tokens.dart Dart constants (all themes + color schemes)
 ```
+
+Both JS, TS, and Swift support **combined mode** (generating a single file containing all collections) or **split mode** (generating separate files for each color scheme by using `{colorScheme}` in the output path template).
 
 ### Web — theme and color scheme switching
 
@@ -374,6 +381,38 @@ ThemeData _buildTheme(dynamic t) => ThemeData(
 
 ---
 
+### iOS / SwiftUI
+
+```swift
+// ios/light.swift (generated)
+import SwiftUI
+
+public struct DesignTokensPrimitives {
+    public static let colorBrand500: Color = Color(hex: "#1A52D8")
+}
+
+public struct DesignTokens {
+    public static let backgroundDefault: Color = Color(hex: "#FFFFFF")
+    public static let radiusMd: Double = 8.0
+}
+```
+
+```swift
+// SwiftUI Example
+import SwiftUI
+
+struct MyView: View {
+    var body: some View {
+        Text("Hello, World!")
+            .padding()
+            .background(DesignTokens.backgroundDefault)
+            .cornerRadius(DesignTokens.radiusMd)
+    }
+}
+```
+
+---
+
 ### Web Components / Vanilla JS
 
 Works the same as plain web — import CSS, use custom properties. No framework needed.
@@ -498,9 +537,10 @@ The two tools are separate but designed to work together:
 | CSS platform transformer | Done |
 | JS / TypeScript platform transformer | Done |
 | Dart (Flutter) platform transformer | Done |
-| Swift platform transformer | Planned |
+| Swift platform transformer | Done |
 | Branch switching per project | Done |
-| Boolean and string token types in diff | Planned |
-| `$description` shown in diff UI | Planned |
+| Boolean and string token types in diff | Done |
+| `$description` syncing | Done |
+| Dynamic metadata-driven collection naming | Done |
 | Figma Styles export | Not planned |
 | GitLab / Azure DevOps provider | Not planned |

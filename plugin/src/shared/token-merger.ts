@@ -36,6 +36,7 @@ export interface Metadata {
     fileKey: string;
     collections: { primitives: string; global: string; themes: string; semantic: string };
   };
+  ignoredCollections?: string[];
 }
 
 const DEFAULT_METADATA: Metadata = {
@@ -51,6 +52,7 @@ const DEFAULT_METADATA: Metadata = {
       semantic: "Semantic",
     },
   },
+  ignoredCollections: [],
 };
 
 // ---------------------------------------------------------------------------

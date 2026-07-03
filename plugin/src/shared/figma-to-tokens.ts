@@ -109,7 +109,11 @@ function buildFlatTokens(
     const $value = rawToTokenValue(raw, $type, varById);
     if ($value === null) continue;
 
-    result[path] = { $type, $value };
+    result[path] = {
+      $type,
+      $value,
+      ...(v.description ? { $description: v.description } : {}),
+    };
   }
 
   return result;
@@ -214,19 +218,9 @@ function buildSemanticFile(
 ): TokenFile | null {
   if (vars.length === 0) return null;
 
-  const { brand, theme } = parseModeName(mode.name);
-
-  if (brand === "default") {
-    // Flat layout: semantic/light.json, semantic/dark.json
-    return {
-      repoPath: joinPath(tokensPath, "semantic", `${theme}.json`),
-      content: buildJsonFile(vars, mode.modeId, varById),
-    };
-  }
-
-  // Legacy brand-qualified modes → semantic/{brand}/{theme}.json
+  const theme = mode.name.toLowerCase();
   return {
-    repoPath: joinPath(tokensPath, "semantic", brand, `${theme}.json`),
+    repoPath: joinPath(tokensPath, "semantic", `${theme}.json`),
     content: buildJsonFile(vars, mode.modeId, varById),
   };
 }
@@ -251,7 +245,11 @@ function buildJsonFile(
     if ($value === null) continue;
 
     const path = fromFigmaVarName(v.name);
-    setNested(tree, path.split("."), { $type, $value });
+    const entry: Record<string, any> = { $type, $value };
+    if (v.description) {
+      entry.$description = v.description;
+    }
+    setNested(tree, path.split("."), entry);
   }
 
   return JSON.stringify(tree, null, 2);
@@ -361,16 +359,6 @@ function groupByFirstSegment(vars: FigmaVariable[]): Record<string, FigmaVariabl
 
 function firstSegment(varName: string): string {
   return varName.split("/")[0];
-}
-
-function parseModeName(modeName: string): { brand: string; theme: string } {
-  const parts = modeName.split("/");
-  if (parts.length === 1) {
-    return { brand: "default", theme: parts[0].toLowerCase() };
-  }
-  const brand = parts[0].toLowerCase().replace(/\s+/g, "-");
-  const theme = parts[1].toLowerCase();
-  return { brand: brand === "default" ? "default" : brand, theme };
 }
 
 function joinPath(...parts: string[]): string {

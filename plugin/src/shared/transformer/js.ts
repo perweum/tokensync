@@ -7,23 +7,37 @@
  *   export type Theme = keyof typeof tokens
  */
 
-import type { ResolvedCollection } from "../token-merger";
+import type { ResolvedCollection, Metadata } from "../token-merger";
 import type { TokenValue } from "../messages";
 
-export function generateJS(collections: ResolvedCollection[]): string {
+export function generateSchemeJS(
+  primitivesCol: ResolvedCollection | undefined,
+  globalCol: ResolvedCollection | undefined,
+  schemeCol: ResolvedCollection,
+): string {
   const blocks: string[] = [jsHeader()];
 
-  const primitives = collections.find(
-    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "primitives",
-  );
-  const global = collections.find(
-    (c) => c.modeName === "Value" && c.collectionName.toLowerCase() === "global",
-  );
-  const semantic = collections.filter(
-    (c) =>
-      c.collectionName.toLowerCase() !== "primitives" &&
-      c.collectionName.toLowerCase() !== "global",
-  );
+  if (primitivesCol) {
+    blocks.push(`export const primitives = ${flatToNested(primitivesCol.tokens)} as const`);
+  }
+
+  const mergedTokens: Record<string, TokenValue> = {
+    ...(globalCol?.tokens ?? {}),
+    ...schemeCol.tokens,
+  };
+
+  blocks.push(`export const tokens = ${flatToNested(mergedTokens)} as const`);
+
+  return blocks.join("\n\n") + "\n";
+}
+
+export function generateJS(collections: ResolvedCollection[], metadata: Metadata): string {
+  const blocks: string[] = [jsHeader()];
+
+  const names = metadata.figma.collections;
+  const primitives = collections.find((c) => c.collectionName === names.primitives);
+  const global = collections.find((c) => c.collectionName === names.global);
+  const semantic = collections.filter((c) => c.collectionName === names.semantic);
 
   if (primitives) {
     blocks.push(`export const primitives = ${flatToNested(primitives.tokens)} as const`);

@@ -37,6 +37,7 @@ export interface FigmaVariable {
   valuesByMode: Record<string, FigmaVariableValue>;
   collectionId: string;
   collectionName: string;
+  description?: string;
 }
 
 /** Possible raw value types returned by the Figma Variables API. */
