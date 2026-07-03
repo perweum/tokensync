@@ -124,6 +124,7 @@ export async function applyTokensToCollection(
 
     // Remove every mode except the one we are about to populate.
     // Wrap each removal in try-catch: Figma may reject removal of the last mode.
+    // oxlint-disable-next-line unicorn/no-useless-spread -- removeMode mutates collection.modes mid-iteration; iterate a snapshot
     for (const existingMode of [...collection.modes]) {
       if (existingMode.modeId === modeId) continue;
       try {

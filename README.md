@@ -132,7 +132,7 @@ lib/src/
   design_tokens.dart Dart constants (all themes + color schemes)
 ```
 
-Both JS, TS, and Swift support **combined mode** (generating a single file containing all collections) or **split mode** (generating separate files for each color scheme by using `{colorScheme}` in the output path template).
+The JS, TS, Dart, and Swift transformers support **combined mode** (a single file containing all collections, including per-theme constants) or **split mode** (separate files per color scheme, resolved through the default theme, by using `{colorScheme}` in the output path template).
 
 ### Web — theme and color scheme switching
 
@@ -461,6 +461,10 @@ GitHub is always the source of truth. If Figma and GitHub conflict, GitHub wins.
 
 No changes to `light.json` or `dark.json` are required. Severity tokens are not part of themes and never need to change.
 
+### Ignoring collections during sync
+
+Add `"ignoredCollections": ["primitives"]` to `metadata.json` to exclude layers from pull and push diffs. Entries are layer keys — `primitives`, `global`, `themes`, or `semantic`. Useful for read-only core collections managed elsewhere (e.g. Themebuilder-generated primitives). Platform output (CSS, JS, Dart, Swift) still includes ignored collections so references resolve.
+
 ### First-time project setup
 
 1. Copy this repo as a template
@@ -540,7 +544,7 @@ The two tools are separate but designed to work together:
 | Swift platform transformer | Done |
 | Branch switching per project | Done |
 | Boolean and string token types in diff | Done |
-| `$description` syncing | Done |
+| `$description` export (Figma → GitHub) | Done |
 | Dynamic metadata-driven collection naming | Done |
 | Figma Styles export | Not planned |
 | GitLab / Azure DevOps provider | Not planned |

@@ -14,12 +14,34 @@
 import type { ResolvedCollection, Metadata } from "../token-merger";
 import type { TokenValue } from "../messages";
 
+export function generateSchemeDart(
+  primitivesCol: ResolvedCollection | undefined,
+  globalCol: ResolvedCollection | undefined,
+  schemeCol: ResolvedCollection,
+): string {
+  const blocks: string[] = [dartHeader()];
+
+  if (primitivesCol) {
+    blocks.push(dartClass("DesignTokensPrimitives", primitivesCol.tokens));
+  }
+
+  const mergedTokens: Record<string, TokenValue> = {
+    ...globalCol?.tokens,
+    ...schemeCol.tokens,
+  };
+
+  blocks.push(dartClass("DesignTokens", mergedTokens));
+
+  return blocks.join("\n\n") + "\n";
+}
+
 export function generateDart(collections: ResolvedCollection[], metadata: Metadata): string {
   const blocks: string[] = [dartHeader()];
 
   const names = metadata.figma.collections;
   const primitives = collections.find((c) => c.collectionName === names.primitives);
   const global = collections.find((c) => c.collectionName === names.global);
+  const themes = collections.filter((c) => c.collectionName === names.themes);
   const semantic = collections.filter((c) => c.collectionName === names.semantic);
 
   if (primitives) {
@@ -27,6 +49,9 @@ export function generateDart(collections: ResolvedCollection[], metadata: Metada
   }
   if (global) {
     blocks.push(dartClass("DesignTokensGlobal", global.tokens));
+  }
+  for (const col of themes) {
+    blocks.push(dartClass("DesignTokensTheme" + dartClassName(col.modeName), col.tokens));
   }
   for (const col of semantic) {
     const className = "DesignTokens" + dartClassName(col.modeName);
@@ -82,23 +107,21 @@ function toDartValue(token: TokenValue): string | null {
   }
 
   // Dimension: "16px" → 16.0
-  const pxMatch = v.match(/^([\d.]+)px$/);
+  const pxMatch = v.match(/^(\d+(?:\.\d+)?)px$/);
   if (pxMatch) return `${parseFloat(pxMatch[1])}`;
 
   // Number string
-  if (/^[\d.]+$/.test(v)) return v;
+  if (/^\d+(\.\d+)?$/.test(v)) return v;
 
   // String
-  if (typeof v === "string") return `'${v.replace(/'/g, "\\'")}'`;
-
-  return null;
+  return `'${v.replace(/'/g, "\\'")}'`;
 }
 
 function dartType(token: TokenValue): string {
   if (token.$type === "boolean") return "bool";
   const v = token.$value;
   if (v.startsWith("#") || v.startsWith("rgba(")) return "Color";
-  if (/^[\d.]+px$/.test(v) || /^[\d.]+$/.test(v)) return "double";
+  if (/^\d+(\.\d+)?(px)?$/.test(v)) return "double";
   return "String";
 }
 

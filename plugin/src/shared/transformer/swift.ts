@@ -47,9 +47,13 @@ function toSwiftValue(token: TokenValue): string | null {
   if (token.$type === "boolean") return v === "true" ? "true" : "false";
 
   // Color: #rrggbb or #rrggbbaa
+  // Token hex is CSS-ordered (#RRGGBBAA); the Color(hex:) helper parses 8 digits
+  // as AARRGGBB, so the alpha byte must move to the front.
   const hexMatch = v.match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i);
   if (hexMatch) {
-    return `Color(hex: "${v.toUpperCase()}")`;
+    const [, rgb, alpha] = hexMatch;
+    const swiftHex = alpha ? `#${alpha}${rgb}` : `#${rgb}`;
+    return `Color(hex: "${swiftHex.toUpperCase()}")`;
   }
 
   // Color: rgba(r, g, b, a)
@@ -60,23 +64,21 @@ function toSwiftValue(token: TokenValue): string | null {
   }
 
   // Dimension: "16px" → 16.0
-  const pxMatch = v.match(/^([\d.]+)px$/);
+  const pxMatch = v.match(/^(\d+(?:\.\d+)?)px$/);
   if (pxMatch) return `${parseFloat(pxMatch[1])}`;
 
   // Number string
-  if (/^[\d.]+$/.test(v)) return v;
+  if (/^\d+(\.\d+)?$/.test(v)) return v;
 
   // String
-  if (typeof v === "string") return `"${v.replace(/"/g, '\\"')}"`;
-
-  return null;
+  return `"${v.replace(/"/g, '\\"')}"`;
 }
 
 function swiftType(token: TokenValue): string {
   if (token.$type === "boolean") return "Bool";
   const v = token.$value;
   if (v.startsWith("#") || v.startsWith("rgba(")) return "Color";
-  if (/^[\d.]+px$/.test(v) || /^[\d.]+$/.test(v)) return "Double";
+  if (/^\d+(\.\d+)?(px)?$/.test(v)) return "Double";
   return "String";
 }
 
@@ -138,7 +140,7 @@ export function generateSchemeSwift(
   }
 
   const mergedTokens: Record<string, TokenValue> = {
-    ...(globalCol?.tokens ?? {}),
+    ...globalCol?.tokens,
     ...schemeCol.tokens,
   };
 
@@ -154,6 +156,7 @@ export function generateSwift(collections: ResolvedCollection[], metadata: Metad
   const names = metadata.figma.collections;
   const primitives = collections.find((c) => c.collectionName === names.primitives);
   const global = collections.find((c) => c.collectionName === names.global);
+  const themes = collections.filter((c) => c.collectionName === names.themes);
   const semantic = collections.filter((c) => c.collectionName === names.semantic);
 
   if (primitives) {
@@ -161,6 +164,9 @@ export function generateSwift(collections: ResolvedCollection[], metadata: Metad
   }
   if (global) {
     blocks.push(swiftStruct("DesignTokensGlobal", global.tokens));
+  }
+  for (const col of themes) {
+    blocks.push(swiftStruct("DesignTokensTheme" + swiftStructName(col.modeName), col.tokens));
   }
   for (const col of semantic) {
     const structName = "DesignTokens" + swiftStructName(col.modeName);

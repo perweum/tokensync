@@ -9,7 +9,7 @@
 import type { ResolvedCollection, Metadata } from "../token-merger";
 import { generateCSS } from "./css";
 import { generateJS, generateSchemeJS } from "./js";
-import { generateDart } from "./dart";
+import { generateDart, generateSchemeDart } from "./dart";
 import { generateSwift, generateSchemeSwift } from "./swift";
 
 export interface TransformedFile {
@@ -38,60 +38,65 @@ export function runTransformers(
     files.push({ path: outPath, content: output });
   }
 
-  const compileJsTs = (cfg: PlatformConfig, defaultFilename: string) => {
+  /**
+   * Split mode: `{colorScheme}` in the output path → one file per color scheme.
+   * Combined mode: a single file with all collections, defaulting sibling to tokensPath.
+   */
+  const compileSplit = (
+    cfg: PlatformConfig,
+    defaultFilename: string,
+    generateScheme: (schemeCol: ResolvedCollection) => string,
+    generateCombined: () => string,
+  ) => {
     const outputTemplate = cfg.output || defaultFilename;
     if (outputTemplate.includes("{colorScheme}")) {
       for (const scheme of metadata.colorSchemes) {
         const schemeCol = semantic.find((c) => c.modeName.toLowerCase() === scheme.toLowerCase());
         if (!schemeCol) continue;
 
-        const output = generateSchemeJS(primitives, global, schemeCol);
-        const resolvedPath = outputTemplate.replace("{colorScheme}", scheme.toLowerCase());
-        const outPath = resolvePath(resolvedPath, tokensPath, resolvedPath);
-        files.push({ path: outPath, content: output });
+        const outPath = outputTemplate.replace("{colorScheme}", scheme.toLowerCase());
+        files.push({ path: outPath, content: generateScheme(schemeCol) });
       }
     } else {
-      const output = generateJS(collections, metadata);
-      const outPath = resolvePath(outputTemplate, tokensPath, defaultFilename);
-      files.push({ path: outPath, content: output });
+      const outPath = resolvePath(cfg.output, tokensPath, defaultFilename);
+      files.push({ path: outPath, content: generateCombined() });
     }
   };
 
   if (platforms.js?.enabled) {
-    compileJsTs(platforms.js, "dist/tokens.js");
+    compileSplit(
+      platforms.js,
+      "dist/tokens.js",
+      (col) => generateSchemeJS(primitives, global, col, { typescript: false }),
+      () => generateJS(collections, metadata, { typescript: false }),
+    );
   }
 
   if (platforms.ts?.enabled) {
-    compileJsTs(platforms.ts, "dist/tokens.ts");
+    compileSplit(
+      platforms.ts,
+      "dist/tokens.ts",
+      (col) => generateSchemeJS(primitives, global, col, { typescript: true }),
+      () => generateJS(collections, metadata, { typescript: true }),
+    );
   }
 
   if (platforms.dart?.enabled) {
-    const output = generateDart(collections, metadata);
-    const outPath = resolvePath(platforms.dart.output, tokensPath, "lib/src/design_tokens.dart");
-    files.push({ path: outPath, content: output });
+    compileSplit(
+      platforms.dart,
+      "lib/src/design_tokens.dart",
+      (col) => generateSchemeDart(primitives, global, col),
+      () => generateDart(collections, metadata),
+    );
   }
 
-  const compileSwift = (cfg: PlatformConfig, defaultFilename: string) => {
-    const outputTemplate = cfg.output || defaultFilename;
-    if (outputTemplate.includes("{colorScheme}")) {
-      for (const scheme of metadata.colorSchemes) {
-        const schemeCol = semantic.find((c) => c.modeName.toLowerCase() === scheme.toLowerCase());
-        if (!schemeCol) continue;
-
-        const output = generateSchemeSwift(primitives, global, schemeCol);
-        const resolvedPath = outputTemplate.replace("{colorScheme}", scheme.toLowerCase());
-        const outPath = resolvePath(resolvedPath, tokensPath, resolvedPath);
-        files.push({ path: outPath, content: output });
-      }
-    } else {
-      const output = generateSwift(collections, metadata);
-      const outPath = resolvePath(outputTemplate, tokensPath, defaultFilename);
-      files.push({ path: outPath, content: output });
-    }
-  };
-
   if (platforms.swift?.enabled) {
-    compileSwift(platforms.swift, "ios/DesignTokens.swift");
+    compileSplit(
+      platforms.swift,
+      "ios/DesignTokens.swift",
+      (col) => generateSchemeSwift(primitives, global, col),
+      () => generateSwift(collections, metadata),
+    );
   }
 
   return files;

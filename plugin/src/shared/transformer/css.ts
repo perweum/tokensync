@@ -27,15 +27,15 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   // :root — primitives, global, and the default (first) theme's complete light/dark vars
   const defaultTheme = themeCols[0];
   const rootTokens: Record<string, TokenValue> = {
-    ...(primitives?.tokens ?? {}),
-    ...(global?.tokens ?? {}),
-    ...(defaultTheme?.tokens ?? {}), // light.* and dark.* → resolved primitive values
+    ...primitives?.tokens,
+    ...global?.tokens,
+    ...defaultTheme?.tokens, // light.* and dark.* → resolved primitive values
   };
   if (Object.keys(rootTokens).length > 0) {
     blocks.push(cssBlock(":root", rootTokens));
   }
 
-  // Non-default theme overrides — only the vars that differ from the default theme
+  // Non-default themes — complete light.*/dark.* var set, overriding :root under [data-theme]
   for (const col of themeCols.slice(1)) {
     const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
     blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, col.tokens));

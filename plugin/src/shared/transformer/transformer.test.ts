@@ -101,6 +101,14 @@ describe("runTransformers", () => {
     const darkJS = output.find((f) => f.path === "dist/dark.js")!;
     expect(darkJS.content).toContain('default: "#0f172a"');
     expect(darkJS.content).not.toContain('default: "#ffffff"');
+
+    // .js output must be valid JavaScript — no TypeScript syntax
+    expect(lightJS.content).not.toContain("as const");
+    expect(lightJS.content).not.toContain("export type");
+
+    // .ts output keeps the TypeScript syntax
+    const lightTS = output.find((f) => f.path === "dist/light.ts")!;
+    expect(lightTS.content).toContain("as const");
   });
 
   it("generates a combined JS file when colorScheme is not in the path", () => {
@@ -135,6 +143,159 @@ describe("runTransformers", () => {
     expect(tokensJS.content).toContain("export const tokens = {");
     expect(tokensJS.content).toContain("light: {");
     expect(tokensJS.content).toContain("dark: {");
+
+    // Combined .js output must also be valid JavaScript
+    expect(tokensJS.content).not.toContain("as const");
+    expect(tokensJS.content).not.toContain("export type");
+
+    // Themes collection is included so multi-theme works outside CSS
+    expect(tokensJS.content).toContain("export const themes = {");
+    expect(tokensJS.content).toContain("default: {");
+  });
+
+  it("defaults combined output sibling to the tokens folder for all platforms", () => {
+    const meta = {
+      version: "1.0.0",
+      themes: ["default"],
+      colorSchemes: ["light", "dark"],
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: "Primitives",
+          global: "Global",
+          themes: "Themes",
+          semantic: "Semantic",
+        },
+      },
+      platforms: {
+        css: { enabled: true },
+        js: { enabled: true },
+        swift: { enabled: true },
+      },
+    };
+
+    const nestedPath = "design/tokens";
+    const files = [
+      file("design/tokens/primitives/color.json", primitiveColor),
+      file("design/tokens/semantic/themes/default.json", defaultTheme),
+      file("design/tokens/semantic/light.json", semanticLight),
+      file("design/tokens/semantic/dark.json", semanticDark),
+      file("design/tokens/metadata.json", meta),
+    ];
+
+    const { collections, metadata } = parseRepository(files, nestedPath);
+    const output = runTransformers(collections, metadata, nestedPath);
+
+    const paths = output.map((f) => f.path);
+    expect(paths).toContain("design/dist/tokens.css");
+    expect(paths).toContain("design/dist/tokens.js");
+    expect(paths).toContain("design/ios/DesignTokens.swift");
+  });
+
+  it("generates split Dart files when colorScheme is in the path", () => {
+    const meta = {
+      version: "1.0.0",
+      themes: ["default"],
+      colorSchemes: ["light", "dark"],
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: "Primitives",
+          global: "Global",
+          themes: "Themes",
+          semantic: "Semantic",
+        },
+      },
+      platforms: {
+        dart: { enabled: true, output: "lib/src/tokens/{colorScheme}.dart" },
+      },
+    };
+
+    const files = [...makeFiles(), file("tokens/metadata.json", meta)];
+
+    const { collections, metadata } = parseRepository(files, tokensPath);
+    const output = runTransformers(collections, metadata, tokensPath);
+
+    const paths = output.map((f) => f.path);
+    expect(paths).toContain("lib/src/tokens/light.dart");
+    expect(paths).toContain("lib/src/tokens/dark.dart");
+    // The template placeholder must never survive into an output path
+    expect(paths.some((p) => p.includes("{colorScheme}"))).toBe(false);
+
+    const lightDart = output.find((f) => f.path === "lib/src/tokens/light.dart")!;
+    expect(lightDart.content).toContain("class DesignTokensPrimitives {");
+    expect(lightDart.content).toContain("class DesignTokens {");
+    expect(lightDart.content).toContain("Color(0xFFFFFFFF)");
+  });
+
+  it("includes theme classes in combined Dart output", () => {
+    const meta = {
+      version: "1.0.0",
+      themes: ["default"],
+      colorSchemes: ["light", "dark"],
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: "Primitives",
+          global: "Global",
+          themes: "Themes",
+          semantic: "Semantic",
+        },
+      },
+      platforms: {
+        dart: { enabled: true, output: "lib/src/design_tokens.dart" },
+      },
+    };
+
+    const files = [...makeFiles(), file("tokens/metadata.json", meta)];
+
+    const { collections, metadata } = parseRepository(files, tokensPath);
+    const output = runTransformers(collections, metadata, tokensPath);
+
+    const dart = output.find((f) => f.path === "lib/src/design_tokens.dart")!;
+    expect(dart.content).toContain("class DesignTokensThemeDefault {");
+    expect(dart.content).toContain("class DesignTokensLight {");
+    expect(dart.content).toContain("class DesignTokensDark {");
+  });
+
+  it("reorders 8-digit hex to alpha-first for Swift Color(hex:)", () => {
+    const meta = {
+      version: "1.0.0",
+      themes: ["default"],
+      colorSchemes: ["light"],
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: "Primitives",
+          global: "Global",
+          themes: "Themes",
+          semantic: "Semantic",
+        },
+      },
+      platforms: {
+        swift: { enabled: true, output: "ios/tokens.swift" },
+      },
+    };
+
+    const withAlpha = {
+      color: {
+        overlay: { $type: "color", $value: "#11223344" },
+      },
+    };
+
+    const files = [
+      file("tokens/primitives/color.json", withAlpha),
+      file("tokens/semantic/light.json", semanticLight),
+      file("tokens/metadata.json", meta),
+    ];
+
+    const { collections, metadata } = parseRepository(files, tokensPath);
+    const output = runTransformers(collections, metadata, tokensPath);
+
+    const swift = output.find((f) => f.path === "ios/tokens.swift")!;
+    // #RRGGBBAA (CSS order) → #AARRGGBB (the order Color(hex:) parses)
+    expect(swift.content).toContain('Color(hex: "#44112233")');
+    expect(swift.content).not.toContain('Color(hex: "#11223344")');
   });
 
   it("uses dynamic custom collection names from metadata", () => {

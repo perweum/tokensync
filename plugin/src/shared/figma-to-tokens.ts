@@ -198,7 +198,7 @@ function buildThemeFile(
   tokensPath: string,
 ): TokenFile | null {
   if (vars.length === 0) return null;
-  const themeName = mode.name.toLowerCase().replace(/\s+/g, "-");
+  const themeName = sanitizeFileName(mode.name);
   return {
     repoPath: joinPath(tokensPath, "semantic/themes", `${themeName}.json`),
     content: buildJsonFile(vars, mode.modeId, varById),
@@ -206,9 +206,8 @@ function buildThemeFile(
 }
 
 /**
- * Write a Semantic collection mode to the appropriate path.
+ * Write a Semantic collection mode to semantic/{colorScheme}.json.
  * Light → semantic/light.json, Dark → semantic/dark.json.
- * Legacy brand-qualified modes still write to semantic/{brand}/{scheme}.json.
  */
 function buildSemanticFile(
   vars: FigmaVariable[],
@@ -218,11 +217,19 @@ function buildSemanticFile(
 ): TokenFile | null {
   if (vars.length === 0) return null;
 
-  const theme = mode.name.toLowerCase();
+  const scheme = sanitizeFileName(mode.name);
   return {
-    repoPath: joinPath(tokensPath, "semantic", `${theme}.json`),
+    repoPath: joinPath(tokensPath, "semantic", `${scheme}.json`),
     content: buildJsonFile(vars, mode.modeId, varById),
   };
+}
+
+/**
+ * Mode name → safe file name: lowercase, spaces and slashes collapsed to "-".
+ * A slash in a mode name must not create a subdirectory the parser won't read back.
+ */
+function sanitizeFileName(modeName: string): string {
+  return modeName.toLowerCase().replace(/[\s/]+/g, "-");
 }
 
 // ---------------------------------------------------------------------------

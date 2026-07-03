@@ -1,50 +1,74 @@
 /**
- * JS/TS transformer — generates ES module with typed token constants.
+ * JS/TS transformer — generates ES module with token constants.
  *
  * Output:
  *   export const primitives = { color: { brand: { 500: '#...' } } }
+ *   export const themes = { original: { ... }, christmas: { ... } }
  *   export const tokens = { light: { ... }, dark: { ... } }
- *   export type Theme = keyof typeof tokens
+ *   export type Theme = keyof typeof tokens          (TypeScript only)
+ *
+ * TypeScript-only syntax (`as const`, type exports) is gated behind
+ * opts.typescript so the js platform emits valid plain JavaScript.
  */
 
 import type { ResolvedCollection, Metadata } from "../token-merger";
 import type { TokenValue } from "../messages";
 
+export interface JsOptions {
+  /** Emit TypeScript syntax (`as const`, type exports). Must be false for .js output. */
+  typescript: boolean;
+}
+
 export function generateSchemeJS(
   primitivesCol: ResolvedCollection | undefined,
   globalCol: ResolvedCollection | undefined,
   schemeCol: ResolvedCollection,
+  opts: JsOptions,
 ): string {
+  const asConst = opts.typescript ? " as const" : "";
   const blocks: string[] = [jsHeader()];
 
   if (primitivesCol) {
-    blocks.push(`export const primitives = ${flatToNested(primitivesCol.tokens)} as const`);
+    blocks.push(`export const primitives = ${flatToNested(primitivesCol.tokens)}${asConst}`);
   }
 
   const mergedTokens: Record<string, TokenValue> = {
-    ...(globalCol?.tokens ?? {}),
+    ...globalCol?.tokens,
     ...schemeCol.tokens,
   };
 
-  blocks.push(`export const tokens = ${flatToNested(mergedTokens)} as const`);
+  blocks.push(`export const tokens = ${flatToNested(mergedTokens)}${asConst}`);
 
   return blocks.join("\n\n") + "\n";
 }
 
-export function generateJS(collections: ResolvedCollection[], metadata: Metadata): string {
+export function generateJS(
+  collections: ResolvedCollection[],
+  metadata: Metadata,
+  opts: JsOptions,
+): string {
+  const asConst = opts.typescript ? " as const" : "";
   const blocks: string[] = [jsHeader()];
 
   const names = metadata.figma.collections;
   const primitives = collections.find((c) => c.collectionName === names.primitives);
   const global = collections.find((c) => c.collectionName === names.global);
+  const themes = collections.filter((c) => c.collectionName === names.themes);
   const semantic = collections.filter((c) => c.collectionName === names.semantic);
 
   if (primitives) {
-    blocks.push(`export const primitives = ${flatToNested(primitives.tokens)} as const`);
+    blocks.push(`export const primitives = ${flatToNested(primitives.tokens)}${asConst}`);
   }
 
   if (global) {
-    blocks.push(`export const globalTokens = ${flatToNested(global.tokens)} as const`);
+    blocks.push(`export const globalTokens = ${flatToNested(global.tokens)}${asConst}`);
+  }
+
+  if (themes.length > 0) {
+    const themeEntries = themes
+      .map((col) => `  ${modeKey(col.modeName)}: ${flatToNested(col.tokens)}`)
+      .join(",\n");
+    blocks.push(`export const themes = {\n${themeEntries}\n}${asConst}`);
   }
 
   if (semantic.length > 0) {
@@ -55,8 +79,10 @@ export function generateJS(collections: ResolvedCollection[], metadata: Metadata
       })
       .join(",\n");
 
-    blocks.push(`export const tokens = {\n${modeEntries}\n} as const`);
-    blocks.push(`export type Theme = keyof typeof tokens`);
+    blocks.push(`export const tokens = {\n${modeEntries}\n}${asConst}`);
+    if (opts.typescript) {
+      blocks.push(`export type Theme = keyof typeof tokens`);
+    }
   }
 
   return blocks.join("\n\n") + "\n";
@@ -83,18 +109,13 @@ function flatToNested(tokens: Record<string, TokenValue>): string {
 function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): void {
   let current = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    const k = safeKey(keys[i]);
+    const k = keys[i];
     if (typeof current[k] !== "object" || current[k] === null) {
       current[k] = {};
     }
     current = current[k] as Record<string, unknown>;
   }
-  current[safeKey(keys[keys.length - 1])] = value;
-}
-
-function safeKey(k: string): string {
-  // Wrap numeric-ish keys: "500" → keep as-is (valid as quoted property)
-  return k;
+  current[keys[keys.length - 1]] = value;
 }
 
 function serialize(obj: unknown, indent: number): string {

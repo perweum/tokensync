@@ -83,17 +83,6 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   const send = useSendMessage();
 
-  const [metadata, setMetadata] = useState<Metadata | null>(null);
-
-  const DEFAULT_COLLECTIONS = {
-    primitives: "Primitives",
-    global: "Global",
-    themes: "Themes",
-    semantic: "Semantic",
-  };
-
-  const figmaCollectionNames = metadata?.figma?.collections ?? DEFAULT_COLLECTIONS;
-
   // ---------------------------------------------------------------------------
   // Last sync state — load on mount, save after successful operations
   // ---------------------------------------------------------------------------
@@ -234,7 +223,6 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setStatus({ kind: "loading", message: `Parsing ${files.length} token files…` });
       const parsed = parseRepository(files, project.tokensPath);
       pendingGitHub.current = parsed;
-      setMetadata(parsed.metadata);
 
       setStatus({ kind: "loading", message: "Reading Figma variables…" });
       pendingAction.current = "pull";
@@ -255,16 +243,8 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     const figmaMaps = buildFigmaFlatMaps(figmaCollections, figmaVariables);
 
-    const ignoredKeys = github.metadata.ignoredCollections ?? [];
-    const isIgnored = (collectionName: string) => {
-      const key = Object.keys(figmaCollectionNames).find(
-        (k) => figmaCollectionNames[k as keyof typeof figmaCollectionNames] === collectionName,
-      );
-      return key && ignoredKeys.includes(key);
-    };
-
     const filteredGithubCollections = github.collections.filter(
-      (c) => !isIgnored(c.collectionName),
+      (c) => !isIgnoredCollection(c.collectionName, github.metadata),
     );
 
     const result = filteredGithubCollections.map((githubCol) => {
@@ -290,7 +270,8 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setView("pull-diff");
     }
 
-    pendingGitHubCollections.current = github.collections;
+    // Clean Apply must also skip ignored collections — store the filtered list
+    pendingGitHubCollections.current = filteredGithubCollections;
     pendingGitHub.current = null;
   }
 
@@ -404,28 +385,19 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     // GitHub side: parse existing token files
     const githubParsed = parseRepository(githubFiles, project.tokensPath);
     pendingParsed.current = githubParsed;
-    setMetadata(githubParsed.metadata);
 
     // Figma side: convert to same ResolvedCollection shape
     const figmaCollectionData = figmaToCollections(
       figmaCollections,
       figmaVariables,
-      figmaCollectionNames,
+      githubParsed.metadata.figma.collections,
     );
     pendingFigmaCollections.current = figmaCollectionData;
     // Keep raw data for writing complete token files to GitHub (not just diff entries)
     pendingFigmaRaw.current = { collections: figmaCollections, variables: figmaVariables };
 
-    const ignoredKeys = githubParsed.metadata.ignoredCollections ?? [];
-    const isIgnored = (collectionName: string) => {
-      const key = Object.keys(figmaCollectionNames).find(
-        (k) => figmaCollectionNames[k as keyof typeof figmaCollectionNames] === collectionName,
-      );
-      return key && ignoredKeys.includes(key);
-    };
-
     const filteredFigmaCollectionData = figmaCollectionData.filter(
-      (c) => !isIgnored(c.collectionName),
+      (c) => !isIgnoredCollection(c.collectionName, githubParsed.metadata),
     );
 
     // Diff: Figma (new) vs GitHub (current)
@@ -500,28 +472,26 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   ): Array<{ path: string; content: string }> {
     const raw = pendingFigmaRaw.current;
     const parsed = pendingParsed.current;
+    if (!raw || !parsed) return [];
 
     // Build filtered collections: only selected modes
-    const filteredCollections = raw?.collections
+    const filteredCollections = raw.collections
       .map((col) => ({
         ...col,
         modes: col.modes.filter((mode) => selectedKeys.has(`${col.name}/${mode.name}`)),
       }))
       .filter((col) => col.modes.length > 0);
 
-    const tokenFiles =
-      raw && filteredCollections
-        ? figmaToTokenFiles(
-            filteredCollections,
-            raw.variables,
-            project.tokensPath,
-            figmaCollectionNames,
-          ).map((f) => ({ path: f.repoPath, content: f.content }))
-        : [];
+    const tokenFiles = figmaToTokenFiles(
+      filteredCollections,
+      raw.variables,
+      project.tokensPath,
+      parsed.metadata.figma.collections,
+    ).map((f) => ({ path: f.repoPath, content: f.content }));
 
     // Platform transformers always use the full collection set (they represent the full design system)
     const figmaCollections = pendingFigmaCollections.current;
-    if (figmaCollections && parsed) {
+    if (figmaCollections) {
       const platformFiles = runTransformers(figmaCollections, parsed.metadata, project.tokensPath);
       return [...tokenFiles, ...platformFiles];
     }
@@ -705,6 +675,23 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       )}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * True when a collection is listed in metadata.ignoredCollections.
+ * Entries are layer keys ("primitives", "global", "themes", "semantic"),
+ * matched against the configured Figma collection names.
+ */
+function isIgnoredCollection(collectionName: string, metadata: Metadata): boolean {
+  const names = metadata.figma.collections;
+  const key = (Object.keys(names) as Array<keyof typeof names>).find(
+    (k) => names[k] === collectionName,
+  );
+  return key !== undefined && (metadata.ignoredCollections ?? []).includes(key);
 }
 
 // ---------------------------------------------------------------------------

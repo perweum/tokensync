@@ -39,21 +39,24 @@ export interface Metadata {
   ignoredCollections?: string[];
 }
 
-const DEFAULT_METADATA: Metadata = {
-  version: "1.0.0",
-  themes: ["default"],
-  colorSchemes: ["light", "dark"],
-  figma: {
-    fileKey: "",
-    collections: {
-      primitives: "Primitives",
-      global: "Global",
-      themes: "Themes",
-      semantic: "Semantic",
+/** Fresh defaults per call — callers may mutate nested objects safely. */
+function defaultMetadata(): Metadata {
+  return {
+    version: "1.0.0",
+    themes: ["default"],
+    colorSchemes: ["light", "dark"],
+    figma: {
+      fileKey: "",
+      collections: {
+        primitives: "Primitives",
+        global: "Global",
+        themes: "Themes",
+        semantic: "Semantic",
+      },
     },
-  },
-  ignoredCollections: [],
-};
+    ignoredCollections: [],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Parsed repository structure
@@ -265,34 +268,35 @@ function filterByPaths(
 // ---------------------------------------------------------------------------
 
 function parseMetadata(files: Map<string, string>): Metadata {
+  const defaults = defaultMetadata();
   const raw = files.get("metadata.json");
-  if (!raw) return DEFAULT_METADATA;
+  if (!raw) return defaults;
   try {
     const parsed = JSON.parse(raw) as Partial<Metadata> & { brands?: string[] };
 
     // Support legacy 'brands' field (renamed to 'themes')
-    const themes = parsed.themes ?? parsed.brands ?? DEFAULT_METADATA.themes;
-    const colorSchemes = parsed.colorSchemes ?? DEFAULT_METADATA.colorSchemes;
+    const themes = parsed.themes ?? parsed.brands ?? defaults.themes;
+    const colorSchemes = parsed.colorSchemes ?? defaults.colorSchemes;
 
     const merged: Metadata = {
-      ...DEFAULT_METADATA,
+      ...defaults,
       ...parsed,
       themes,
       colorSchemes,
     };
     if (parsed.figma) {
       merged.figma = {
-        ...DEFAULT_METADATA.figma,
+        ...defaults.figma,
         ...parsed.figma,
         collections: {
-          ...DEFAULT_METADATA.figma.collections,
+          ...defaults.figma.collections,
           ...parsed.figma.collections,
         },
       };
     }
     return merged;
   } catch {
-    return DEFAULT_METADATA;
+    return defaults;
   }
 }
 
