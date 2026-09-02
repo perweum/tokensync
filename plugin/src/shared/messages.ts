@@ -5,6 +5,10 @@
  * UI → Plugin:  parent.postMessage({ pluginMessage: msg }, '*')
  */
 
+// Type-only — typography-styles.ts imports TokenTree/TokenValue from this file,
+// so this is a type-only circular reference; erased at compile time, no runtime cycle.
+import type { TypographyStyle } from "./typography-styles";
+
 // ---------------------------------------------------------------------------
 // GitHub file type (used by both UI and shared parsing logic)
 // ---------------------------------------------------------------------------
@@ -71,11 +75,18 @@ export type PluginMessage =
       type: "COLLECTIONS_LOADED";
       collections: FigmaVariableCollection[];
       variables: FigmaVariable[];
+      /** Local Text Styles converted to Token Sync's typography style shape — see shared/typography-styles.ts */
+      typographyStyles: TypographyStyle[];
     }
   | {
       type: "TOKENS_APPLIED";
       count: number;
       removed: number;
+      errors: string[];
+    }
+  | {
+      type: "TEXT_STYLES_APPLIED";
+      count: number;
       errors: string[];
     }
   | {
@@ -104,6 +115,12 @@ export type UIMessage =
       modeId: string;
       removedPaths?: string[]; // dot-notation paths of tokens removed from GitHub
       cleanApply?: boolean; // delete all existing variables first, then recreate sorted
+    }
+  | {
+      type: "APPLY_TEXT_STYLES";
+      styles: TypographyStyle[];
+      /** ${path}.${field} -> resolved value, for refs that can't be bound directly — same idea as APPLY_TOKENS' resolvedValues */
+      resolvedFallback?: Record<string, string>;
     }
   | { type: "LOAD_STORAGE"; key: string }
   | { type: "SAVE_STORAGE"; key: string; value: string }

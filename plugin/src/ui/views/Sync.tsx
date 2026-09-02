@@ -19,7 +19,9 @@ import type {
   FigmaVariableCollection,
   FigmaVariable,
   TokenTree,
+  TokenValue,
 } from "../../shared/messages";
+import type { TypographyStyle } from "../../shared/typography-styles";
 import { PullDiff } from "./PullDiff";
 import { PushDiff } from "./PushDiff";
 
@@ -193,6 +195,24 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
             });
           }
         }
+        if (msg.type === "TEXT_STYLES_APPLIED") {
+          const errSuffix = msg.errors.length
+            ? ` (${msg.errors.length} error${msg.errors.length > 1 ? "s" : ""}: ${msg.errors[0]})`
+            : "";
+          if (applyAllRemaining.current > 0) {
+            applyAllRemaining.current--;
+            if (applyAllRemaining.current === 0) {
+              setApplying(false);
+              viewRef.current = "main";
+              setView("main");
+              if (!msg.errors.length) saveLastSync("pull");
+              setStatus({
+                kind: msg.errors.length ? "error" : "success",
+                message: `All collections applied to Figma${errSuffix}`,
+              });
+            }
+          }
+        }
         if (msg.type === "ERROR") {
           setApplying(false);
           setCreating(false);
@@ -278,6 +298,29 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     pendingGitHub.current = null;
   }
 
+  /**
+   * Gathers typography styles (from marked "$type": "typography" groups —
+   * see shared/typography-styles.ts) across the given collections into one
+   * APPLY_TEXT_STYLES payload, along with a flat resolved-value fallback map
+   * for refs the plugin can't bind directly. Returns null when there's
+   * nothing to apply, so callers can skip sending the message entirely.
+   */
+  function collectTypographyPayload(
+    collections: Array<{ typographyStyles: TypographyStyle[]; tokens: Record<string, TokenValue> }>,
+  ): { styles: TypographyStyle[]; resolvedFallback: Record<string, string> } | null {
+    const styles = collections.flatMap((c) => c.typographyStyles);
+    if (styles.length === 0) return null;
+
+    const resolvedFallback: Record<string, string> = {};
+    for (const col of collections) {
+      for (const [path, token] of Object.entries(col.tokens)) {
+        resolvedFallback[path] = token.$value;
+      }
+    }
+
+    return { styles, resolvedFallback };
+  }
+
   function sendApplyDiff(diff: CollectionDiff) {
     const changed = diff.entries.filter((e) => e.status === "added" || e.status === "changed");
 
@@ -314,17 +357,34 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const pending = diffs.filter((d) => d.counts.total > 0);
     if (pending.length === 0) return;
 
-    applyAllRemaining.current = pending.length;
+    // Typography styles ride along only for the collections actually being applied.
+    const relevantCollections = (pendingGitHubCollections.current ?? []).filter((c) =>
+      pending.some((d) => d.collectionName === c.collectionName && d.modeName === c.modeName),
+    );
+    const typographyPayload = collectTypographyPayload(relevantCollections);
+
+    applyAllRemaining.current = pending.length + (typographyPayload ? 1 : 0);
     setApplying(true);
     for (const diff of pending) {
       sendApplyDiff(diff);
+    }
+    // Sent last so the plugin's serial apply queue runs it after every
+    // collection above — styles must bind after their Variables exist.
+    if (typographyPayload) {
+      send({
+        type: "APPLY_TEXT_STYLES",
+        styles: typographyPayload.styles,
+        resolvedFallback: typographyPayload.resolvedFallback,
+      });
     }
   }
 
   function handleCleanApplyAll() {
     const allCollections = pendingGitHubCollections.current;
     if (!allCollections) return;
-    applyAllRemaining.current = allCollections.length;
+
+    const typographyPayload = collectTypographyPayload(allCollections);
+    applyAllRemaining.current = allCollections.length + (typographyPayload ? 1 : 0);
     setApplying(true);
     // Only send cleanApply=true for the first mode of each collection.
     // Multi-mode collections (e.g. Semantic with Light + Dark) share variables —
@@ -348,6 +408,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         collectionId: col.collectionName,
         modeId: col.modeName,
         cleanApply: isFirst,
+      });
+    }
+    // Sent last — same ordering guarantee as handleApplyAll.
+    if (typographyPayload) {
+      send({
+        type: "APPLY_TEXT_STYLES",
+        styles: typographyPayload.styles,
+        resolvedFallback: typographyPayload.resolvedFallback,
       });
     }
   }

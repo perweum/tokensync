@@ -7,6 +7,7 @@
 
 import type { UIMessage, PluginMessage } from "../shared/messages";
 import { getCollectionsAndVariables, applyTokensToCollection } from "./figma-variables";
+import { getLocalTypographyStyles, applyTypographyStyles } from "./figma-text-styles";
 
 // ---------------------------------------------------------------------------
 // Plugin initialisation
@@ -62,7 +63,8 @@ figma.ui.onmessage = async (msg: UIMessage) => {
     switch (msg.type) {
       case "GET_COLLECTIONS": {
         const { collections, variables } = await getCollectionsAndVariables();
-        send({ type: "COLLECTIONS_LOADED", collections, variables });
+        const typographyStyles = await getLocalTypographyStyles();
+        send({ type: "COLLECTIONS_LOADED", collections, variables, typographyStyles });
         break;
       }
 
@@ -77,6 +79,16 @@ figma.ui.onmessage = async (msg: UIMessage) => {
             msg.resolvedValues,
           );
           send({ type: "TOKENS_APPLIED", count, removed, errors });
+        });
+        break;
+      }
+
+      case "APPLY_TEXT_STYLES": {
+        // Enqueued on the same serial queue as APPLY_TOKENS: styles must apply
+        // after the Variables they bind to exist, exactly like Semantic after Primitives.
+        enqueueApply(async () => {
+          const { count, errors } = await applyTypographyStyles(msg.styles, msg.resolvedFallback);
+          send({ type: "TEXT_STYLES_APPLIED", count, errors });
         });
         break;
       }

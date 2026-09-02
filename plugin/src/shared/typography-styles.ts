@@ -39,6 +39,26 @@ export const TYPOGRAPHY_FIELDS = [
 
 export type TypographyField = (typeof TYPOGRAPHY_FIELDS)[number];
 
+/**
+ * The `$type` a field's own leaf token carries — distinct from the field
+ * name itself. Matches this repo's real convention (tokens/semantic/global/
+ * typography.json): fontSize/letterSpacing/paragraphSpacing/paragraphIndent
+ * are "dimension", lineHeight is "number", fontFamily/fontWeight match their
+ * own name, textCase/textDecoration (no existing convention in this repo)
+ * default to "string".
+ */
+export const TYPOGRAPHY_FIELD_TOKEN_TYPE: Record<TypographyField, string> = {
+  fontFamily: "fontFamily",
+  fontWeight: "fontWeight",
+  fontSize: "dimension",
+  lineHeight: "number",
+  letterSpacing: "dimension",
+  paragraphSpacing: "dimension",
+  paragraphIndent: "dimension",
+  textCase: "string",
+  textDecoration: "string",
+};
+
 const FIELD_SET = new Set<string>(TYPOGRAPHY_FIELDS);
 
 export interface TypographyStyle {

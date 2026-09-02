@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractTypographyStyles } from "./typography-styles";
+import { extractTypographyStyles, TYPOGRAPHY_FIELD_TOKEN_TYPE } from "./typography-styles";
 import type { TokenTree } from "./messages";
 
 function leaf($type: string, $value: string) {
@@ -142,5 +142,16 @@ describe("extractTypographyStyles", () => {
 
   it("returns an empty array for an empty tree", () => {
     expect(extractTypographyStyles({})).toEqual([]);
+  });
+});
+
+describe("TYPOGRAPHY_FIELD_TOKEN_TYPE", () => {
+  it("matches this repo's real typography.json convention", () => {
+    // tokens/semantic/global/typography.json
+    expect(TYPOGRAPHY_FIELD_TOKEN_TYPE.fontFamily).toBe("fontFamily");
+    expect(TYPOGRAPHY_FIELD_TOKEN_TYPE.fontWeight).toBe("fontWeight");
+    expect(TYPOGRAPHY_FIELD_TOKEN_TYPE.fontSize).toBe("dimension");
+    expect(TYPOGRAPHY_FIELD_TOKEN_TYPE.lineHeight).toBe("number");
+    expect(TYPOGRAPHY_FIELD_TOKEN_TYPE.letterSpacing).toBe("dimension");
   });
 });
