@@ -16,6 +16,8 @@ Token Studio works, but comes with trade-offs that accumulate over time:
 
 This tool replaces the entire stack with a single, self-contained Figma plugin that reads from and writes to GitHub directly.
 
+Token Studio got a lot right — the primitives/theme/semantic layering, splitting global tokens from brand-specific ones — and Token Sync's format is built on the same lessons (see [Relationship to Themebuilder](#relationship-to-themebuilder) and `docs/interop/`). What it gates behind the plugin is the problem, not the ideas. **The repository is the source of truth here; the plugin only holds a cache** — a team with the repo and no plugin can still build, configure, and generate. See `docs/principles/no-lock-in.md`. A native, one-time importer for Token Studio repos (`$themes.json`, `enabled`/`source`, composite typography) is planned so teams don't have to restructure before adopting — see `docs/design/canonical-model.md`.
+
 ---
 
 ## How it works
@@ -502,6 +504,8 @@ Token Studio's `$themes.json` is a list of token set combinations with embedded 
 
 This tool uses explicit folder structure. `semantic/themes/original.json` is the Original theme palette. `semantic/light.json` is the light color scheme. No abstraction needed.
 
+This is Token Sync's native format — it is not the only format Token Sync will read. The plan is to read a Token Studio repo natively via an adapter and convert it once, rather than requiring a team to restructure by hand before they can adopt Token Sync at all. The adapter translates Token Studio's concepts away at the boundary; nothing downstream (diffing, resolution, platform output) ever sees a token set, a `group`, or an `enabled`/`source` flag. See `docs/design/canonical-model.md`.
+
 ### Why 12-step colour ramps and not 16?
 
 The 12-step model uses a single ramp that works for both light and dark themes. The same `color.brand.600` is the button background in light mode; a lighter step (`color.brand.400`) is used in dark mode. 12 colours per palette, named by perceptual lightness, is the right trade-off between granularity and simplicity.
@@ -526,6 +530,18 @@ The two tools are separate but designed to work together:
 
 ---
 
+## Further reading
+
+The plugin is one client of the token format — the format and its rationale are documented independently of it:
+
+- `docs/principles/no-lock-in.md` — the design principle behind the repo-is-source-of-truth stance, and what it requires concretely
+- `docs/interop/token-studio.md` — the Token Studio repository contract and the concrete failure modes worth defending against, from a real 14-brand migration
+- `docs/interop/migration-patterns.md` — what a large multi-brand token system looks like in practice, and what CSS generators need from it
+- `docs/design/canonical-model.md` — the direction for a neutral canonical model with Token Studio (and others) as adapters into it — status: direction decided, mechanics under analysis
+- `DECISIONS.md` — the full changelog, code invariants, and priority-ordered backlog, including a developer-first CLI/CI direction that will let teams build tokens without opening Figma at all
+
+---
+
 ## Project status
 
 | Feature | Status |
@@ -546,5 +562,6 @@ The two tools are separate but designed to work together:
 | Boolean and string token types in diff | Done |
 | `$description` export (Figma → GitHub) | Done |
 | Dynamic metadata-driven collection naming | Done |
-| Figma Styles export | Not planned |
+| Figma Text/Effect Styles (composite typography, shadow) | Planned |
+| Token Studio migration (one-time import) | Planned |
 | GitLab / Azure DevOps provider | Not planned |

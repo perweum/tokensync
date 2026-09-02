@@ -35,6 +35,23 @@ This document records the core architectural decisions, design guidelines, and c
 * **Decision**: Figma variable descriptions are exported to W3C `$description` on push. They are **not** compared in diffs and **not** applied back to Figma on pull.
 * **Rationale**: Descriptions ride along whenever a value changes (push writes complete files). Making them diffable/applyable needs a UI decision about how description changes are reviewed — deferred (see Planned below).
 
+### Developer-First Toolchain: Core Extraction + CLI + CI (direction, not yet built)
+* **Decision**: Extract everything in `plugin/src/shared/` (token-merger, token-format, token-diff, all transformers — pure TypeScript, zero Figma API dependencies) into a `@tokensync/core` package consumed by both the plugin and a new CLI (`tokensync build | validate | diff | watch`). Platform outputs (CSS/JS/TS/Dart/Swift) move out of plugin-created PRs entirely: a GitHub Action runs `tokensync build` on merge and publishes the artifacts (npm package or release branch). The plugin shrinks to the Figma-side boundary only — designers pull/push variables; developers never need Figma or the plugin.
+* **Rationale**: The Figma Variables REST API is Enterprise-gated and plugins cannot run headless, so terminal-driven Figma sync is impossible on standard plans. But developers only need the token repo, which is already the source of truth. Moving compilation to CLI/CI also means PRs contain only token JSON (smaller diffs, no generated-file conflicts) and structurally prevents broken artifacts from being committed (a `dist/{colorScheme}.js` containing TypeScript syntax once shipped via a plugin PR).
+* **Considered and rejected — localhost relay bridge**: a plugin window polling a local server so a CLI could drive it. Rejected: Figma must still be open with the plugin running, local-network `networkAccess` rules are fragile across desktop/browser, and it simulates headless without being headless. The core extraction removes the need.
+* **Future provider — Enterprise REST**: shape `@tokensync/core` around a provider interface so an Enterprise-plan REST provider can later offer true headless two-way sync (`tokensync pull --from-figma`, scheduled CI backups of Figma state). Not built until there is demand; verify current Figma plan gating at that time.
+* **Accepted limitation**: on non-Enterprise plans, Figma → GitHub always requires a designer to click Push in the plugin. Best mitigation: keep push one-click, and optionally a Figma file-update webhook that nudges designers to sync (webhook availability is plan-dependent — verify).
+
+### Token Studio Off-Ramp: Canonical Model + Adapter Architecture (direction decided, mechanics under analysis)
+* **Decision**: Learn from Token Studio's format — the three-layer model, the global/brand split, composite typography — without inheriting its shape. Token Sync's core will own a neutral canonical model (DTCG-based, with `$extensions` for the properties DTCG doesn't cover), and Token Studio becomes **one adapter** that translates into it, not something the core is built around. No adapter's concepts (`$themes.json`, `enabled`/`source`, `group` dimensions) may leak past the adapter boundary into diff, resolution, or transformers. Full reasoning, the axis model, the Figma API findings, and the open questions are in `docs/design/canonical-model.md` — treat that document, not this entry, as the source of truth for mechanics.
+* **Rationale**: A reader built directly around Token Studio's concepts just relocates the lock-in. Building against the open DTCG standard instead means a Token Sync repo stays readable by any DTCG-aware tool with zero adapter — the literal opposite of `$themes.json`'s unreadability — while still letting Token Studio repos convert in.
+* **Migrate-once, not interoperate-forever**: the importer is a one-time reader; after conversion the repo is a native Token Sync repo and none of Token Studio's plugin-cache/drift failure modes (`docs/interop/token-studio.md`) have anywhere to live. Continuous bidirectional sync against `$themes.json` is explicitly not the design center; a thin evaluation bridge is a possible future add-on only if real demand appears.
+* **Axes are not peers**: composing axes (brand, colour-mode — together select the resolved value, realistically ≤3) are a different kind from modifier axes (size, density — each declares which token categories it affects, layered on top, never touching what composing axes touch). This replaces an earlier "N independent axes" framing that didn't match observed reality.
+* **Composite tokens surfaced two concrete, previously-unscoped gaps**: (1) DTCG's `typography` type has 5 properties, Token Studio's has 9 — the 4 extras need `$extensions`, and `shadow`/`gradient`/`border` need the same audit (open, see canonical-model.md §6/§8); (2) Figma has no composite variable type at all — composite typography/shadow tokens need Figma **Text Styles** / **Effect Styles** support, a Plugin API surface Token Sync doesn't touch yet. "Figma Styles export" moves from Not Planned to Planned (see §4 below and the README status table).
+* **Default is faithful conversion, not improvement**: the importer transcribes structure as-is; any "here's how this could be better organised" analysis is a separate, optional, non-blocking report — most teams migrating in want it to work, not to be restructured.
+* **Token Studio exporter** (round-trip out) is committed as a direction for later — the strongest concrete proof of no-lock-in — but not scoped or timed yet.
+* **Not yet resolved** — see `docs/design/canonical-model.md` §8: shadow/gradient/border DTCG coverage; how composing axes map onto Figma's 40-mode-per-collection ceiling; the actual mechanics of provenance tagging for merge-not-replace; exporter scope and timing. Do not start implementing the adapter architecture from this entry alone.
+
 ---
 
 ## 2. Code Invariants (read before editing)
@@ -77,10 +94,38 @@ Non-obvious constraints that must hold; each was the source of a real bug.
 
 ## 4. Planned / Known Gaps
 
-Deliberately not done yet. If you pick one of these up, update this section and the README status table.
+Deliberately not done yet. If you pick one of these up, update this section and the README status table. Ordered by priority toward publishing the plugin to Figma Community.
 
-* **Description-only changes are invisible in diffs.** The diff compares `$type`/`$value` only. A Figma variable whose *description* changed (but not its value) produces "GitHub is already up to date" and cannot be pushed on its own. Needs: include `$description` in `buildCollectionDiff` comparison plus a way to render it in the diff UI.
-* **Pull does not apply `$description` to Figma.** `APPLY_TOKENS` ignores descriptions; `figma-variables.ts` only *reads* `variable.description`. Needs: pass descriptions through the apply message and set `variable.description` on create/update.
-* **Split-mode output is default-theme only.** `dist/{colorScheme}.js` resolves through the first theme in `metadata.themes`. There is no `{theme}` path placeholder for per-theme split files — combined mode is the current answer for multi-theme JS/Dart/Swift.
-* **Old artefacts on GitHub remotes.** Historic plugin-generated branches (e.g. `tokens/sync-2026-04-20T10-15-18`, merged into `Token_test` via PR #3) contain a literal `dist/{colorScheme}.js` file with invalid JS (`as const`) and legacy `semantic/{brand}/{scheme}.json` files the current parser ignores. Safe to delete those branches; do not treat their file layout as a format reference.
-* **Not planned** (see README status table): Figma Styles export, GitLab / Azure DevOps providers.
+### Priority 1 — Developer-first toolchain (see decision above)
+* **Extract `@tokensync/core`** from `plugin/src/shared/` as a workspace package; plugin imports it unchanged.
+* **CLI** (`tokensync build | validate | diff | watch`) on top of core, for terminal-native developer workflow.
+* **CI build**: GitHub Action runs `tokensync build` on merge and publishes platform outputs; remove `runTransformers` from the plugin's PR flow so PRs contain token JSON only.
+
+### Priority 1b — Migration & interop foundations (see decision above; design accepted, not yet built)
+* **Firm up the canonical model / IR.** `ResolvedCollection`/`TokenValue` becomes a documented, versioned interface; today's `parseRepository` is reframed as "the native DTCG adapter," one of several. Natural to do alongside the `@tokensync/core` extraction in Priority 1 — same boundary.
+* **Figma Text Styles + Effect Styles support** (moved out of "Not planned" — see README status table). Required for composite typography/shadow tokens to round-trip at all, for native Token Sync users as well as Token Studio migrants. New Plugin API surface: `getLocalTextStylesAsync`/`createTextStyle`/`TextStyle.setBoundVariable` and the Effect Style equivalents.
+* **Merge-not-replace for Clean Apply.** Concrete data-loss mechanism identified: composite typography tokens have no Figma Variable representation, only a Text Style — a wholesale Figma-driven rebuild (today's `handleCleanApplyAll`) would delete them, mirroring Token Studio's observed failure (`docs/interop/token-studio.md` §"failure modes #2"). Needs provenance tracking (mechanics not yet designed, see canonical-model.md §8) before Clean Apply is safe on a repo with file-only composite tokens.
+* **Token Studio adapter (importer).** Reads `$themes.json`/`$metadata.json`/token sets, respects `enabled`/`source`, composes across groups rather than validating themes in isolation, converts value formats (math expressions, `%` units, composite typography/shadow) — see `docs/interop/token-studio.md` for the full contract. Faithful conversion only; no auto-restructuring (see decision above).
+* **Three-corpus round-trip test** (canonical-model.md §9) before trusting the model generally: this repo's native tokens, the real 14-brand `@kilden/design-tokens` Token Studio repo, and a plain vanilla DTCG repo.
+* **Later, lower priority**: Token Studio exporter (round-trip out); shadow/gradient/border DTCG `$extensions` audit; axis-to-Figma-collection mapping under the 40-mode ceiling.
+
+### Priority 2 — Publish blockers (stranger-installs-it experience)
+* **Unknown collections are diffed but never written.** A Figma collection not matching the four configured names appears in the push diff, but `figmaToTokenFiles` silently skips it (`kind === "unknown"`). Either exclude it from the diff with a visible notice, or write it to a generic path.
+* **First-run experience.** No `metadata.json` → silent empty parse. Offer to scaffold a starter token structure via the PR flow.
+* **PAT hardening.** Mask the PAT in Settings, document fine-grained single-repo tokens, add a "test connection" scope check. Manifest also needs a real plugin id, icons, and Community listing copy.
+
+### Priority 3 — Description sync v2
+* **Description-only changes are invisible in diffs.** The diff compares `$type`/`$value` only. Needs: include `$description` in `buildCollectionDiff` plus diff UI rendering.
+* **Pull does not apply `$description` to Figma.** `APPLY_TOKENS` ignores descriptions; `figma-variables.ts` only *reads* `variable.description`. Needs: pass descriptions through the apply message and set them on create/update.
+
+### Priority 4 — Robustness
+* **GitHub API limits**: `fetchBranches` caps at `per_page=100` (no pagination loop); Contents API truncates files > 1 MB; no readable message on 403 rate limits.
+* **Apply-flow error accounting**: multi-collection apply shows only the first error (`msg.errors[0]`); Clean Apply (destructive) deserves a per-collection result summary and an explicit confirmation.
+* **Sync flow tests**: `Sync.tsx` logic (ignore filtering, apply sequencing, PR building) is untested; extract pure parts into a testable module.
+
+### Later / on demand
+* **Enterprise REST provider** for true headless two-way sync and scheduled Figma-state backups (see decision above).
+* **`{theme}` output placeholder** — per-theme split files; combined mode is the current answer for multi-theme JS/Dart/Swift.
+* **Rename detection** — renames currently diff as remove + add; Figma variable IDs could track true renames.
+* **Dogfooding** — plugin UI hardcodes hex values; use its own generated tokens.
+* **Not planned** (see README status table): GitLab / Azure DevOps providers. (Figma Styles export moved to Priority 1b above — no longer "not planned".)
