@@ -47,7 +47,9 @@ between.
 
 ## Where decisions and open work live
 
-`DECISIONS.md` is the changelog and the priority-ordered backlog. Read it before
-starting non-trivial work — it records why things are the way they are, code
-invariants that caused real bugs when violated, and what's already been decided
-vs. what's still open.
+`DECISIONS.md` is the changelog and the priority-ordered backlog. Its **Status
+at a Glance** section at the top is the fastest way to see what's done, what's
+in progress, and what's not started — check it first. The rest of the document
+is why: architectural decisions and rationale, code invariants that caused real
+bugs when violated, and the full backlog behind the summary. Read it before
+starting non-trivial work.

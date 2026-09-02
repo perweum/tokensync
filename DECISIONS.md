@@ -4,6 +4,33 @@ This document records the core architectural decisions, design guidelines, and c
 
 ---
 
+## Status at a Glance
+
+Updated whenever something below changes state. For *why* something was built the way it was, follow the section reference — every line here points at a fuller entry.
+
+**Done, shipped**
+* Core sync: pull, push, PR creation, apply-to-Figma, multi-project, branch switching — see README status table.
+* Primitives → Themes → Semantic architecture; CSS/JS/TS/Dart/Swift transformers.
+* Selective syncing via `ignoredCollections` (§1 *Selective Syncing*).
+* Unknown Figma collections are surfaced with a warning instead of silently dropped from the push (§3 July 2026).
+* Figma variable typing fixed: `dimension`/`number` create real `FLOAT` variables (previously inert `STRING`); `fontWeight` correctly stays `STRING` and gets numeric/enum platform output via `shared/font-weight.ts` (§1 *`fontWeight` Canonical Value…*).
+* `npm run typecheck` actually checks the codebase now — it silently checked nothing before (§2 Code Invariants, §3 July 2026). Treat any pre-fix "typecheck passed" claim as unverified.
+
+**In progress — Figma Text Styles (typography)**
+* Canonical detection, Figma field research, read-from-Figma, write-to-Figma, and the pull-direction wiring are **all built** (§1 *Typography Style Groups…*, §4 Priority 1b).
+* **Not done**: the push direction (a Text Style created by hand in Figma isn't written back into token files yet — deliberately deferred, needs its own decision about target file), and **no real Figma file has verified the full apply flow end-to-end yet** — only one isolated binding call has been confirmed live.
+* A **"Sync type styles" toggle** exists (on by default) specifically so Variables sync can be verified independently of this while it's unverified (§4 Priority 1b).
+
+**Not started**
+* Priority 1 — developer-first toolchain: `@tokensync/core` extraction, CLI, CI build (§4).
+* Priority 1b remainder — canonical-model IR firming, merge-not-replace safety for Clean Apply, Token Studio adapter, three-corpus round-trip test (§4).
+* Priority 2 — publish blockers: first-run scaffolding, PAT hardening, manifest/listing (§4).
+* Priority 3 — description sync v2 (diffable + applied on pull) (§4).
+* Priority 4 — robustness: GitHub API pagination/limits, apply-error accounting, `Sync.tsx` tests (§4).
+* Later/on demand — Enterprise REST provider, `{theme}` output placeholder, rename detection, dogfooding, Effect Styles/shadow (§4).
+
+---
+
 ## 1. Core Architectural Decisions
 
 ### Native Figma Collection Mapping (Why not Token Studio?)
@@ -115,7 +142,7 @@ Non-obvious constraints that must hold; each was the source of a real bug.
 
 ## 4. Planned / Known Gaps
 
-Deliberately not done yet. If you pick one of these up, update this section and the README status table. Ordered by priority toward publishing the plugin to Figma Community.
+Deliberately not done yet. If you pick one of these up, update this section, the **Status at a Glance** summary at the top of this file, and the README status table. Ordered by priority toward publishing the plugin to Figma Community.
 
 ### Priority 1 — Developer-first toolchain (see decision above)
 * **Extract `@tokensync/core`** from `plugin/src/shared/` as a workspace package; plugin imports it unchanged.
