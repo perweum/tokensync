@@ -14,6 +14,7 @@
 
 import type { ResolvedCollection, Metadata } from "../token-merger";
 import type { TokenValue } from "../messages";
+import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
 
 export function generateCSS(collections: ResolvedCollection[], metadata: Metadata): string {
   const blocks: string[] = [cssHeader()];
@@ -74,7 +75,12 @@ function semanticBlock(selector: string, col: ResolvedCollection): string {
   const lines = entries.map(([path, token]) => {
     const varName = toCSSVar(path);
     const rawValue = col.rawTokens[path]?.$value;
-    const value = toThemeAwareValue(token.$value, rawValue);
+    const themeAware = toThemeAwareValue(token.$value, rawValue);
+    // A var(--light-*)/var(--dark-*) reference is already correct as-is — the value
+    // it points to was formatted (including fontWeight conversion) at its own definition.
+    const value = themeAware.startsWith("var(")
+      ? themeAware
+      : formatCSSValue(token.$type, themeAware);
     return `  ${varName}: ${value};`;
   });
 
@@ -94,7 +100,9 @@ function semanticMediaBlock(query: string, selector: string, col: ResolvedCollec
 function cssBlock(selector: string, tokens: Record<string, TokenValue>): string {
   const entries = Object.entries(tokens).filter(([, t]) => t.$type !== "boolean");
   if (entries.length === 0) return "";
-  const lines = entries.map(([path, token]) => `  ${toCSSVar(path)}: ${token.$value};`);
+  const lines = entries.map(
+    ([path, token]) => `  ${toCSSVar(path)}: ${formatCSSValue(token.$type, token.$value)};`,
+  );
   return `${selector} {\n${lines.join("\n")}\n}`;
 }
 
@@ -120,4 +128,23 @@ function toThemeAwareValue(resolvedValue: string, rawValue: string | undefined):
 
 function toCSSVar(path: string): string {
   return "--" + path.replace(/\./g, "-");
+}
+
+/**
+ * `fontWeight` tokens hold Figma's named font style ("SemiBold") — CSS `font-weight`
+ * only accepts `normal`/`bold` or a number 100-900, so this converts via the DTCG
+ * alias table, falling back to DEFAULT_FONT_WEIGHT (with a warning) rather than
+ * emitting an invalid declaration.
+ */
+function formatCSSValue($type: string, value: string): string {
+  if ($type === "fontWeight") {
+    const resolved = resolveFontWeightNumber(value);
+    if (resolved === null) {
+      console.warn(
+        `[TokenSync] Unrecognized font weight "${value}" — using ${DEFAULT_FONT_WEIGHT}`,
+      );
+    }
+    return String(resolved ?? DEFAULT_FONT_WEIGHT);
+  }
+  return value;
 }

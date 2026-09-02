@@ -13,6 +13,7 @@
 
 import type { ResolvedCollection, Metadata } from "../token-merger";
 import type { TokenValue } from "../messages";
+import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
 
 export function generateSchemeDart(
   primitivesCol: ResolvedCollection | undefined,
@@ -91,6 +92,9 @@ function toDartValue(token: TokenValue): string | null {
   // Boolean
   if (token.$type === "boolean") return v === "true" ? "true" : "false";
 
+  // Font weight: Figma's named style ("SemiBold") → Flutter's FontWeight.wXXX
+  if (token.$type === "fontWeight") return dartFontWeight(v);
+
   // Color: #rrggbb or #rrggbbaa
   const hexMatch = v.match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i);
   if (hexMatch) {
@@ -119,10 +123,27 @@ function toDartValue(token: TokenValue): string | null {
 
 function dartType(token: TokenValue): string {
   if (token.$type === "boolean") return "bool";
+  if (token.$type === "fontWeight") return "FontWeight";
   const v = token.$value;
   if (v.startsWith("#") || v.startsWith("rgba(")) return "Color";
   if (/^\d+(\.\d+)?(px)?$/.test(v)) return "double";
   return "String";
+}
+
+/**
+ * Figma's named font style ("SemiBold") → the nearest Flutter FontWeight constant.
+ * Flutter defines w100..w900 in steps of 100 only — resolves via the DTCG alias
+ * table, then snaps to the nearest defined step (950 → w900), falling back to
+ * w400 (with a warning) for a style name with no numeric equivalent.
+ */
+function dartFontWeight(value: string): string {
+  const resolved = resolveFontWeightNumber(value);
+  if (resolved === null) {
+    console.warn(`[TokenSync] Unrecognized font weight "${value}" — using FontWeight.w400`);
+  }
+  const n = resolved ?? DEFAULT_FONT_WEIGHT;
+  const step = Math.min(900, Math.max(100, Math.round(n / 100) * 100));
+  return `FontWeight.w${step}`;
 }
 
 // ---------------------------------------------------------------------------

@@ -496,3 +496,86 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
     expect(unknownCollectionNames).toEqual(["Icons"]);
   });
 });
+
+describe("fontWeight platform output", () => {
+  // Mirrors this repo's own tokens/primitives/typography.json — named weights
+  // matching Figma's installed font style names, not raw numbers.
+  const fontWeightPrimitives = {
+    typography: {
+      fontWeight: {
+        $type: "fontWeight",
+        regular: { $value: "Regular" },
+        medium: { $value: "Medium" },
+        semibold: { $value: "SemiBold" },
+        bold: { $value: "Bold" },
+        custom: { $value: "Text" }, // no DTCG numeric equivalent — must fall back, not crash
+      },
+    },
+  };
+
+  const meta = {
+    version: "1.0.0",
+    themes: ["default"],
+    colorSchemes: ["light"],
+    figma: {
+      fileKey: "abc123",
+      collections: {
+        primitives: "Primitives",
+        global: "Global",
+        themes: "Themes",
+        semantic: "Semantic",
+      },
+    },
+    platforms: {
+      css: { enabled: true, output: "dist/tokens.css" },
+      dart: { enabled: true, output: "lib/tokens.dart" },
+      swift: { enabled: true, output: "ios/tokens.swift" },
+    },
+  };
+
+  const files = [
+    file("tokens/primitives/color.json", primitiveColor),
+    file("tokens/primitives/typography.json", fontWeightPrimitives),
+    file("tokens/semantic/themes/default.json", defaultTheme),
+    file("tokens/semantic/light.json", semanticLight),
+    file("tokens/metadata.json", meta),
+  ];
+
+  it("converts named weights to valid CSS numbers", () => {
+    const { collections, metadata } = parseRepository(files, tokensPath);
+    const output = runTransformers(collections, metadata, tokensPath);
+    const css = output.find((f) => f.path === "dist/tokens.css")!.content;
+
+    expect(css).toContain("--typography-fontWeight-regular: 400;");
+    expect(css).toContain("--typography-fontWeight-medium: 500;");
+    expect(css).toContain("--typography-fontWeight-semibold: 600;");
+    expect(css).toContain("--typography-fontWeight-bold: 700;");
+    // Unmatched style name falls back to 400 rather than emitting invalid CSS.
+    expect(css).toContain("--typography-fontWeight-custom: 400;");
+    expect(css).not.toContain("SemiBold");
+  });
+
+  it("converts named weights to Flutter FontWeight constants", () => {
+    const { collections, metadata } = parseRepository(files, tokensPath);
+    const output = runTransformers(collections, metadata, tokensPath);
+    const dart = output.find((f) => f.path === "lib/tokens.dart")!.content;
+
+    expect(dart).toContain("FontWeight.w400");
+    expect(dart).toContain("FontWeight.w500");
+    expect(dart).toContain("FontWeight.w600");
+    expect(dart).toContain("FontWeight.w700");
+    expect(dart).not.toContain("SemiBold");
+  });
+
+  it("converts named weights to SwiftUI Font.Weight cases", () => {
+    const { collections, metadata } = parseRepository(files, tokensPath);
+    const output = runTransformers(collections, metadata, tokensPath);
+    const swift = output.find((f) => f.path === "ios/tokens.swift")!.content;
+
+    expect(swift).toContain(": Font.Weight = .regular");
+    expect(swift).toContain(": Font.Weight = .medium");
+    expect(swift).toContain(": Font.Weight = .semibold");
+    expect(swift).toContain(": Font.Weight = .bold");
+    expect(swift).not.toContain("SemiBold");
+  });
+});

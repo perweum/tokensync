@@ -287,7 +287,9 @@ function resolveInlineRefs(value: string, allVarsByName: Map<string, Variable>):
 // Type conversion helpers
 // ---------------------------------------------------------------------------
 
-function figmaTypeFromTokenType(type: string): "COLOR" | "FLOAT" | "STRING" | "BOOLEAN" | null {
+export function figmaTypeFromTokenType(
+  type: string,
+): "COLOR" | "FLOAT" | "STRING" | "BOOLEAN" | null {
   switch (type) {
     case "color":
       return "COLOR";
@@ -295,7 +297,15 @@ function figmaTypeFromTokenType(type: string): "COLOR" | "FLOAT" | "STRING" | "B
       return "BOOLEAN";
     case "dimension":
     case "number":
+      // Numeric properties (spacing, radius, font size, line height…) — must be a real
+      // Figma FLOAT variable to bind to auto-layout, corner radius, stroke weight, etc.
+      return "FLOAT";
     case "fontWeight":
+      // Figma font weight variables hold the font's installed style name verbatim
+      // ("SemiBold"), not a numeric OpenType weight — this is a Figma/font constraint,
+      // not a Token Sync choice. See src/shared/font-weight.ts for platform-side
+      // translation of this string into a numeric weight for CSS/Dart/Swift output.
+      return "STRING";
     case "fontFamily":
     case "shadow":
     case "string":
@@ -306,7 +316,7 @@ function figmaTypeFromTokenType(type: string): "COLOR" | "FLOAT" | "STRING" | "B
   }
 }
 
-function toFigmaValue(
+export function toFigmaValue(
   value: string,
   type: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN",
 ): RGBA | number | string | boolean | null {
