@@ -69,6 +69,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   const lastSyncKey = `tokensync:lastSync:${project.id}`;
 
+  // Whether to sync typography ("$type": "typography" marked groups) as Figma
+  // Text Styles at all — persisted per project, defaults on. Off just skips
+  // sending APPLY_TEXT_STYLES; it never affects Variables sync.
+  const syncTypeStylesKey = `tokensync:syncTypeStyles:${project.id}`;
+  const [syncTypeStyles, setSyncTypeStyles] = useState(true);
+
   const viewRef = useRef<View>("main");
   const pendingAction = useRef<PendingAction | null>(null);
   const applyAllRemaining = useRef(0);
@@ -108,6 +114,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   useEffect(() => {
     send({ type: "LOAD_STORAGE", key: lastSyncKey });
     send({ type: "LOAD_STORAGE", key: branchKey });
+    send({ type: "LOAD_STORAGE", key: syncTypeStylesKey });
     refreshBranches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
@@ -116,6 +123,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     setActiveBranch(branch);
     send({ type: "SAVE_STORAGE", key: branchKey, value: branch });
     setStatus({ kind: "idle" });
+  }
+
+  function handleSyncTypeStylesChange(value: boolean) {
+    setSyncTypeStyles(value);
+    send({ type: "SAVE_STORAGE", key: syncTypeStylesKey, value: String(value) });
   }
 
   async function handleCreateBranch() {
@@ -158,6 +170,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         }
         if (msg.type === "STORAGE_LOADED" && msg.key === branchKey) {
           if (msg.value) setActiveBranch(msg.value);
+        }
+        if (msg.type === "STORAGE_LOADED" && msg.key === syncTypeStylesKey) {
+          if (msg.value !== null) setSyncTypeStyles(msg.value === "true");
         }
         if (msg.type === "COLLECTIONS_LOADED") {
           if (pendingAction.current === "pull") {
@@ -361,7 +376,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const relevantCollections = (pendingGitHubCollections.current ?? []).filter((c) =>
       pending.some((d) => d.collectionName === c.collectionName && d.modeName === c.modeName),
     );
-    const typographyPayload = collectTypographyPayload(relevantCollections);
+    const typographyPayload = syncTypeStyles ? collectTypographyPayload(relevantCollections) : null;
 
     applyAllRemaining.current = pending.length + (typographyPayload ? 1 : 0);
     setApplying(true);
@@ -383,7 +398,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const allCollections = pendingGitHubCollections.current;
     if (!allCollections) return;
 
-    const typographyPayload = collectTypographyPayload(allCollections);
+    const typographyPayload = syncTypeStyles ? collectTypographyPayload(allCollections) : null;
     applyAllRemaining.current = allCollections.length + (typographyPayload ? 1 : 0);
     setApplying(true);
     // Only send cleanApply=true for the first mode of each collection.
@@ -723,6 +738,21 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         )}
       </div>
 
+      <label style={styles.syncOptionRow}>
+        <input
+          type="checkbox"
+          checked={syncTypeStyles}
+          onChange={(e) => handleSyncTypeStylesChange(e.target.checked)}
+        />
+        <span>
+          Sync type styles
+          <span style={styles.syncOptionHint}>
+            {" "}
+            — apply typography groups to Figma as Text Styles
+          </span>
+        </span>
+      </label>
+
       <div style={styles.actions}>
         <ActionCard
           title="Pull from GitHub"
@@ -894,6 +924,16 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.4,
   },
   branchError: { fontSize: "11px", color: "#c00", flexShrink: 0 },
+  syncOptionRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "12px",
+    color: "#444",
+    cursor: "pointer",
+    userSelect: "none",
+  },
+  syncOptionHint: { color: "#999" },
   actions: { display: "flex", flexDirection: "column", gap: "12px" },
   card: {
     border: "1px solid #e8e8e8",
