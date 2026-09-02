@@ -63,6 +63,9 @@ export function figmaToCollections(
         modeName: mode.name,
         tokens,
         rawTokens: tokens, // Figma values already have refs as {path} strings; raw === resolved in push direction
+        // Typography styles read from Figma come from Text Styles (getLocalTextStylesAsync),
+        // a separate API surface from Variables — not yet wired into the push diff.
+        typographyStyles: [],
       });
     }
   }

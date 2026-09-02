@@ -3,7 +3,12 @@
  * Runs in the Figma plugin sandbox — has access to the global `figma` object.
  */
 
-import type { FigmaVariable, FigmaVariableCollection, TokenTree } from "../shared/messages";
+import type {
+  FigmaVariable,
+  FigmaVariableCollection,
+  TokenTree,
+  TokenValue,
+} from "../shared/messages";
 import {
   flattenTokens,
   resolveAllReferences,

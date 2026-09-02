@@ -20,7 +20,9 @@
  */
 
 import type { GitHubFile, TokenTree, TokenValue } from "./messages";
-import { flattenTokens, resolveAllReferences } from "./token-format";
+import { flattenTokens, resolveAllReferences, isTokenValue } from "./token-format";
+import { extractTypographyStyles } from "./typography-styles";
+import type { TypographyStyle } from "./typography-styles";
 
 // ---------------------------------------------------------------------------
 // Metadata type
@@ -71,6 +73,8 @@ export interface ResolvedCollection {
   tokens: Record<string, TokenValue>;
   /** Flat, unresolved token map: $value may contain "{light.X}" or "{color.X.N}" refs — used for Figma alias creation */
   rawTokens: Record<string, TokenValue>;
+  /** Groups marked `"$type": "typography"` found in this collection's source tree — see shared/typography-styles.ts */
+  typographyStyles: TypographyStyle[];
 }
 
 export interface ParsedRepository {
@@ -109,6 +113,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     modeName: "Value",
     tokens: primitivesFlat,
     rawTokens: primitivesFlatRaw,
+    typographyStyles: extractTypographyStyles(primitivesTree),
   });
 
   // --- Global collection ---
@@ -121,6 +126,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     modeName: "Value",
     tokens: filterByPaths(globalResolved, globalPaths),
     rawTokens: filterByPaths(globalWithPrimitivesFlat, globalPaths),
+    typographyStyles: extractTypographyStyles(globalTree),
   });
 
   // --- Themes collection (one mode per named theme) ---
@@ -135,6 +141,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
       modeName: capitalise(themeName),
       tokens: filterByPaths(fullFlatResolved, themePaths),
       rawTokens: filterByPaths(fullFlatUnresolved, themePaths),
+      typographyStyles: extractTypographyStyles(themeTree),
     });
   }
 
@@ -163,6 +170,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
       modeName: capitalise(scheme),
       tokens: filterByPaths(resolvedFlat, schemePaths),
       rawTokens: filterByPaths(rawFlatUnresolved, schemePaths),
+      typographyStyles: extractTypographyStyles(schemeTree),
     });
   }
 
@@ -245,13 +253,18 @@ function deepMergeTokenTrees(base: TokenTree, override: TokenTree): TokenTree {
   for (const [key, value] of Object.entries(override)) {
     if (key.startsWith("$")) continue;
     const baseValue = base[key];
-    if (baseValue && !("$value" in baseValue) && !("$value" in (value as object))) {
-      result[key] = deepMergeTokenTrees(baseValue as TokenTree, value as TokenTree);
+    if (isGroup(baseValue) && isGroup(value)) {
+      result[key] = deepMergeTokenTrees(baseValue, value);
     } else {
       result[key] = value;
     }
   }
   return result;
+}
+
+/** A non-leaf tree node: an object that isn't a TokenValue (i.e. has no `$value`). */
+function isGroup(node: TokenValue | TokenTree | string | undefined): node is TokenTree {
+  return typeof node === "object" && node !== null && !isTokenValue(node);
 }
 
 /** Keep only the paths that appear in the allowlist. */

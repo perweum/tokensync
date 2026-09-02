@@ -26,7 +26,14 @@ export interface TokenValue {
 }
 
 export interface TokenTree {
-  [key: string]: TokenValue | TokenTree;
+  /**
+   * A group may carry `$`-prefixed metadata (`$description`, and — as a Token
+   * Sync convention, see shared/typography-styles.ts — a group-level `$type`)
+   * alongside its nested token/group children. The plain `string` arm covers
+   * that metadata; parsers must skip `$`-prefixed keys explicitly rather than
+   * relying on this type to exclude them.
+   */
+  [key: string]: TokenValue | TokenTree | string;
 }
 
 export interface FigmaVariable {

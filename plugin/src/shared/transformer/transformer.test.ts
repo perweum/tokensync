@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { runTransformers } from "./index";
 import { parseRepository } from "../token-merger";
-import type { GitHubFile } from "../messages";
+import type { ResolvedCollection } from "../token-merger";
+import type { GitHubFile, FigmaVariable } from "../messages";
 import { figmaToCollections, figmaToTokenFiles } from "../figma-to-tokens";
 
 function file(path: string, content: object): GitHubFile {
@@ -317,7 +318,7 @@ describe("runTransformers", () => {
       },
     };
 
-    const collections = [
+    const collections: ResolvedCollection[] = [
       {
         collectionName: "Core Primitives",
         modeName: "Value",
@@ -325,6 +326,7 @@ describe("runTransformers", () => {
           "color.brand": { $type: "color", $value: "#123456" },
         },
         rawTokens: {},
+        typographyStyles: [],
       },
       {
         collectionName: "Shared Global",
@@ -333,6 +335,7 @@ describe("runTransformers", () => {
           "spacing.md": { $type: "dimension", $value: "12px" },
         },
         rawTokens: {},
+        typographyStyles: [],
       },
       {
         collectionName: "App Semantic",
@@ -341,6 +344,7 @@ describe("runTransformers", () => {
           "background.default": { $type: "color", $value: "#ffffff" },
         },
         rawTokens: {},
+        typographyStyles: [],
       },
     ];
 
@@ -457,11 +461,11 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
       },
     ];
 
-    const figmaVariables = [
+    const figmaVariables: FigmaVariable[] = [
       {
         id: "v1",
         name: "color/brand/500",
-        resolvedType: "COLOR" as const,
+        resolvedType: "COLOR",
         valuesByMode: { m1: { r: 1, g: 0, b: 0 } },
         collectionId: "c1",
         collectionName: "Primitives",
@@ -469,7 +473,7 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
       {
         id: "v2",
         name: "arrow/name",
-        resolvedType: "STRING" as const,
+        resolvedType: "STRING",
         valuesByMode: { m2: "arrow-right" },
         collectionId: "c2",
         collectionName: "Icons",

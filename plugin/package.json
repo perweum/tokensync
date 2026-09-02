@@ -14,7 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format:check": "oxfmt --check .",
-    "typecheck": "tsgo --noEmit || tsc --noEmit",
+    "typecheck:app": "tsgo --noEmit -p tsconfig.app.json || tsc --noEmit -p tsconfig.app.json",
+    "typecheck:plugin": "tsgo --noEmit -p tsconfig.plugin.json || tsc --noEmit -p tsconfig.plugin.json",
+    "typecheck": "run-p typecheck:app typecheck:plugin",
     "verify": "run-p lint format:check typecheck test"
   },
   "dependencies": {
