@@ -421,7 +421,12 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
     };
 
     // 1. Check figmaToCollections
-    const collections = figmaToCollections(figmaCollections, figmaVariables, figmaCollectionNames);
+    const { collections, unknownCollectionNames } = figmaToCollections(
+      figmaCollections,
+      figmaVariables,
+      figmaCollectionNames,
+    );
+    expect(unknownCollectionNames).toEqual([]);
     const primCol = collections.find((c: any) => c.collectionName === "Primitives")!;
     expect(primCol.tokens["color.brand.500"].$description).toBe("Primary brand color seed");
 
@@ -434,5 +439,60 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
     );
     const colorFile = files.find((f: any) => f.repoPath === "tokens/primitives/color.json")!;
     expect(colorFile.content).toContain('"$description": "Primary brand color seed"');
+  });
+
+  it("excludes collections that match no configured layer and reports them separately", () => {
+    const figmaCollections = [
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
+      {
+        id: "c2",
+        name: "Icons", // not one of primitives/global/themes/semantic
+        modes: [{ modeId: "m2", name: "Value" }],
+        variableIds: ["v2"],
+      },
+    ];
+
+    const figmaVariables = [
+      {
+        id: "v1",
+        name: "color/brand/500",
+        resolvedType: "COLOR" as const,
+        valuesByMode: { m1: { r: 1, g: 0, b: 0 } },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+      {
+        id: "v2",
+        name: "arrow/name",
+        resolvedType: "STRING" as const,
+        valuesByMode: { m2: "arrow-right" },
+        collectionId: "c2",
+        collectionName: "Icons",
+      },
+    ];
+
+    const figmaCollectionNames = {
+      primitives: "Primitives",
+      global: "Global",
+      themes: "Themes",
+      semantic: "Semantic",
+    };
+
+    const { collections, unknownCollectionNames } = figmaToCollections(
+      figmaCollections,
+      figmaVariables,
+      figmaCollectionNames,
+    );
+
+    // The unknown collection never appears in the diffable output...
+    expect(collections.some((c) => c.collectionName === "Icons")).toBe(false);
+    expect(collections).toHaveLength(1);
+    // ...but is reported so the UI can show it instead of silently dropping it at PR time.
+    expect(unknownCollectionNames).toEqual(["Icons"]);
   });
 });

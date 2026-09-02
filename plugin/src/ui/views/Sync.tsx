@@ -52,6 +52,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [creating, setCreating] = useState(false);
   const [diffs, setDiffs] = useState<CollectionDiff[]>([]);
   const [diffError, setDiffError] = useState<string | undefined>(undefined);
+  const [unrecognizedCollections, setUnrecognizedCollections] = useState<string[]>([]);
   const [lastSync, setLastSync] = useState<LastSync | null>(null);
 
   // Branch switching — persisted per project; defaults to the configured branch
@@ -75,7 +76,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   );
   const pendingFiles = useRef<Awaited<ReturnType<typeof fetchTokenFiles>> | null>(null);
   const pendingParsed = useRef<ParsedRepository | null>(null); // push: parsed GitHub repo (metadata + collections)
-  const pendingFigmaCollections = useRef<ReturnType<typeof figmaToCollections> | null>(null); // push: Figma resolved collections
+  const pendingFigmaCollections = useRef<
+    ReturnType<typeof figmaToCollections>["collections"] | null
+  >(null); // push: Figma resolved collections (known layers only — see unrecognizedCollections)
   const pendingFigmaRaw = useRef<{
     collections: FigmaVariableCollection[];
     variables: FigmaVariable[];
@@ -387,11 +390,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     pendingParsed.current = githubParsed;
 
     // Figma side: convert to same ResolvedCollection shape
-    const figmaCollectionData = figmaToCollections(
+    const { collections: figmaCollectionData, unknownCollectionNames } = figmaToCollections(
       figmaCollections,
       figmaVariables,
       githubParsed.metadata.figma.collections,
     );
+    setUnrecognizedCollections(unknownCollectionNames);
     pendingFigmaCollections.current = figmaCollectionData;
     // Keep raw data for writing complete token files to GitHub (not just diff entries)
     pendingFigmaRaw.current = { collections: figmaCollections, variables: figmaVariables };
@@ -419,9 +423,15 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     });
 
     const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
+    const unknownSuffix = unknownCollectionNames.length
+      ? ` (skipped unrecognized collection${unknownCollectionNames.length > 1 ? "s" : ""}: ${unknownCollectionNames.join(", ")} — check metadata.json figma.collections)`
+      : "";
 
     if (totalChanges === 0) {
-      setStatus({ kind: "success", message: "GitHub is already up to date with Figma" });
+      setStatus({
+        kind: "success",
+        message: `GitHub is already up to date with Figma${unknownSuffix}`,
+      });
     } else {
       setStatus({ kind: "idle" });
       setDiffs(result.filter((d) => d.counts.total > 0));
@@ -526,11 +536,13 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     return (
       <PushDiff
         diffs={diffs}
+        unrecognizedCollections={unrecognizedCollections}
         onCreatePR={(title, keys) => handleCreatePR(title, keys)}
         onBack={() => {
           setView("main");
           setStatus({ kind: "idle" });
           pendingFigmaRaw.current = null;
+          setUnrecognizedCollections([]);
         }}
         creating={creating}
       />

@@ -9,12 +9,20 @@ import { groupByCategory } from "../../shared/token-diff";
 
 interface Props {
   diffs: CollectionDiff[];
+  /** Figma collection names that matched none of the configured layers — never included in the PR. */
+  unrecognizedCollections?: string[];
   onCreatePR: (title: string, selectedKeys: Set<string>) => void;
   onBack: () => void;
   creating: boolean;
 }
 
-export function PushDiff({ diffs, onCreatePR, onBack, creating }: Props) {
+export function PushDiff({
+  diffs,
+  unrecognizedCollections = [],
+  onCreatePR,
+  onBack,
+  creating,
+}: Props) {
   const [prTitle, setPrTitle] = useState("chore: sync design tokens from Figma");
   const [activeTab, setActiveTab] = useState(0);
 
@@ -47,6 +55,15 @@ export function PushDiff({ diffs, onCreatePR, onBack, creating }: Props) {
         </button>
         <span style={s.title}>Push to GitHub</span>
       </div>
+
+      {unrecognizedCollections.length > 0 && (
+        <div style={s.warningBanner}>
+          Skipped {unrecognizedCollections.length === 1 ? "collection" : "collections"} not matching
+          any configured layer: <strong>{unrecognizedCollections.join(", ")}</strong>. These will
+          not be included in the PR. Check <code>figma.collections</code> in{" "}
+          <code>metadata.json</code>, or rename the collection in Figma, if this is unexpected.
+        </div>
+      )}
 
       {!hasChanges ? (
         <div style={s.empty}>
@@ -282,6 +299,16 @@ const s: Record<string, React.CSSProperties> = {
     gap: "8px",
     padding: "14px 16px",
     borderBottom: "1px solid #eee",
+  },
+  warningBanner: {
+    margin: "12px 16px 0",
+    padding: "10px 12px",
+    fontSize: "11px",
+    lineHeight: 1.5,
+    background: "#fff8e6",
+    color: "#7a5c00",
+    border: "1px solid #f0dca0",
+    borderRadius: "8px",
   },
   backBtn: {
     background: "none",

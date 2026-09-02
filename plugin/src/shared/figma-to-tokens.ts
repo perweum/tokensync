@@ -22,18 +22,35 @@ export interface TokenFile {
 // Public API
 // ---------------------------------------------------------------------------
 
+export interface FigmaToCollectionsResult {
+  collections: ResolvedCollection[];
+  /** Figma collection names that matched none of the four configured layers — excluded above, never silently written. */
+  unknownCollectionNames: string[];
+}
+
 /**
  * Produce ResolvedCollection[] from Figma data — used for diffing against GitHub.
+ *
+ * Collections whose name doesn't match any of the four configured layers (primitives/
+ * global/themes/semantic) are excluded and reported separately, rather than appearing
+ * in the diff only to be silently skipped later by figmaToTokenFiles — see
+ * DECISIONS.md "Priority 2 — Publish blockers".
  */
 export function figmaToCollections(
   collections: FigmaVariableCollection[],
   variables: FigmaVariable[],
   figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
-): ResolvedCollection[] {
+): FigmaToCollectionsResult {
   const varById = new Map(variables.map((v) => [v.id, v]));
   const result: ResolvedCollection[] = [];
+  const unknownCollectionNames: string[] = [];
 
   for (const collection of collections) {
+    if (collectionKind(collection.name, figmaCollectionNames) === "unknown") {
+      unknownCollectionNames.push(collection.name);
+      continue;
+    }
+
     const collVars = variables.filter((v) => v.collectionId === collection.id);
 
     for (const mode of collection.modes) {
@@ -50,7 +67,7 @@ export function figmaToCollections(
     }
   }
 
-  return result;
+  return { collections: result, unknownCollectionNames };
 }
 
 /**
