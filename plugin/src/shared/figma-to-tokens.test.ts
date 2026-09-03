@@ -18,7 +18,13 @@ describe("figmaToCollections — reference resolution", () => {
   // literal unresolved {ref} text — which leaked straight into generated CSS
   // as an invalid declaration value.
   const collections: FigmaVariableCollection[] = [
-    { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: [] },
+    // Mode intentionally NOT named "Value" — a real Figma collection's single
+    // mode can be called anything ("Mode 1" here). A regression where this got
+    // silently overwritten with a hardcoded "Value" broke Coop's real push: the
+    // diff/selection UI showed the fabricated name, but the actual file-write
+    // step matches against Figma's real mode name, so primitives silently
+    // dropped out of the PR despite looking selected. See DECISIONS.md.
+    { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Mode 1" }], variableIds: [] },
     { id: "c2", name: "Themes", modes: [{ modeId: "m2", name: "Masterbrand" }], variableIds: [] },
     { id: "c3", name: "Semantic", modes: [{ modeId: "m3", name: "Light" }], variableIds: [] },
   ];
@@ -50,6 +56,16 @@ describe("figmaToCollections — reference resolution", () => {
       collectionName: "Semantic",
     },
   ];
+
+  it("reports primitives' real Figma mode name, not a fabricated one", () => {
+    const { collections: result } = figmaToCollections(
+      collections,
+      variables,
+      figmaCollectionNames,
+    );
+    const primitives = result.find((c) => c.collectionName === "Primitives")!;
+    expect(primitives.modeName).toBe("Mode 1");
+  });
 
   it("resolves a theme token that aliases a primitive", () => {
     const { collections: result } = figmaToCollections(

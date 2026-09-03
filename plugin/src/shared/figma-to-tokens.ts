@@ -63,7 +63,9 @@ export function figmaToCollections(
   // breakpoint-driven "Size" collection) isn't handled correctly by this yet — same
   // open problem as the multi-collection-per-role config, see DECISIONS.md.
   let primitivesRaw: Record<string, TokenValue> = {};
+  let primitivesModeName: string | undefined;
   let globalRaw: Record<string, TokenValue> = {};
+  let globalModeName: string | undefined;
   const themeModes: Array<{ modeName: string; raw: Record<string, TokenValue> }> = [];
   const semanticModes: Array<{ modeName: string; raw: Record<string, TokenValue> }> = [];
 
@@ -78,9 +80,15 @@ export function figmaToCollections(
 
     for (const mode of collection.modes) {
       const raw = buildFlatTokens(collVars, mode.modeId, varById);
-      if (kind === "primitives") primitivesRaw = { ...primitivesRaw, ...raw };
-      else if (kind === "global") globalRaw = { ...globalRaw, ...raw };
-      else if (kind === "themes") themeModes.push({ modeName: mode.name, raw });
+      if (kind === "primitives") {
+        primitivesRaw = { ...primitivesRaw, ...raw };
+        primitivesModeName ??= mode.name; // first mode's real name — must match the raw
+        // Figma data buildFilesFromDiffs later filters against, or a collection that
+        // looks selected in the diff silently drops out of the PR (see DECISIONS.md).
+      } else if (kind === "global") {
+        globalRaw = { ...globalRaw, ...raw };
+        globalModeName ??= mode.name;
+      } else if (kind === "themes") themeModes.push({ modeName: mode.name, raw });
       else if (kind === "semantic") semanticModes.push({ modeName: mode.name, raw });
     }
   }
@@ -91,7 +99,7 @@ export function figmaToCollections(
   if (Object.keys(primitivesRaw).length > 0) {
     result.push({
       collectionName: figmaCollectionNames.primitives,
-      modeName: "Value",
+      modeName: primitivesModeName ?? "Value",
       tokens: resolveAllReferences(primitivesRaw),
       rawTokens: primitivesRaw,
       typographyStyles: [],
@@ -102,7 +110,7 @@ export function figmaToCollections(
     const resolved = resolveAllReferences({ ...primitivesRaw, ...globalRaw });
     result.push({
       collectionName: figmaCollectionNames.global,
-      modeName: "Value",
+      modeName: globalModeName ?? "Value",
       tokens: filterByPaths(resolved, Object.keys(globalRaw)),
       rawTokens: globalRaw,
       typographyStyles: [],
