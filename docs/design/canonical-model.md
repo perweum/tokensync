@@ -235,9 +235,17 @@ Before writing an adapter, prove the canonical model isn't over-fit to Token
 Studio by testing it against three independently-structured repos:
 
 1. Token Sync's own `tokens/` (native DTCG) — in this repo.
-2. `@kilden/design-tokens` (`~/projects/designsystem/packages/design-tokens`) — a
-   real Token Studio repo, 14 brands, ~2800 tokens, the source of
-   `docs/interop/`.
+2. A real Token Studio repo. **Correction (July 2026)**: `@kilden/design-tokens`
+   (`~/projects/designsystem/packages/design-tokens`) was previously described
+   here as "the 14-brand repo `docs/interop/` was drawn from" — checked directly
+   and that's wrong. It's Bekk's own internal design system, a real Token Studio
+   repo but with 4 themes (`vann`/`ild`/`jord`/`luft`), not the actual Coop
+   repository the `docs/interop/` findings describe. It's still useful as a
+   real, on-disk, independently-structured Token Studio example for this test —
+   just not the same repo, and not at Coop's scale. The actual Coop Figma
+   library is being tested directly via live Figma sync instead (see
+   DECISIONS.md §"Status at a Glance" — in progress), which sidesteps needing a
+   Token Studio *file* export of it at all.
 3. A plain vanilla DTCG repo with no tool-specific config at all.
 
 If the canonical model ingests all three and regenerates correct platform output,
