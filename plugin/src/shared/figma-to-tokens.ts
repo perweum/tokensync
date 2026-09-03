@@ -11,7 +11,7 @@ import type {
   TokenValue,
 } from "./messages";
 import type { ResolvedCollection } from "./token-merger";
-import { fromFigmaVarName } from "./token-format";
+import { fromFigmaVarName, resolveAllReferences } from "./token-format";
 
 export interface TokenFile {
   repoPath: string; // e.g. "tokens/primitives/color.json"
@@ -35,6 +35,16 @@ export interface FigmaToCollectionsResult {
  * global/themes/semantic) are excluded and reported separately, rather than appearing
  * in the diff only to be silently skipped later by figmaToTokenFiles — see
  * DECISIONS.md "Priority 2 — Publish blockers".
+ *
+ * `tokens` is genuinely resolved here (aliases walked to their final value), mirroring
+ * how parseRepository resolves the GitHub side — semantic against the default theme +
+ * global, themes and global against primitives. `rawTokens` keeps every {ref} exactly
+ * as Figma stored it, for writing token files and for the CSS transformer's light/dark
+ * var() cascade. Before this, `tokens` and `rawTokens` were literally the same object —
+ * fine for the one alias shape the CSS transformer special-cases ({light.X}/{dark.X}),
+ * silently wrong for anything else (a theme referencing a primitive, a semantic token
+ * whose alias is nested under an extra path segment like {color.light.X}) — those
+ * unresolved {ref} strings were leaking straight into generated CSS as invalid values.
  */
 export function figmaToCollections(
   collections: FigmaVariableCollection[],
@@ -42,11 +52,24 @@ export function figmaToCollections(
   figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
 ): FigmaToCollectionsResult {
   const varById = new Map(variables.map((v) => [v.id, v]));
-  const result: ResolvedCollection[] = [];
   const unknownCollectionNames: string[] = [];
 
+  // Pass 1: gather every recognized collection's raw (ref-preserving) flat token map
+  // per mode, grouped by role. Needed in full before anything can be resolved, since
+  // e.g. a theme's refs point at primitives and a semantic token's refs point at the
+  // theme layer. Primitives/Global are merged to a single "Value" entity — consistent
+  // with parseRepository, which makes the same assumption on the GitHub side. A
+  // primitives/global collection with genuinely different per-mode values (e.g. a
+  // breakpoint-driven "Size" collection) isn't handled correctly by this yet — same
+  // open problem as the multi-collection-per-role config, see DECISIONS.md.
+  let primitivesRaw: Record<string, TokenValue> = {};
+  let globalRaw: Record<string, TokenValue> = {};
+  const themeModes: Array<{ modeName: string; raw: Record<string, TokenValue> }> = [];
+  const semanticModes: Array<{ modeName: string; raw: Record<string, TokenValue> }> = [];
+
   for (const collection of collections) {
-    if (collectionKind(collection.name, figmaCollectionNames) === "unknown") {
+    const kind = collectionKind(collection.name, figmaCollectionNames);
+    if (kind === "unknown") {
       unknownCollectionNames.push(collection.name);
       continue;
     }
@@ -54,23 +77,80 @@ export function figmaToCollections(
     const collVars = variables.filter((v) => v.collectionId === collection.id);
 
     for (const mode of collection.modes) {
-      const tokens = buildFlatTokens(collVars, mode.modeId, varById);
-
-      const collectionName = resolveCollectionName(collection.name, figmaCollectionNames);
-
-      result.push({
-        collectionName,
-        modeName: mode.name,
-        tokens,
-        rawTokens: tokens, // Figma values already have refs as {path} strings; raw === resolved in push direction
-        // Typography styles read from Figma come from Text Styles (getLocalTextStylesAsync),
-        // a separate API surface from Variables — not yet wired into the push diff.
-        typographyStyles: [],
-      });
+      const raw = buildFlatTokens(collVars, mode.modeId, varById);
+      if (kind === "primitives") primitivesRaw = { ...primitivesRaw, ...raw };
+      else if (kind === "global") globalRaw = { ...globalRaw, ...raw };
+      else if (kind === "themes") themeModes.push({ modeName: mode.name, raw });
+      else if (kind === "semantic") semanticModes.push({ modeName: mode.name, raw });
     }
   }
 
+  // Pass 2: resolve. Each layer's context is exactly what it's allowed to reference.
+  const result: ResolvedCollection[] = [];
+
+  if (Object.keys(primitivesRaw).length > 0) {
+    result.push({
+      collectionName: figmaCollectionNames.primitives,
+      modeName: "Value",
+      tokens: resolveAllReferences(primitivesRaw),
+      rawTokens: primitivesRaw,
+      typographyStyles: [],
+    });
+  }
+
+  if (Object.keys(globalRaw).length > 0) {
+    const resolved = resolveAllReferences({ ...primitivesRaw, ...globalRaw });
+    result.push({
+      collectionName: figmaCollectionNames.global,
+      modeName: "Value",
+      tokens: filterByPaths(resolved, Object.keys(globalRaw)),
+      rawTokens: globalRaw,
+      typographyStyles: [],
+    });
+  }
+
+  for (const { modeName, raw } of themeModes) {
+    const resolved = resolveAllReferences({ ...primitivesRaw, ...raw });
+    result.push({
+      collectionName: figmaCollectionNames.themes,
+      modeName,
+      tokens: filterByPaths(resolved, Object.keys(raw)),
+      rawTokens: raw,
+      typographyStyles: [],
+    });
+  }
+
+  // Semantic resolves against the default (first) theme mode specifically — the same
+  // simplification parseRepository makes for display/diff purposes on the GitHub side.
+  const defaultThemeRaw = themeModes[0]?.raw ?? {};
+  for (const { modeName, raw } of semanticModes) {
+    const resolved = resolveAllReferences({
+      ...primitivesRaw,
+      ...defaultThemeRaw,
+      ...globalRaw,
+      ...raw,
+    });
+    result.push({
+      collectionName: figmaCollectionNames.semantic,
+      modeName,
+      tokens: filterByPaths(resolved, Object.keys(raw)),
+      rawTokens: raw,
+      // Typography styles read from Figma come from Text Styles (getLocalTextStylesAsync),
+      // a separate API surface from Variables — not yet wired into the push diff.
+      typographyStyles: [],
+    });
+  }
+
   return { collections: result, unknownCollectionNames };
+}
+
+/** Keep only the paths that appear in the allowlist. */
+function filterByPaths(
+  flat: Record<string, TokenValue>,
+  paths: string[],
+): Record<string, TokenValue> {
+  const set = new Set(paths);
+  return Object.fromEntries(Object.entries(flat).filter(([k]) => set.has(k)));
 }
 
 /**
@@ -360,14 +440,6 @@ function collectionKind(name: string, names: CollectionNames): CollectionKind {
   if (name === names.themes) return "themes";
   if (name === names.semantic) return "semantic";
   return "unknown";
-}
-
-function resolveCollectionName(name: string, names: CollectionNames): string {
-  if (name === names.primitives) return names.primitives;
-  if (name === names.global) return names.global;
-  if (name === names.themes) return names.themes;
-  if (name === names.semantic) return names.semantic;
-  return name;
 }
 
 // ---------------------------------------------------------------------------
