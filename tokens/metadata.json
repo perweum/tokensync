@@ -6,17 +6,21 @@
 
   "themes": ["original", "christmas"],
   "colorSchemes": ["light", "dark"],
+  "sizes": [],
+  "sizeBreakpoints": {},
 
   "figma": {
     "$description": "Figma file and Variable Collection configuration.",
     "fileKey": "REPLACE_WITH_FIGMA_FILE_KEY",
     "collections": {
-      "primitives": "Primitives",
-      "global":     "Global",
-      "themes":     "Themes",
-      "semantic":   "Semantic"
+      "$description": "One list per role — several physical Figma collections can back the same role (Figma allows only one mode-axis per collection). Use the plugin's Map Collections screen instead of hand-editing this.",
+      "primitives": ["Primitives"],
+      "global":     ["Global"],
+      "themes":     ["Themes"],
+      "semantic":   ["Semantic"],
+      "sizes":      []
     },
-    "$note": "Themes collection modes: one per named theme (Original, Zero…). Semantic collection modes: Light, Dark (+ any user-added modes like Contrast). Switch theme and color scheme independently in Figma."
+    "$note": "Themes collection modes: one per named theme (Original, Zero…). Semantic collection modes: Light, Dark (+ any user-added modes like Contrast). Switch theme and color scheme independently in Figma. `sizes` is an optional second axis on Primitives (e.g. mobile/desktop breakpoints) — see docs/design/size-axis.md."
   },
 
   "github": {

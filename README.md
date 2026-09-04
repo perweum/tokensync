@@ -1,22 +1,10 @@
 # Token Sync
 
-An internal tool for syncing design tokens between Figma and GitHub. A simpler, self-owned alternative to Token Studio.
-
----
-
-## Why not Token Studio?
-
-Token Studio works, but comes with trade-offs that accumulate over time:
-
-- **Cost** — Enterprise features (required for multi-brand setups) are paywalled
-- **Complexity** — "Token sets" is an abstract model; brands and themes are simulated through combinations of sets rather than being first-class concepts
-- **Tooling dependency** — Math expressions like `floor({_size.unit} * 4)` in token values only work with Token Studio's own Style Dictionary transforms; other tools break
-- **`$themes.json` is unreadable** — A list of set-combination objects with Figma collection IDs, `source`/`enabled`/`disabled` states, and mode IDs. Practically impossible to maintain by hand
-- **Requires Style Dictionary** — Two tools, two configs, two things to understand
-
-This tool replaces the entire stack with a single, self-contained Figma plugin that reads from and writes to GitHub directly.
-
-Token Studio got a lot right — the primitives/theme/semantic layering, splitting global tokens from brand-specific ones — and Token Sync's format is built on the same lessons (see [Relationship to Themebuilder](#relationship-to-themebuilder) and `docs/interop/`). What it gates behind the plugin is the problem, not the ideas. **The repository is the source of truth here; the plugin only holds a cache** — a team with the repo and no plugin can still build, configure, and generate. See `docs/principles/no-lock-in.md`. A native, one-time importer for Token Studio repos (`$themes.json`, `enabled`/`source`, composite typography) is planned so teams don't have to restructure before adopting — see `docs/design/canonical-model.md`.
+Token Sync is a Figma plugin that keeps a design system's tokens in GitHub as
+the source of truth, synced with Figma Variables through reviewable Pull
+Requests. It can also compile those tokens into CSS, JavaScript/TypeScript,
+Dart, and Swift — optionally, for teams that don't already have a build step
+of their own.
 
 ---
 
@@ -25,24 +13,33 @@ Token Studio got a lot right — the primitives/theme/semantic layering, splitti
 ```
 Figma Variables  ←→  Token Sync Plugin  ←→  GitHub (via Pull Request)
                            ↓
-                    Platform output
+                    Platform output (optional)
                     (CSS, JS/TS, Dart, Swift)
 ```
 
-The plugin runs inside Figma and has direct access to Variables. It talks to GitHub using a Personal Access Token. Tokens are stored as JSON in a standard folder structure in your repository. When tokens change, the plugin creates a Pull Request — never a direct push.
+The plugin runs inside Figma and has direct access to Variables. It talks to
+GitHub using a Personal Access Token. Tokens are stored as JSON in a standard
+folder structure in your repository. When tokens change, the plugin creates a
+Pull Request — never a direct push. **The repository is the source of truth;
+the plugin only holds a cache** — a team with the repo and no plugin can
+still build, configure, and generate. See `docs/principles/no-lock-in.md`.
 
 ---
 
 ## Token format
 
-Tokens are organised in three layers:
+Tokens are organised in three layers, plus an optional second axis for values
+that vary by something other than theme or color scheme:
 
 ```
 tokens/
-  primitives/             Raw values. The ground truth.
-    color.json            12-step colour ramps per palette
+  primitives/             Raw values — any naming, structure, or color model
+    color.json            Whatever your design system calls its colors
     geometry.json         Spacing scale, radius, border width
     typography.json       Font families, sizes, weights
+    sizes/                Optional — primitives that vary by breakpoint
+      mobile.json           (see "A second axis: Size" below)
+      desktop.json
 
   semantic/               Meaning. References primitives or themes.
     global/               Never changes between themes or color schemes
@@ -50,11 +47,11 @@ tokens/
       spacing.json        Component and layout spacing
     themes/               Complete light + dark token sets — one file per named theme
       original.json       "Original" theme: light.* and dark.* sections
-      {name}.json         Additional themes (Zero, Vanilla, …)
-    light.json            Semantic colour roles — light color scheme
-    dark.json             Semantic colour roles — dark color scheme
+      {name}.json         Additional themes
+    light.json             Semantic colour roles — light color scheme
+    dark.json              Semantic colour roles — dark color scheme
 
-  metadata.json           Project config: themes, Figma, GitHub, output
+  metadata.json           Project config: themes, Figma mapping, output
 ```
 
 ### Three-layer architecture
@@ -72,32 +69,33 @@ This means:
 - Runtime theme switching works without regenerating CSS — flip `[data-theme]` on any ancestor
 - Severity colours (success/error/warning/info) reference primitives directly and are identical across all themes
 
-### Colour ramps
+### Any naming, any structure
 
-Every colour palette uses 12 steps:
+Token Sync has no opinion on how primitives are named or organised — a
+5-step ramp, a 20-step ramp, a hand-picked palette, whatever your team
+already uses for color, spacing, or type. It reads whatever paths exist
+under `primitives/` and reflects them through unchanged; nothing in the
+sync, diff, or transform logic depends on a specific structure. What matters
+is that Figma Variables are actually linked correctly — a semantic token
+that should reference a primitive is bound to it as a real alias, not a
+hand-typed duplicate value. Multiple physical Figma collections can back one
+role, too (Figma allows only one mode-axis per collection) — the plugin's
+**Map Collections** screen assigns each real collection to a role.
 
-```
-25  → lightest background tint
-50  → light background tint
-100 → surface tint
-200 → subtle border
-300 → border, hover states
-400 → muted interactive
-500 → mid-point
-600 → primary interactive (button default)
-700 → interactive hover
-800 → interactive active/pressed
-900 → deep background (dark mode)
-950 → deepest background (dark mode)
-```
+### A second axis: Size
 
-**The key property: `green.500` and `blue.500` have the same perceived darkness.** This is guaranteed by the OKLCH colour generation in Themebuilder. You can reason about contrast by step number — `600` is always readable on white in light mode, `300` is always readable on dark backgrounds in dark mode.
-
-Colour ramps are generated by Themebuilder from a single seed colour. They are never edited by hand.
+Some primitive values — a type scale, a spacing step — legitimately differ
+by breakpoint (mobile vs. desktop, e.g.), independent of theme or color
+scheme. Map a Figma collection to the `sizes` role and Primitives becomes
+multi-mode along that axis too: the base mode's values ship in `:root`,
+other modes get an explicit `[data-size="…"]` override, and an optional
+`@media (min-width)` wrapper switches automatically by viewport — no
+breakpoint config required unless you want the automatic switch. See
+`docs/design/size-axis.md`.
 
 ### Token syntax
 
-Standard [W3C DTCG](https://www.w3.org/community/design-tokens/) format:
+Standard [W3C DTCG](https://www.designtokens.org/) format:
 
 ```json
 {
@@ -118,7 +116,7 @@ References use `{dot.path.notation}` and resolve across all files in the token t
 
 ## For developers
 
-When tokens are built, you get CSS, JS/TS, Dart, and Swift assets compiled sibling to your token repository:
+When tokens are built, you get CSS, JS/TS, Dart, and Swift assets compiled sibling to your token repository — each one optional, chosen from the plugin's **Output Formats** screen:
 
 ```
 dist/
@@ -454,28 +452,35 @@ my-button::part(root) {
 
 GitHub is always the source of truth. If Figma and GitHub conflict, GitHub wins.
 
+### Mapping Figma collections to roles
+
+Every Figma collection needs to be assigned a role — `primitives`, `global`, `themes`, `semantic`, or the optional `sizes` axis — or explicitly ignored. Open the plugin's **Map Collections** screen to assign each one; it writes the mapping to `metadata.json` via a PR. Several physical collections can share a role (useful when Figma's one-mode-axis-per-collection limit splits what's conceptually one role across more than one collection).
+
+### Choosing output formats
+
+CSS, JS, TS, Dart, and Swift are each independently optional. Use the plugin's **Output Formats** screen to choose which ones generate on push — writes to `metadata.json`'s `platforms` field via a PR. None selected is a valid, common choice; see "Already have a build step?" below.
+
 ### Adding a new theme
 
-1. Generate colour ramps in Themebuilder if the theme needs new palettes
-2. Create `tokens/semantic/themes/{name}.json` with `light` and `dark` sections, mapping all brand and neutral tokens to primitive steps
-3. Add the theme name to `metadata.json` under `themes`
-4. Commit and push — the plugin picks up the new Themes mode on the next pull
+1. Create `tokens/semantic/themes/{name}.json` with `light` and `dark` sections, mapping all brand and neutral tokens to primitive values
+2. Add the theme name to `metadata.json` under `themes`
+3. Commit and push — the plugin picks up the new Themes mode on the next pull
 
 No changes to `light.json` or `dark.json` are required. Severity tokens are not part of themes and never need to change.
 
 ### Ignoring collections during sync
 
-Add `"ignoredCollections": ["primitives"]` to `metadata.json` to exclude layers from pull and push diffs. Entries are layer keys — `primitives`, `global`, `themes`, or `semantic`. Useful for read-only core collections managed elsewhere (e.g. Themebuilder-generated primitives). Platform output (CSS, JS, Dart, Swift) still includes ignored collections so references resolve.
+Add `"ignoredCollections": ["primitives"]` to `metadata.json` to exclude layers from pull and push diffs. Entries are layer keys — `primitives`, `global`, `themes`, or `semantic`. Useful for read-only core collections managed elsewhere. Platform output (CSS, JS, Dart, Swift) still includes ignored collections so references resolve.
 
 Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns off applying typography groups (`"$type": "typography"`) to Figma as Text Styles, independent of Variables sync — on by default, remembered per project. This is coarser than `ignoredCollections`: it's all typography styles or none, not per-collection.
 
 ### Already have a build step?
 
-Token Sync's CSS/JS/TS/Dart/Swift generators (`metadata.json`'s `platforms` field, configurable from the plugin's **Output formats** screen) are a convenience for teams without one — not a requirement. Every platform is off unless explicitly enabled; a project with none of them turned on still gets the token JSON, nothing else.
+Token Sync's CSS/JS/TS/Dart/Swift generators are a convenience for teams without one — not a requirement. Every platform is off unless explicitly enabled from the **Output Formats** screen; a project with none of them turned on still gets the token JSON, nothing else.
 
 The token files themselves (`tokens/**/*.json`) are plain [DTCG](https://www.designtokens.org/) — `$value`/`$type`/`$description`, no Token Sync-specific structure a downstream tool needs to understand. If you already run [Style Dictionary](https://styledictionary.com/) (which has native DTCG support as of v4) or any other token build pipeline, point its `source`/`include` glob at `tokens/**/*.json` directly and leave every `platforms.*` entry off — your existing pipeline and its output stay exactly as they are, Token Sync just keeps the source files it reads in sync with Figma.
 
-This is also the reasonable default for a team migrating off Token Studio that already has a build step consuming its export: swap what feeds the pipeline, not the pipeline itself.
+This is also the reasonable default for a team migrating from another tool that already has a build step consuming its export: swap what feeds the pipeline, not the pipeline itself.
 
 ### First-time project setup
 
@@ -506,49 +511,31 @@ Themes and color scheme are switched independently. `[data-theme]` controls whic
 
 ### Why severity tokens reference primitives directly?
 
-Severity tokens (`success`, `error`, `warning`, `info`) are identical across all themes — a green success state is always green regardless of the brand palette. Putting them in theme files would require duplicating the same primitive references in every theme. Instead they reference `{color.green.N}` directly in `light.json` and `dark.json`, making the theme files smaller and the invariant explicit.
-
-### Why not Token Studio format?
-
-Token Studio's `$themes.json` is a list of token set combinations with embedded Figma collection and mode IDs. It is practically unreadable without Token Studio open, and math expressions in token values are Token Studio extensions that no other tool understands.
-
-This tool uses explicit folder structure. `semantic/themes/original.json` is the Original theme palette. `semantic/light.json` is the light color scheme. No abstraction needed.
-
-This is Token Sync's native format — it is not the only format Token Sync will read. The plan is to read a Token Studio repo natively via an adapter and convert it once, rather than requiring a team to restructure by hand before they can adopt Token Sync at all. The adapter translates Token Studio's concepts away at the boundary; nothing downstream (diffing, resolution, platform output) ever sees a token set, a `group`, or an `enabled`/`source` flag. See `docs/design/canonical-model.md`.
-
-### Why 12-step colour ramps and not 16?
-
-The 12-step model uses a single ramp that works for both light and dark themes. The same `color.brand.600` is the button background in light mode; a lighter step (`color.brand.400`) is used in dark mode. 12 colours per palette, named by perceptual lightness, is the right trade-off between granularity and simplicity.
-
-The cross-palette consistency guarantee — that `green.500` and `blue.500` are equally dark — is enforced by the OKLCH generation in Themebuilder.
+Severity tokens (`success`, `error`, `warning`, `info`) are identical across all themes — a green success state is always green regardless of the brand palette. Putting them in theme files would require duplicating the same primitive references in every theme. Instead they reference a primitive directly in `light.json` and `dark.json`, making the theme files smaller and the invariant explicit.
 
 ### Why pre-computed values, not formulas in tokens?
 
-Pre-computed values make token files readable by any tool. The build logic (Themebuilder or the plugin) computes `floor(4 * 4) = 16px` and writes `"16px"` into the JSON. No Style Dictionary transform step required.
+Pre-computed values make token files readable by any tool without needing a matching transform step. Whatever computes a value — a script, a spreadsheet, hand authoring — writes the final result (`"16px"`, not `floor(4 * 4)`) into the JSON.
 
 ---
 
-## Relationship to Themebuilder
+## Interop & migration
 
-Themebuilder generates colour primitives (12-step OKLCH ramps) and semantic colour tokens. Token Sync provides the infrastructure to move those tokens between Figma and GitHub and transform them into platform-specific output.
+Most teams evaluating Token Sync are moving from something else — most often Token Studio. Reading a Token Studio repo natively (`$themes.json`, `enabled`/`source`, composite typography) so a team can adopt without restructuring by hand first is planned; see `docs/design/canonical-model.md` for the approach and `docs/interop/token-studio.md` for the concrete format contract this project has tested against, from a real large-scale migration.
 
-The two tools are separate but designed to work together:
-
-- Themebuilder exports → Token Sync format → GitHub
-- GitHub → Token Sync plugin → Figma Variables
-- A shared format library can be extracted as an internal npm package when both tools are mature
+The token files Token Sync produces are plain DTCG JSON — see "Already have a build step?" above for pairing it with an existing pipeline instead of Token Sync's own generators.
 
 ---
 
 ## Further reading
 
-The plugin is one client of the token format — the format and its rationale are documented independently of it:
-
 - `docs/principles/no-lock-in.md` — the design principle behind the repo-is-source-of-truth stance, and what it requires concretely
 - `docs/interop/token-studio.md` — the Token Studio repository contract and the concrete failure modes worth defending against, from a real 14-brand migration
 - `docs/interop/migration-patterns.md` — what a large multi-brand token system looks like in practice, and what CSS generators need from it
 - `docs/design/canonical-model.md` — the direction for a neutral canonical model with Token Studio (and others) as adapters into it — status: direction decided, mechanics under analysis
-- `DECISIONS.md` — the full changelog, code invariants, and priority-ordered backlog, including a developer-first CLI/CI direction that will let teams build tokens without opening Figma at all
+- `docs/design/size-axis.md` — the Size/breakpoint axis on Primitives
+- `docs/design/transformer-configurability.md` — why the platform transformers stay opinionated rather than becoming configurable, and what to do instead if your output needs don't match
+- `DECISIONS.md` — the full changelog, code invariants, and priority-ordered backlog
 
 ---
 
@@ -557,21 +544,18 @@ The plugin is one client of the token format — the format and its rationale ar
 | Feature | Status |
 |---|---|
 | Token format spec | Done |
-| Figma plugin — scaffold, manifest | Done |
 | GitHub integration (pull, push, PR) | Done |
 | Pull diff view (GitHub → Figma) | Done |
 | Push diff view (Figma → GitHub) | Done |
 | Apply to Figma (pull) | Done |
 | Multi-project support | Done |
 | Primitives → Themes → Semantic three-layer architecture | Done |
-| CSS platform transformer | Done |
-| JS / TypeScript platform transformer | Done |
-| Dart (Flutter) platform transformer | Done |
-| Swift platform transformer | Done |
+| Multiple Figma collections per role (Map Collections) | Done |
+| Size axis on Primitives (breakpoint-varying values) | Done |
+| CSS / JS / TypeScript / Dart / Swift transformers | Done |
+| Output format selection (which platforms generate) | Done |
 | Branch switching per project | Done |
-| Boolean and string token types in diff | Done |
-| `$description` export (Figma → GitHub) | Done |
-| Dynamic metadata-driven collection naming | Done |
-| Figma Text/Effect Styles (composite typography, shadow) | Planned |
+| Figma Text Styles — pull direction (apply to Figma) | Done |
+| Figma Text Styles — push direction (Figma → GitHub) | Planned |
 | Token Studio migration (one-time import) | Planned |
 | GitLab / Azure DevOps provider | Not planned |
