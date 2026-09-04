@@ -61,9 +61,14 @@ describe("generateCSS — semantic light/dark deduplication", () => {
   });
 
   it("never hoists a theme-aliased ({light.*}/{dark.*}) token, even if it happens to resolve to the same hex", () => {
-    // Both schemes point at a primitive that happens to be the same colour —
-    // the raw ref still differs (light.* vs dark.*), so it must never collapse.
+    // A real Themes collection, so light.background.default / dark.background.default
+    // actually exist as referenceable vars — required for the ref to be treated as
+    // one at all (see resolveSemanticValue: verified against real targets, not spelling).
     const collections = [
+      col(names.themes, "Default", {
+        "light.background.default": { $type: "color", $value: "#ffffff" },
+        "dark.background.default": { $type: "color", $value: "#ffffff" },
+      }),
       col(
         names.semantic,
         "Light",
@@ -82,7 +87,107 @@ describe("generateCSS — semantic light/dark deduplication", () => {
 
     expect(css).toContain("var(--light-background-default)");
     expect(css).toContain("var(--dark-background-default)");
-    expect(css).not.toContain(":root {\n  --background-default");
+    // :root only ever gets the theme's own vars (--light-*/--dark-*) — the
+    // semantic role itself (--background-default) is never independently
+    // hoisted there as a plain value; every scheme block still references it.
+    expect(css).not.toMatch(/:root \{[^}]*--background-default:/s);
+    expect(css).toContain('[data-color-scheme="light"] {\n  --background-default: var(');
+  });
+
+  it("generalizes beyond the {light.X}/{dark.X} prefix — a nested alias ({color.light.X}) still becomes var(--*) as long as the target is real", () => {
+    // Reproduces Coop's actual shape: the light/dark segment is nested one
+    // level deeper than this project's own convention. A plain regex on the
+    // ref's spelling would miss this; checking the target actually resolves
+    // to a real CSS var does not.
+    const collections = [
+      col(names.themes, "Default", {
+        "color.light.accent.background-default": { $type: "color", $value: "#0552ff" },
+        "color.dark.accent.background-default": { $type: "color", $value: "#87a9ff" },
+      }),
+      col(
+        names.semantic,
+        "Light",
+        { "background.default": { $type: "color", $value: "#0552ff" } },
+        {
+          "background.default": {
+            $type: "color",
+            $value: "{color.light.accent.background-default}",
+          },
+        },
+      ),
+      col(
+        names.semantic,
+        "Dark",
+        { "background.default": { $type: "color", $value: "#87a9ff" } },
+        {
+          "background.default": {
+            $type: "color",
+            $value: "{color.dark.accent.background-default}",
+          },
+        },
+      ),
+    ];
+
+    const css = generateCSS(collections, metadata);
+
+    expect(css).toContain("var(--color-light-accent-background-default)");
+    expect(css).toContain("var(--color-dark-accent-background-default)");
+    expect(css).not.toContain("{color.light.accent.background-default}");
+    expect(css).not.toContain("{color.dark.accent.background-default}");
+  });
+
+  it("never emits var(--*) for a ref whose target doesn't actually exist — falls back to the resolved literal instead of broken CSS", () => {
+    const collections = [
+      // No Themes collection at all — {light.background.default} has nothing to point at.
+      col(
+        names.semantic,
+        "Light",
+        { "background.default": { $type: "color", $value: "#ffffff" } },
+        { "background.default": { $type: "color", $value: "{light.background.default}" } },
+      ),
+      col(
+        names.semantic,
+        "Dark",
+        { "background.default": { $type: "color", $value: "#111111" } },
+        { "background.default": { $type: "color", $value: "{dark.background.default}" } },
+      ),
+    ];
+
+    const css = generateCSS(collections, metadata);
+
+    expect(css).not.toContain("var(");
+    expect(css).not.toContain("{light.background.default}");
+    expect(css).toContain('[data-color-scheme="light"] {\n  --background-default: #ffffff;\n}');
+    expect(css).toContain('[data-color-scheme="dark"] {\n  --background-default: #111111;\n}');
+  });
+
+  it("gives a severity token that aliases a primitive directly the same var(--*) treatment", () => {
+    // A severity color that's theme-invariant but still genuinely differs
+    // between light/dark should reference the primitive, not bake in a
+    // resolved snapshot — same reasoning as the theme-aware case.
+    const collections = [
+      col(names.primitives, "Value", {
+        "color.red.600": { $type: "color", $value: "#c00000" },
+        "color.red.400": { $type: "color", $value: "#ff6b6b" },
+      }),
+      col(
+        names.semantic,
+        "Light",
+        { "color.danger": { $type: "color", $value: "#c00000" } },
+        { "color.danger": { $type: "color", $value: "{color.red.600}" } },
+      ),
+      col(
+        names.semantic,
+        "Dark",
+        { "color.danger": { $type: "color", $value: "#ff6b6b" } },
+        { "color.danger": { $type: "color", $value: "{color.red.400}" } },
+      ),
+    ];
+
+    const css = generateCSS(collections, metadata);
+
+    expect(css).toContain("var(--color-red-600)");
+    expect(css).toContain("var(--color-red-400)");
   });
 });
 
