@@ -132,6 +132,53 @@ describe("parseRepository — metadata", () => {
     );
     expect(metadata.ignoredCollections).toEqual(["primitives", "global"]);
   });
+
+  it("migrates a legacy bare-string figma.collections role into a single-element list", () => {
+    // figma.collections.X used to be a plain string, before a role could be
+    // backed by more than one physical Figma collection. A repo written
+    // before that change must not silently break every `.includes()` check.
+    const legacyMeta = {
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: "Primitives",
+          global: "Global",
+          themes: "Themes",
+          semantic: "Semantic",
+        },
+      },
+    };
+    const { metadata } = parseRepository(
+      [...makeFiles(), file("tokens/metadata.json", legacyMeta)],
+      tokensPath,
+    );
+    expect(metadata.figma.collections.primitives).toEqual(["Primitives"]);
+    expect(metadata.figma.collections.themes).toEqual(["Themes"]);
+    expect(metadata.figma.collections.sizes).toEqual([]);
+  });
+
+  it("preserves multiple configured names for one role", () => {
+    // The whole point of the list shape: Figma's one-mode-axis-per-collection
+    // limit can force one logical role across several physical collections.
+    const meta = {
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: ["Primitives"],
+          global: ["Global"],
+          themes: ["Themes", "Main Color", "Support Color"],
+          semantic: ["Semantic"],
+          sizes: ["Size"],
+        },
+      },
+    };
+    const { metadata } = parseRepository(
+      [...makeFiles(), file("tokens/metadata.json", meta)],
+      tokensPath,
+    );
+    expect(metadata.figma.collections.themes).toEqual(["Themes", "Main Color", "Support Color"]);
+    expect(metadata.figma.collections.sizes).toEqual(["Size"]);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────
@@ -167,6 +214,106 @@ describe("parseRepository — collections emitted", () => {
     const modeNames = semanticCollections.map((c) => c.modeName);
     expect(modeNames).toContain("Light");
     expect(modeNames).toContain("Dark");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// parseRepository — Size axis on Primitives
+// ────────────────────────────────────────────────────────────────
+
+describe("parseRepository — Size axis on Primitives", () => {
+  const meta = {
+    version: "1.0.0",
+    sizes: ["mobile", "desktop"],
+    sizeBreakpoints: { desktop: 768 },
+    figma: {
+      fileKey: "abc123",
+      collections: {
+        primitives: ["Primitives"],
+        global: ["Global"],
+        themes: ["Themes"],
+        semantic: ["Semantic"],
+        sizes: ["Size"],
+      },
+    },
+  };
+
+  const mobileSize = {
+    "font-size": { 1: { $type: "dimension", $value: "11px" } },
+  };
+  const desktopSize = {
+    "font-size": { 1: { $type: "dimension", $value: "12px" } },
+  };
+
+  function filesWithSizes(extra: GitHubFile[] = []): GitHubFile[] {
+    return [
+      ...makeFiles(),
+      file("tokens/metadata.json", meta),
+      file("tokens/primitives/sizes/mobile.json", mobileSize),
+      file("tokens/primitives/sizes/desktop.json", desktopSize),
+      ...extra,
+    ];
+  }
+
+  it("emits one Primitives collection per size mode instead of a single 'Value' mode", () => {
+    const { collections } = parseRepository(filesWithSizes(), tokensPath);
+    const primitivesCollections = collections.filter((c) => c.collectionName === "Primitives");
+    expect(primitivesCollections.length).toBe(2);
+    const modeNames = primitivesCollections.map((c) => c.modeName);
+    expect(modeNames).toContain("Mobile");
+    expect(modeNames).toContain("Desktop");
+  });
+
+  it("each size mode carries both its own size-specific value and the shared (size-invariant) primitives", () => {
+    const { collections } = parseRepository(filesWithSizes(), tokensPath);
+    const mobile = collections.find(
+      (c) => c.collectionName === "Primitives" && c.modeName === "Mobile",
+    )!;
+    const desktop = collections.find(
+      (c) => c.collectionName === "Primitives" && c.modeName === "Desktop",
+    )!;
+
+    expect(mobile.tokens["font-size.1"].$value).toBe("11px");
+    expect(desktop.tokens["font-size.1"].$value).toBe("12px");
+    // Shared, size-invariant primitive (from primitives/color.json) present in both.
+    expect(mobile.tokens["color.brand.500"].$value).toBe("#0142FE");
+    expect(desktop.tokens["color.brand.500"].$value).toBe("#0142FE");
+  });
+
+  it("falls back to a single 'Value' mode when no Size axis is configured — no behavior change", () => {
+    // The exact same shared primitives file, but no primitives/sizes/*.json files
+    // and no metadata.sizes — must produce exactly what it always has.
+    const { collections } = parseRepository(makeFiles(), tokensPath);
+    const primitivesCollections = collections.filter((c) => c.collectionName === "Primitives");
+    expect(primitivesCollections.length).toBe(1);
+    expect(primitivesCollections[0].modeName).toBe("Value");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// parseRepository — platforms (output format config)
+// ────────────────────────────────────────────────────────────────
+
+describe("parseRepository — platforms", () => {
+  it("round-trips platforms config from metadata.json unchanged", () => {
+    const meta = {
+      platforms: {
+        css: { enabled: true, output: "dist/tokens.css" },
+        js: { enabled: false },
+      },
+    };
+    const { metadata } = parseRepository(
+      [...makeFiles(), file("tokens/metadata.json", meta)],
+      tokensPath,
+    );
+    expect(metadata.platforms?.css).toEqual({ enabled: true, output: "dist/tokens.css" });
+    expect(metadata.platforms?.js).toEqual({ enabled: false });
+    expect(metadata.platforms?.ts).toBeUndefined();
+  });
+
+  it("is undefined (not an empty object) when metadata.json has no platforms key at all", () => {
+    const { metadata } = parseRepository(makeFiles(), tokensPath);
+    expect(metadata.platforms).toBeUndefined();
   });
 });
 

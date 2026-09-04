@@ -3,6 +3,9 @@ import { generateCSS } from "./css";
 import type { ResolvedCollection } from "../token-merger";
 import type { Metadata } from "../token-merger";
 
+// Singular names for building fixtures' `collectionName` — a ResolvedCollection
+// always carries one concrete name, regardless of how many names its role is
+// configured with (see CollectionNames).
 const names = {
   primitives: "Primitives",
   global: "Global",
@@ -13,7 +16,17 @@ const metadata: Metadata = {
   version: "1.0.0",
   themes: ["default"],
   colorSchemes: ["light", "dark"],
-  figma: { fileKey: "abc", collections: names },
+  sizes: [],
+  figma: {
+    fileKey: "abc",
+    collections: {
+      primitives: [names.primitives],
+      global: [names.global],
+      themes: [names.themes],
+      semantic: [names.semantic],
+      sizes: [],
+    },
+  },
 };
 
 function col(
@@ -243,5 +256,153 @@ describe("generateCSS — non-default theme deduplication", () => {
     // not incorrectly collapsed into one, and not left out of either block.
     expect(css).toContain('[data-theme="brandb"] {\n  --color-accent: #333333;\n}');
     expect(css).toContain('[data-theme="brandc"] {\n  --color-accent: #333333;\n}');
+  });
+});
+
+describe("generateCSS — Size axis on Primitives", () => {
+  const sizeMetadata: Metadata = {
+    ...metadata,
+    sizes: ["mobile", "desktop"],
+    sizeBreakpoints: { desktop: 768 },
+  };
+
+  it("writes the base (mobile) size mode straight into :root, with no [data-size] block for it", () => {
+    const collections = [
+      col(names.primitives, "Mobile", {
+        "font-size.1": { $type: "dimension", $value: "11px" },
+        "color.brand": { $type: "color", $value: "#0142fe" },
+      }),
+      col(names.primitives, "Desktop", {
+        "font-size.1": { $type: "dimension", $value: "12px" },
+        "color.brand": { $type: "color", $value: "#0142fe" },
+      }),
+    ];
+
+    const css = generateCSS(collections, sizeMetadata);
+
+    expect(css).toContain(":root {\n  --font-size-1: 11px;\n  --color-brand: #0142fe;\n}");
+    expect(css).not.toMatch(/\[data-size="mobile"\]/);
+  });
+
+  it("emits an explicit [data-size] override for the non-default mode, only for what actually differs", () => {
+    const collections = [
+      col(names.primitives, "Mobile", {
+        "font-size.1": { $type: "dimension", $value: "11px" },
+        "color.brand": { $type: "color", $value: "#0142fe" },
+      }),
+      col(names.primitives, "Desktop", {
+        "font-size.1": { $type: "dimension", $value: "12px" },
+        "color.brand": { $type: "color", $value: "#0142fe" },
+      }),
+    ];
+
+    const css = generateCSS(collections, sizeMetadata);
+
+    expect(css).toContain('[data-size="desktop"] {\n  --font-size-1: 12px;\n}');
+    // color.brand is identical in both modes — never duplicated into the override block.
+    expect(css).not.toMatch(/\[data-size="desktop"\][^}]*color-brand/s);
+  });
+
+  it("also wraps the same override in an unconditional @media (min-width) block when a breakpoint is configured", () => {
+    const collections = [
+      col(names.primitives, "Mobile", { "font-size.1": { $type: "dimension", $value: "11px" } }),
+      col(names.primitives, "Desktop", { "font-size.1": { $type: "dimension", $value: "12px" } }),
+    ];
+
+    const css = generateCSS(collections, sizeMetadata);
+
+    expect(css).toContain(
+      "@media (min-width: 768px) {\n  :root {\n    --font-size-1: 12px;\n  }\n}",
+    );
+  });
+
+  it("a typography-like token referencing a size-varying primitive gets var(--*), so it switches live with the media query", () => {
+    const collections = [
+      col(names.primitives, "Mobile", { "font-size.1": { $type: "dimension", $value: "11px" } }),
+      col(names.primitives, "Desktop", { "font-size.1": { $type: "dimension", $value: "12px" } }),
+      col(
+        names.semantic,
+        "Light",
+        { "text.body": { $type: "dimension", $value: "11px" } },
+        { "text.body": { $type: "dimension", $value: "{font-size.1}" } },
+      ),
+      col(
+        names.semantic,
+        "Dark",
+        { "text.body": { $type: "dimension", $value: "11px" } },
+        { "text.body": { $type: "dimension", $value: "{font-size.1}" } },
+      ),
+    ];
+
+    const css = generateCSS(collections, sizeMetadata);
+
+    // Identical in both schemes -> hoisted to :root — and it's a var() reference,
+    // not a baked-in literal, so it still tracks the size media query.
+    expect(css).toContain(":root {\n  --font-size-1: 11px;\n  --text-body: var(--font-size-1);\n}");
+  });
+
+  it("falls back to a single :root-only block with no [data-size]/@media output when there's only one primitives mode", () => {
+    const collections = [
+      col(names.primitives, "Value", { "color.brand": { $type: "color", $value: "#0142fe" } }),
+    ];
+
+    const css = generateCSS(collections, metadata); // metadata.sizes is []
+
+    expect(css).toContain(":root {\n  --color-brand: #0142fe;\n}");
+    expect(css).not.toContain("data-size");
+    expect(css).not.toContain("min-width");
+  });
+
+  it("with 3+ tiers, a value that changes then reverts is correct at the widest viewport — not stuck at a smaller tier's value", () => {
+    // min-width queries aren't mutually exclusive: at a 1500px viewport,
+    // mobile/tablet/desktop's queries *all* match. spacing.gap changes at
+    // tablet (16->24) then reverts at desktop (24->16, same as base) — diffing
+    // every tier against the base alone would make desktop's block omit the
+    // property entirely (looks identical to base), leaving tablet's
+    // still-matching rule in effect at 1500px: wrong. Diffing each tier
+    // against the one below it fixes this — desktop restates 16 because it
+    // differs from tablet, even though it matches the base.
+    const threeTierMetadata: Metadata = {
+      ...metadata,
+      sizes: ["mobile", "tablet", "desktop"],
+      sizeBreakpoints: { tablet: 600, desktop: 1024 },
+    };
+    const collections = [
+      col(names.primitives, "Mobile", { "spacing.gap": { $type: "dimension", $value: "16px" } }),
+      col(names.primitives, "Tablet", { "spacing.gap": { $type: "dimension", $value: "24px" } }),
+      col(names.primitives, "Desktop", { "spacing.gap": { $type: "dimension", $value: "16px" } }),
+    ];
+
+    const css = generateCSS(collections, threeTierMetadata);
+
+    // Tablet's media block states the change from mobile (base).
+    expect(css).toContain(
+      "@media (min-width: 600px) {\n  :root {\n    --spacing-gap: 24px;\n  }\n}",
+    );
+    // Desktop's media block must still restate 16px — it differs from the
+    // tier below it (tablet), even though it equals the base.
+    expect(css).toContain(
+      "@media (min-width: 1024px) {\n  :root {\n    --spacing-gap: 16px;\n  }\n}",
+    );
+    // Ascending order in the output — required for the cascade to resolve to
+    // desktop's value (source-order winner) at viewports beyond 1024px.
+    expect(css.indexOf("min-width: 600px")).toBeLessThan(css.indexOf("min-width: 1024px"));
+  });
+
+  it("sorts responsive tiers by breakpoint ascending regardless of metadata.sizes order", () => {
+    const outOfOrderMetadata: Metadata = {
+      ...metadata,
+      sizes: ["mobile", "desktop", "tablet"], // deliberately not breakpoint-ascending
+      sizeBreakpoints: { tablet: 600, desktop: 1024 },
+    };
+    const collections = [
+      col(names.primitives, "Mobile", { "spacing.gap": { $type: "dimension", $value: "16px" } }),
+      col(names.primitives, "Tablet", { "spacing.gap": { $type: "dimension", $value: "24px" } }),
+      col(names.primitives, "Desktop", { "spacing.gap": { $type: "dimension", $value: "32px" } }),
+    ];
+
+    const css = generateCSS(collections, outOfOrderMetadata);
+
+    expect(css.indexOf("min-width: 600px")).toBeLessThan(css.indexOf("min-width: 1024px"));
   });
 });

@@ -6,7 +6,7 @@
  * the token JSON files.
  */
 
-import type { ResolvedCollection, Metadata } from "../token-merger";
+import type { ResolvedCollection, Metadata, PlatformConfig } from "../token-merger";
 import { generateCSS } from "./css";
 import { generateJS, generateSchemeJS } from "./js";
 import { generateDart, generateSchemeDart } from "./dart";
@@ -24,13 +24,13 @@ export function runTransformers(
 ): TransformedFile[] {
   const files: TransformedFile[] = [];
 
-  const platforms = (metadata as MetadataWithPlatforms).platforms;
+  const platforms = metadata.platforms;
   if (!platforms) return files;
 
   const names = metadata.figma.collections;
-  const primitives = collections.find((c) => c.collectionName === names.primitives);
-  const global = collections.find((c) => c.collectionName === names.global);
-  const semantic = collections.filter((c) => c.collectionName === names.semantic);
+  const primitives = collections.find((c) => names.primitives.includes(c.collectionName));
+  const global = collections.find((c) => names.global.includes(c.collectionName));
+  const semantic = collections.filter((c) => names.semantic.includes(c.collectionName));
 
   if (platforms.css?.enabled) {
     const output = generateCSS(collections, metadata);
@@ -100,25 +100,6 @@ export function runTransformers(
   }
 
   return files;
-}
-
-// ---------------------------------------------------------------------------
-// Types — metadata.platforms is not in the base Metadata type yet
-// ---------------------------------------------------------------------------
-
-interface PlatformConfig {
-  enabled: boolean;
-  output?: string; // metadata.json uses "output"
-}
-
-interface MetadataWithPlatforms extends Metadata {
-  platforms?: {
-    css?: PlatformConfig;
-    js?: PlatformConfig;
-    ts?: PlatformConfig;
-    dart?: PlatformConfig;
-    swift?: PlatformConfig;
-  };
 }
 
 // ---------------------------------------------------------------------------

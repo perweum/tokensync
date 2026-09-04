@@ -1,9 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { runTransformers } from "./index";
 import { parseRepository } from "../token-merger";
-import type { ResolvedCollection } from "../token-merger";
+import type { ResolvedCollection, CollectionNames, Metadata } from "../token-merger";
 import type { GitHubFile, FigmaVariable } from "../messages";
 import { figmaToCollections, figmaToTokenFiles } from "../figma-to-tokens";
+
+function metadataFor(collections: CollectionNames): Metadata {
+  return {
+    version: "1.0.0",
+    themes: ["default"],
+    colorSchemes: ["light", "dark"],
+    sizes: [],
+    figma: { fileKey: "abc", collections },
+  };
+}
 
 function file(path: string, content: object): GitHubFile {
   return { path, content: JSON.stringify(content), sha: "abc" };
@@ -418,17 +428,18 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
     ];
 
     const figmaCollectionNames = {
-      primitives: "Primitives",
-      global: "Global",
-      themes: "Themes",
-      semantic: "Semantic",
+      primitives: ["Primitives"],
+      global: ["Global"],
+      themes: ["Themes"],
+      semantic: ["Semantic"],
+      sizes: [],
     };
 
     // 1. Check figmaToCollections
     const { collections, unknownCollectionNames } = figmaToCollections(
       figmaCollections,
       figmaVariables,
-      figmaCollectionNames,
+      metadataFor(figmaCollectionNames),
     );
     expect(unknownCollectionNames).toEqual([]);
     const primCol = collections.find((c: any) => c.collectionName === "Primitives")!;
@@ -481,16 +492,17 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
     ];
 
     const figmaCollectionNames = {
-      primitives: "Primitives",
-      global: "Global",
-      themes: "Themes",
-      semantic: "Semantic",
+      primitives: ["Primitives"],
+      global: ["Global"],
+      themes: ["Themes"],
+      semantic: ["Semantic"],
+      sizes: [],
     };
 
     const { collections, unknownCollectionNames } = figmaToCollections(
       figmaCollections,
       figmaVariables,
-      figmaCollectionNames,
+      metadataFor(figmaCollectionNames),
     );
 
     // The unknown collection never appears in the diffable output...

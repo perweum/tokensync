@@ -40,10 +40,10 @@ export function generateDart(collections: ResolvedCollection[], metadata: Metada
   const blocks: string[] = [dartHeader()];
 
   const names = metadata.figma.collections;
-  const primitives = collections.find((c) => c.collectionName === names.primitives);
-  const global = collections.find((c) => c.collectionName === names.global);
-  const themes = collections.filter((c) => c.collectionName === names.themes);
-  const semantic = collections.filter((c) => c.collectionName === names.semantic);
+  const primitives = collections.find((c) => names.primitives.includes(c.collectionName));
+  const global = collections.find((c) => names.global.includes(c.collectionName));
+  const themes = collections.filter((c) => names.themes.includes(c.collectionName));
+  const semantic = collections.filter((c) => names.semantic.includes(c.collectionName));
 
   if (primitives) {
     blocks.push(dartClass("DesignTokensPrimitives", primitives.tokens));

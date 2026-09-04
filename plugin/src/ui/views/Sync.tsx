@@ -24,14 +24,23 @@ import type {
 import type { TypographyStyle } from "../../shared/typography-styles";
 import { PullDiff } from "./PullDiff";
 import { PushDiff } from "./PushDiff";
+import { CollectionMapping } from "./CollectionMapping";
+import { OutputFormats } from "./OutputFormats";
+import { Button } from "../components/Button";
+import { IconButton } from "../components/IconButton";
+import { StatusBanner } from "../components/StatusBanner";
+import { IconArrowRight, IconClose, IconPlus, IconRefresh } from "../icons";
+import { color, font, radius, space } from "../theme";
+import { describeGitHubError, describePluginError } from "../errors";
+import type { DescribedError } from "../errors";
 
-type View = "main" | "pull-diff" | "push-diff";
+type View = "main" | "pull-diff" | "push-diff" | "collection-mapping" | "output-formats";
 
 type Status =
   | { kind: "idle" }
   | { kind: "loading"; message: string }
   | { kind: "success"; message: string; url?: string }
-  | { kind: "error"; message: string };
+  | ({ kind: "error" } & DescribedError);
 
 interface LastSync {
   timestamp: number;
@@ -53,7 +62,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [applying, setApplying] = useState(false);
   const [creating, setCreating] = useState(false);
   const [diffs, setDiffs] = useState<CollectionDiff[]>([]);
-  const [diffError, setDiffError] = useState<string | undefined>(undefined);
+  const [diffError, setDiffError] = useState<DescribedError | undefined>(undefined);
   const [unrecognizedCollections, setUnrecognizedCollections] = useState<string[]>([]);
   const [lastSync, setLastSync] = useState<LastSync | null>(null);
 
@@ -142,7 +151,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setCreatingBranch(false);
       setNewBranchName("");
     } catch (err) {
-      setBranchCreateError(err instanceof Error ? err.message : "Failed to create branch");
+      setBranchCreateError(describeGitHubError(err, "create-branch").message);
     } finally {
       setBranchCreateLoading(false);
     }
@@ -231,10 +240,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         if (msg.type === "ERROR") {
           setApplying(false);
           setCreating(false);
+          const described = describePluginError(msg.message, msg.context);
           if (viewRef.current === "pull-diff") {
-            setDiffError(msg.message);
+            setDiffError(described);
           } else {
-            setStatus({ kind: "error", message: msg.message });
+            setStatus({ kind: "error", ...described });
           }
         }
       },
@@ -266,7 +276,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       pendingAction.current = "pull";
       send({ type: "GET_COLLECTIONS" });
     } catch (err) {
-      setStatus({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+      setStatus({ kind: "error", ...describeGitHubError(err, "fetch-tokens") });
     }
   }
 
@@ -368,8 +378,10 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     });
   }
 
-  function handleApplyAll() {
-    const pending = diffs.filter((d) => d.counts.total > 0);
+  function handleApplyAll(selectedKeys: Set<string>) {
+    const pending = diffs.filter(
+      (d) => d.counts.total > 0 && selectedKeys.has(`${d.collectionName}/${d.modeName}`),
+    );
     if (pending.length === 0) return;
 
     // Typography styles ride along only for the collections actually being applied.
@@ -455,7 +467,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       pendingAction.current = "push";
       send({ type: "GET_COLLECTIONS" });
     } catch (err) {
-      setStatus({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+      setStatus({ kind: "error", ...describeGitHubError(err, "fetch-tokens") });
     }
   }
 
@@ -476,7 +488,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const { collections: figmaCollectionData, unknownCollectionNames } = figmaToCollections(
       figmaCollections,
       figmaVariables,
-      githubParsed.metadata.figma.collections,
+      githubParsed.metadata,
     );
     setUnrecognizedCollections(unknownCollectionNames);
     pendingFigmaCollections.current = figmaCollectionData;
@@ -550,7 +562,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       });
     } catch (err) {
       setCreating(false);
-      setStatus({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+      setStatus({ kind: "error", ...describeGitHubError(err, "create-pr") });
     }
   }
 
@@ -632,6 +644,34 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     );
   }
 
+  if (view === "collection-mapping") {
+    return (
+      <CollectionMapping
+        project={project}
+        activeBranch={activeBranch}
+        onBack={() => setView("main")}
+        onSaved={(result) => {
+          setView("main");
+          setStatus({ kind: "success", message: `Collection mapping updated`, url: result.url });
+        }}
+      />
+    );
+  }
+
+  if (view === "output-formats") {
+    return (
+      <OutputFormats
+        project={project}
+        activeBranch={activeBranch}
+        onBack={() => setView("main")}
+        onSaved={(result) => {
+          setView("main");
+          setStatus({ kind: "success", message: `Output formats updated`, url: result.url });
+        }}
+      />
+    );
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -642,9 +682,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
             {lastSync && <span style={styles.lastSync}> · {formatLastSync(lastSync)}</span>}
           </div>
         </div>
-        <button style={styles.editBtn} onClick={onEditProject}>
+        <Button variant="secondary" size="compact" onClick={onEditProject}>
           Settings
-        </button>
+        </Button>
       </div>
 
       <div style={styles.branchRow}>
@@ -669,31 +709,25 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
               autoFocus
               disabled={branchCreateLoading}
             />
-            <button
-              style={{
-                ...styles.branchIconBtn,
-                background: "#1a52d8",
-                color: "#fff",
-                borderColor: "#1a52d8",
-              }}
+            <Button
+              variant="primary"
+              size="compact"
               onClick={handleCreateBranch}
               disabled={branchCreateLoading || !newBranchName.trim()}
-              title="Create branch"
             >
               {branchCreateLoading ? "…" : "Create"}
-            </button>
-            <button
-              style={styles.branchIconBtn}
+            </Button>
+            <IconButton
+              label="Cancel"
               onClick={() => {
                 setCreatingBranch(false);
                 setNewBranchName("");
                 setBranchCreateError(undefined);
               }}
               disabled={branchCreateLoading}
-              title="Cancel"
             >
-              ✕
-            </button>
+              <IconClose size={11} />
+            </IconButton>
             {branchCreateError && <span style={styles.branchError}>{branchCreateError}</span>}
           </>
         ) : (
@@ -715,25 +749,26 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
             ) : (
               <span style={styles.branchName}>{activeBranch}</span>
             )}
-            <button
-              style={styles.branchIconBtn}
+            <IconButton
+              label="Refresh branch list"
               onClick={refreshBranches}
               disabled={branchesLoading || status.kind === "loading"}
-              title="Refresh branch list"
             >
-              {branchesLoading ? "…" : "⟳"}
-            </button>
-            <button
-              style={styles.branchIconBtn}
+              <IconRefresh
+                size={11}
+                style={branchesLoading ? { animation: "spin 1s linear infinite" } : undefined}
+              />
+            </IconButton>
+            <IconButton
+              label={`New branch from ${activeBranch}`}
               onClick={() => {
                 setCreatingBranch(true);
                 setBranchCreateError(undefined);
               }}
               disabled={status.kind === "loading"}
-              title={`New branch from ${activeBranch}`}
             >
-              +
-            </button>
+              <IconPlus size={11} />
+            </IconButton>
           </>
         )}
       </div>
@@ -758,7 +793,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           title="Pull from GitHub"
           description="Fetch token changes from GitHub and review before applying to Figma Variables."
           buttonLabel="Pull"
-          buttonStyle="secondary"
+          buttonVariant="secondary"
           onClick={handlePull}
           disabled={status.kind === "loading"}
         />
@@ -766,22 +801,42 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           title="Push to GitHub"
           description="Export Figma Variables as tokens and open a Pull Request on GitHub."
           buttonLabel="Push → PR"
-          buttonStyle="primary"
+          buttonVariant="primary"
           onClick={handlePush}
+          disabled={status.kind === "loading"}
+        />
+        <ActionCard
+          title="Map collections"
+          description="Assign each Figma collection to a role (primitives/global/themes/semantic/sizes) or Ignore."
+          buttonLabel="Map"
+          buttonVariant="secondary"
+          onClick={() => setView("collection-mapping")}
+          disabled={status.kind === "loading"}
+        />
+        <ActionCard
+          title="Output formats"
+          description="Choose which code files (CSS/JS/TS/Dart/Swift) get generated on push."
+          buttonLabel="Configure"
+          buttonVariant="secondary"
+          onClick={() => setView("output-formats")}
           disabled={status.kind === "loading"}
         />
       </div>
 
       {status.kind !== "idle" && (
-        <div style={{ ...styles.status, ...statusStyle(status.kind) }}>
-          {status.kind === "loading" && <span style={styles.spinner}>⟳</span>}
-          <span>{status.message}</span>
-          {status.kind === "success" && "url" in status && status.url && (
-            <a href={status.url} target="_blank" rel="noreferrer" style={styles.prLink}>
-              View PR →
-            </a>
-          )}
-        </div>
+        <StatusBanner
+          tone={statusTone(status.kind)}
+          detail={status.kind === "error" ? status.detail : undefined}
+          action={
+            status.kind === "success" && "url" in status && status.url ? (
+              <a href={status.url} target="_blank" rel="noreferrer" style={styles.prLink}>
+                View PR <IconArrowRight size={10} />
+              </a>
+            ) : undefined
+          }
+        >
+          {status.message}
+        </StatusBanner>
       )}
     </div>
   );
@@ -798,8 +853,8 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
  */
 function isIgnoredCollection(collectionName: string, metadata: Metadata): boolean {
   const names = metadata.figma.collections;
-  const key = (Object.keys(names) as Array<keyof typeof names>).find(
-    (k) => names[k] === collectionName,
+  const key = (Object.keys(names) as Array<keyof typeof names>).find((k) =>
+    names[k].includes(collectionName),
   );
   return key !== undefined && (metadata.ignoredCollections ?? []).includes(key);
 }
@@ -812,14 +867,14 @@ function ActionCard({
   title,
   description,
   buttonLabel,
-  buttonStyle,
+  buttonVariant,
   onClick,
   disabled,
 }: {
   title: string;
   description: string;
   buttonLabel: string;
-  buttonStyle: "primary" | "secondary";
+  buttonVariant: "primary" | "secondary";
   onClick: () => void;
   disabled: boolean;
 }) {
@@ -829,16 +884,14 @@ function ActionCard({
         <div style={styles.cardTitle}>{title}</div>
         <div style={styles.cardDesc}>{description}</div>
       </div>
-      <button
-        style={{
-          ...styles.actionBtn,
-          ...(buttonStyle === "primary" ? styles.primaryBtn : styles.secondaryBtn),
-        }}
+      <Button
+        variant={buttonVariant}
         onClick={onClick}
         disabled={disabled}
+        style={{ flexShrink: 0 }}
       >
         {buttonLabel}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -853,126 +906,87 @@ function formatLastSync(sync: LastSync): string {
   return `${label} ${Math.floor(hrs / 24)}d ago`;
 }
 
-function statusStyle(kind: Status["kind"]): React.CSSProperties {
-  if (kind === "error") return { background: "#fff0f0", color: "#c00", borderColor: "#fcc" };
-  if (kind === "success")
-    return { background: "#f0faf3", color: "#127030", borderColor: "#b8e8c7" };
-  return { background: "#f5f5f5", color: "#444", borderColor: "#e0e0e0" };
+function statusTone(kind: Status["kind"]): "loading" | "success" | "danger" | "neutral" {
+  if (kind === "loading") return "loading";
+  if (kind === "success") return "success";
+  if (kind === "error") return "danger";
+  return "neutral";
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { padding: "20px", display: "flex", flexDirection: "column", gap: "16px" },
+  container: { padding: space.xl, display: "flex", flexDirection: "column", gap: space.lg },
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: "12px",
+    gap: space.md,
   },
-  projectName: { fontWeight: 600, fontSize: "15px" },
-  projectMeta: { fontSize: "11px", color: "#888", marginTop: "2px" },
-  lastSync: { color: "#aaa" },
-  editBtn: {
-    fontSize: "12px",
-    color: "#555",
-    background: "none",
-    border: "1px solid #ddd",
-    borderRadius: "6px",
-    padding: "4px 10px",
-    cursor: "pointer",
-    flexShrink: 0,
-  },
+  projectName: { fontWeight: 600, fontSize: 15 },
+  projectMeta: { fontSize: font.size.sm, color: color.text.muted, marginTop: 2 },
+  lastSync: { color: color.text.faint },
   branchRow: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    padding: "8px 12px",
-    background: "#f8f8f8",
-    borderRadius: "8px",
-    border: "1px solid #eee",
+    gap: space.sm,
+    padding: `${space.sm}px ${space.md}px`,
+    background: color.surface.subtle,
+    borderRadius: radius.md,
+    border: `1px solid ${color.border.subtle}`,
   },
-  branchLabel: { fontSize: "11px", color: "#888", fontWeight: 500, flexShrink: 0 },
+  branchLabel: { fontSize: font.size.sm, color: color.text.muted, fontWeight: 500, flexShrink: 0 },
   branchSelect: {
     flex: 1,
-    fontSize: "12px",
+    fontSize: font.size.md,
     padding: "3px 6px",
-    borderRadius: "5px",
-    border: "1px solid #ddd",
-    background: "#fff",
-    color: "#222",
+    borderRadius: 5,
+    border: `1px solid ${color.border.default}`,
+    background: color.surface.default,
+    color: "#222222",
     cursor: "pointer",
+    fontFamily: font.family,
   },
-  branchName: { flex: 1, fontSize: "12px", color: "#333", fontFamily: "monospace" },
+  branchName: { flex: 1, fontSize: font.size.md, color: "#333333", fontFamily: font.mono },
   branchInput: {
     flex: 1,
-    fontSize: "12px",
+    fontSize: font.size.md,
     padding: "3px 8px",
-    borderRadius: "5px",
-    border: "1px solid #1a52d8",
+    borderRadius: 5,
+    border: `1px solid ${color.accent.default}`,
     outline: "none",
-    fontFamily: "monospace",
+    fontFamily: font.mono,
     minWidth: 0,
   },
-  branchIconBtn: {
-    flexShrink: 0,
-    fontSize: "12px",
-    padding: "3px 8px",
-    borderRadius: "5px",
-    border: "1px solid #ddd",
-    background: "#fff",
-    color: "#444",
-    cursor: "pointer",
-    lineHeight: 1.4,
-  },
-  branchError: { fontSize: "11px", color: "#c00", flexShrink: 0 },
+  branchError: { fontSize: font.size.sm, color: color.status.danger.text, flexShrink: 0 },
   syncOptionRow: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
-    fontSize: "12px",
-    color: "#444",
+    gap: space.xs + 2,
+    fontSize: font.size.md,
+    color: color.text.secondary,
     cursor: "pointer",
     userSelect: "none",
   },
-  syncOptionHint: { color: "#999" },
-  actions: { display: "flex", flexDirection: "column", gap: "12px" },
+  syncOptionHint: { color: "#999999" },
+  actions: { display: "flex", flexDirection: "column", gap: space.md },
   card: {
-    border: "1px solid #e8e8e8",
-    borderRadius: "10px",
-    padding: "16px",
+    border: `1px solid #e8e8e8`,
+    borderRadius: radius.md,
+    padding: space.lg,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: "12px",
+    gap: space.md,
   },
-  cardText: { display: "flex", flexDirection: "column", gap: "4px" },
-  cardTitle: { fontWeight: 500, fontSize: "13px" },
-  cardDesc: { fontSize: "11px", color: "#666", lineHeight: 1.4 },
-  actionBtn: {
-    flexShrink: 0,
-    border: "none",
-    borderRadius: "6px",
-    padding: "8px 14px",
-    fontSize: "12px",
-    fontWeight: 500,
-    cursor: "pointer",
-  },
-  primaryBtn: { background: "#1a52d8", color: "#fff" },
-  secondaryBtn: { background: "#f0f0f0", color: "#222" },
-  status: {
-    fontSize: "12px",
-    padding: "10px 14px",
-    borderRadius: "8px",
-    border: "1px solid",
-    lineHeight: 1.4,
-    display: "flex",
-    gap: "8px",
-    alignItems: "center",
-  },
-  spinner: { display: "inline-block", animation: "spin 1s linear infinite" },
+  cardText: { display: "flex", flexDirection: "column", gap: space.xs },
+  cardTitle: { fontWeight: 500, fontSize: font.size.lg },
+  cardDesc: { fontSize: font.size.sm, color: color.text.secondary, lineHeight: 1.4 },
   prLink: {
     marginLeft: "auto",
-    fontSize: "12px",
-    color: "#1a52d8",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    fontSize: font.size.md,
+    color: color.accent.default,
     textDecoration: "none",
     fontWeight: 500,
   },

@@ -469,6 +469,14 @@ Add `"ignoredCollections": ["primitives"]` to `metadata.json` to exclude layers 
 
 Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns off applying typography groups (`"$type": "typography"`) to Figma as Text Styles, independent of Variables sync — on by default, remembered per project. This is coarser than `ignoredCollections`: it's all typography styles or none, not per-collection.
 
+### Already have a build step?
+
+Token Sync's CSS/JS/TS/Dart/Swift generators (`metadata.json`'s `platforms` field, configurable from the plugin's **Output formats** screen) are a convenience for teams without one — not a requirement. Every platform is off unless explicitly enabled; a project with none of them turned on still gets the token JSON, nothing else.
+
+The token files themselves (`tokens/**/*.json`) are plain [DTCG](https://www.designtokens.org/) — `$value`/`$type`/`$description`, no Token Sync-specific structure a downstream tool needs to understand. If you already run [Style Dictionary](https://styledictionary.com/) (which has native DTCG support as of v4) or any other token build pipeline, point its `source`/`include` glob at `tokens/**/*.json` directly and leave every `platforms.*` entry off — your existing pipeline and its output stay exactly as they are, Token Sync just keeps the source files it reads in sync with Figma.
+
+This is also the reasonable default for a team migrating off Token Studio that already has a build step consuming its export: swap what feeds the pipeline, not the pipeline itself.
+
 ### First-time project setup
 
 1. Copy this repo as a template

@@ -188,10 +188,10 @@ export function generateSwift(collections: ResolvedCollection[], metadata: Metad
   const blocks: string[] = [swiftHeader()];
 
   const names = metadata.figma.collections;
-  const primitives = collections.find((c) => c.collectionName === names.primitives);
-  const global = collections.find((c) => c.collectionName === names.global);
-  const themes = collections.filter((c) => c.collectionName === names.themes);
-  const semantic = collections.filter((c) => c.collectionName === names.semantic);
+  const primitives = collections.find((c) => names.primitives.includes(c.collectionName));
+  const global = collections.find((c) => names.global.includes(c.collectionName));
+  const themes = collections.filter((c) => names.themes.includes(c.collectionName));
+  const semantic = collections.filter((c) => names.semantic.includes(c.collectionName));
 
   if (primitives) {
     blocks.push(swiftStruct("DesignTokensPrimitives", primitives.tokens));

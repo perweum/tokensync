@@ -1,106 +1,67 @@
-import React, { useState } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { font, radius, space } from "../theme";
 
-export type ButtonVariant = "primary" | "secondary";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "dangerFilled" | "ghost";
 export type ButtonSize = "standard" | "compact";
 
-export interface ButtonProps {
-  children?: React.ReactNode;
+export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  onClick?: React.MouseEventHandler<HTMLButtonElement>;
-  disabled?: boolean;
+  fullWidth?: boolean;
+  /** Icon rendered before the label. */
+  icon?: ReactNode;
   type?: "button" | "submit" | "reset";
-  style?: React.CSSProperties;
 }
 
 export function Button({
-  children = "Knappetekst",
-  variant = "primary",
+  children,
+  variant = "secondary",
   size = "standard",
-  onClick,
+  fullWidth = false,
+  icon,
   disabled = false,
   type = "button",
+  className,
   style,
+  ...rest
 }: ButtonProps) {
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
+  const isCompact = size === "compact" || variant === "ghost";
 
-  const isCompact = size === "compact";
-
+  // Deliberately no color/background/border-color here — those live only in
+  // index.css (.ts-btn--*) so :hover/:active/:focus-visible can actually
+  // take effect. An inline style always wins over an external stylesheet
+  // rule for the same property, hover or not, so setting them here would
+  // silently make every interactive state dead on arrival.
   const base: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
-    borderRadius: 4,
+    gap: space.xs,
+    width: fullWidth ? "100%" : undefined,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderStyle: "solid",
     cursor: disabled ? "not-allowed" : "pointer",
-    padding: isCompact ? "4px 9px 0px" : "4px 13px",
-    fontFamily: '"GT America", sans-serif',
-    fontStyle: "normal",
+    padding: isCompact ? `${space.xs}px ${space.sm}px` : `${space.xs + 2}px ${space.md}px`,
+    fontFamily: font.family,
     fontWeight: 500,
-    fontSize: isCompact ? 12 : 16,
-    lineHeight: 1.5,
-    letterSpacing: 0,
-    textTransform: "uppercase",
+    fontSize: isCompact ? font.size.sm : font.size.md,
+    lineHeight: 1.3,
     whiteSpace: "nowrap",
     userSelect: "none",
-    opacity: disabled ? 0.4 : 1,
-    outline: "none",
+    opacity: disabled ? 0.45 : 1,
     boxSizing: "border-box",
-    // reset browser button defaults
-    appearance: "none",
-    // Always reserve 1px border so layout doesn't shift between states
-    border: "1px solid transparent",
-    background: "none",
   };
-
-  const variantStyle: React.CSSProperties = (() => {
-    if (variant === "primary") {
-      if (pressed) {
-        return {
-          background: "#accf1f", // --color/accent/base-active
-          color: "#272f07", // --color/accent/text-default
-        };
-      }
-      if (hovered) {
-        return {
-          background: "#c0e722", // --color/accent/base-hover
-          color: "#272f07",
-        };
-      }
-      // default: outline only
-      return {
-        borderColor: "#797979",
-        color: "#2b2b2b",
-      };
-    }
-
-    // secondary: outline on hover only
-    if (hovered) {
-      return {
-        borderColor: "#797979",
-        color: "#2b2b2b",
-      };
-    }
-    return {
-      color: "#2b2b2b",
-    };
-  })();
 
   return (
     <button
       type={type}
       disabled={disabled}
-      onClick={onClick}
-      onMouseEnter={() => !disabled && setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setPressed(false);
-      }}
-      onMouseDown={() => !disabled && setPressed(true)}
-      onMouseUp={() => setPressed(false)}
-      style={{ ...base, ...variantStyle, ...style }}
+      className={["ts-btn", `ts-btn--${variant}`, className].filter(Boolean).join(" ")}
+      style={{ ...base, ...style }}
+      {...rest}
     >
+      {icon}
       {children}
     </button>
   );

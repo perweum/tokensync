@@ -13,6 +13,9 @@
  *
  * File layout on GitHub:
  *   primitives/{name}.json
+ *   primitives/sizes/{sizeMode}.json  ← size-varying primitives only, one file per mode
+ *                                        (e.g. mobile.json, desktop.json) — optional,
+ *                                        absent entirely on a repo with no Size axis
  *   semantic/global/{name}.json
  *   semantic/themes/{name}.json   ← light.* + dark.* for each named theme
  *   semantic/light.json           ← {light.*} aliases + direct severity refs
@@ -28,17 +31,65 @@ import type { TypographyStyle } from "./typography-styles";
 // Metadata type
 // ---------------------------------------------------------------------------
 
+/**
+ * One logical role can be backed by several physical Figma collections —
+ * Figma allows exactly one mode-axis per collection, so a real system (e.g.
+ * separate "main color"/"support color" collections that together make up
+ * the Themes role) is forced to split what's conceptually one role the
+ * moment different subsets need different axes. Anything not listed under
+ * any role is treated as intentionally unmapped ("Ignore" in the mapping UI).
+ */
+export interface CollectionNames {
+  primitives: string[];
+  global: string[];
+  themes: string[];
+  semantic: string[];
+  /** Modifier axis (e.g. mobile/desktop breakpoints) — reserved, not yet consumed by any transformer. */
+  sizes: string[];
+}
+
 export interface Metadata {
   version: string;
   /** Named theme variants — each becomes a mode in the Themes collection. */
   themes: string[];
   /** Color scheme modes — each becomes a mode in the Semantic collection (light, dark, contrast…). */
   colorSchemes: string[];
+  /**
+   * Size/breakpoint mode names, base mode first (e.g. ["mobile", "desktop"]).
+   * A genuine second axis on Primitives — mirrors `themes`/`colorSchemes`.
+   * Empty (the default) means no Size axis is configured at all: Primitives
+   * stays exactly the single-mode layer it's always been, zero behavior
+   * change for any repo that doesn't use this.
+   */
+  sizes: string[];
+  /** Non-base size mode name → CSS min-width breakpoint in px. The base
+   * mode (sizes[0]) has none — its values simply are the unconditional
+   * primitive values. */
+  sizeBreakpoints?: Record<string, number>;
   figma: {
     fileKey: string;
-    collections: { primitives: string; global: string; themes: string; semantic: string };
+    collections: CollectionNames;
   };
   ignoredCollections?: string[];
+  /** Per-platform code output, run by `runTransformers` on push. All optional
+   * and off unless explicitly enabled — a repo with no `platforms` at all
+   * generates no output files, only the token JSON. */
+  platforms?: Platforms;
+}
+
+export interface PlatformConfig {
+  enabled: boolean;
+  /** Output file path, relative to the repo root. Falls back to a per-platform
+   * default (see runTransformers) when omitted. */
+  output?: string;
+}
+
+export interface Platforms {
+  css?: PlatformConfig;
+  js?: PlatformConfig;
+  ts?: PlatformConfig;
+  dart?: PlatformConfig;
+  swift?: PlatformConfig;
 }
 
 /** Fresh defaults per call — callers may mutate nested objects safely. */
@@ -47,17 +98,54 @@ function defaultMetadata(): Metadata {
     version: "1.0.0",
     themes: ["default"],
     colorSchemes: ["light", "dark"],
+    sizes: [],
+    sizeBreakpoints: {},
     figma: {
       fileKey: "",
       collections: {
-        primitives: "Primitives",
-        global: "Global",
-        themes: "Themes",
-        semantic: "Semantic",
+        primitives: ["Primitives"],
+        global: ["Global"],
+        themes: ["Themes"],
+        semantic: ["Semantic"],
+        sizes: [],
       },
     },
     ignoredCollections: [],
   };
+}
+
+/** A role's value in a hand-edited or pre-migration metadata.json may still be
+ * a bare string from before `figma.collections` became list-valued — coerce
+ * it into a single-element list instead of letting it silently poison every
+ * `.includes()` check downstream (a string does have an `.includes` method,
+ * just the wrong one — substring match, not membership). Falls back to
+ * `fallback` when nothing usable was provided (an empty array is a valid,
+ * intentional "unmapped" value and must not fall back — only absence/an
+ * unusable type does). */
+function coerceToList(value: unknown, fallback: string[]): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  if (typeof value === "string" && value.length > 0) return [value];
+  return fallback;
+}
+
+/** A hand-edited metadata.json could list the same Figma collection name under
+ * two roles — nothing else validates this, and `collectionKind`'s first-match
+ * lookup would silently pick one role over the other. Warn rather than throw:
+ * a plugin sandbox shouldn't hard-fail on a config typo. */
+function warnOnDuplicateCollectionNames(collections: CollectionNames): void {
+  const seen = new Map<string, keyof CollectionNames>();
+  for (const role of Object.keys(collections) as Array<keyof CollectionNames>) {
+    for (const name of collections[role]) {
+      const existingRole = seen.get(name);
+      if (existingRole && existingRole !== role) {
+        console.warn(
+          `[TokenSync] Figma collection "${name}" is listed under both "${existingRole}" and "${role}" in figma.collections — using "${existingRole}".`,
+        );
+      } else {
+        seen.set(name, role);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,27 +190,81 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   const metadata = parseMetadata(stripped);
   const layers = buildLayers(stripped);
 
+  // Several physical Figma collections can back one role (see CollectionNames);
+  // the GitHub side has no way to know which one a given token file belongs to,
+  // so the first configured name is the canonical write target — applying to
+  // Figma creates/targets exactly this collection, the rest are read-only
+  // alternate sources on the Figma → GitHub direction.
+  const names = metadata.figma.collections;
+
   const collections: ResolvedCollection[] = [];
 
   // --- Primitives collection ---
+  // Shared, size-invariant primitives (colours, borders, …) merge the same
+  // way regardless of whether a Size axis exists. When it does (layers.sizes
+  // non-empty), Primitives becomes genuinely multi-mode — one ResolvedCollection
+  // per size mode, each the shared tree plus that mode's own size-varying
+  // values — mirroring exactly how Themes already emits one collection per
+  // theme. With no Size axis configured, this collapses to today's single
+  // "Value" mode: zero behavior change for any repo not using it.
   const primitivesTree = deepMergeTrees(Object.values(layers.primitives));
-  const primitivesFlatRaw = flattenTokens(primitivesTree);
-  const primitivesFlat = resolveAllReferences(primitivesFlatRaw);
-  collections.push({
-    collectionName: metadata.figma.collections.primitives,
-    modeName: "Value",
-    tokens: primitivesFlat,
-    rawTokens: primitivesFlatRaw,
-    typographyStyles: extractTypographyStyles(primitivesTree),
-  });
+  const sizeModeNames = Object.keys(layers.sizes);
+
+  if (sizeModeNames.length === 0) {
+    const primitivesFlatRaw = flattenTokens(primitivesTree);
+    const primitivesFlat = resolveAllReferences(primitivesFlatRaw);
+    collections.push({
+      collectionName: names.primitives[0],
+      modeName: "Value",
+      tokens: primitivesFlat,
+      rawTokens: primitivesFlatRaw,
+      typographyStyles: extractTypographyStyles(primitivesTree),
+    });
+  } else {
+    // Config order (metadata.sizes) wins when set — the repo's declared axis
+    // order, not whatever order files happened to be read in — falling back
+    // to file order for a repo that has size files but no metadata.sizes yet.
+    const orderedSizeModes =
+      metadata.sizes.length > 0
+        ? metadata.sizes.filter((name) => sizeModeNames.includes(name))
+        : sizeModeNames;
+
+    for (const sizeModeName of orderedSizeModes) {
+      const sizeTree = layers.sizes[sizeModeName];
+      const fullTree = deepMergeTokenTrees(primitivesTree, sizeTree);
+      const fullFlatRaw = flattenTokens(fullTree);
+      const fullFlatResolved = resolveAllReferences(fullFlatRaw);
+      collections.push({
+        collectionName: names.primitives[0],
+        modeName: capitalise(sizeModeName),
+        tokens: fullFlatResolved,
+        rawTokens: fullFlatRaw,
+        typographyStyles: extractTypographyStyles(fullTree),
+      });
+    }
+  }
+
+  // For everything downstream that needs *a* single primitives context
+  // (Global/Themes/Semantic resolve their own refs against it, for display
+  // and diffing) — the base size mode's primitives, or the plain primitives
+  // tree when there's no Size axis at all.
+  const defaultPrimitivesTree =
+    sizeModeNames.length === 0
+      ? primitivesTree
+      : deepMergeTokenTrees(
+          primitivesTree,
+          layers.sizes[
+            metadata.sizes.find((name) => sizeModeNames.includes(name)) ?? sizeModeNames[0]
+          ],
+        );
 
   // --- Global collection ---
   const globalTree = mergeTrees(Object.values(layers.global));
-  const globalWithPrimitivesFlat = flattenTokens(mergeTrees([primitivesTree, globalTree]));
+  const globalWithPrimitivesFlat = flattenTokens(mergeTrees([defaultPrimitivesTree, globalTree]));
   const globalResolved = resolveAllReferences(globalWithPrimitivesFlat);
   const globalPaths = Object.keys(flattenTokens(globalTree));
   collections.push({
-    collectionName: metadata.figma.collections.global,
+    collectionName: names.global[0],
     modeName: "Value",
     tokens: filterByPaths(globalResolved, globalPaths),
     rawTokens: filterByPaths(globalWithPrimitivesFlat, globalPaths),
@@ -133,11 +275,11 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   // Each theme file has light.* and dark.* groups referencing Primitives.
   // rawTokens keep {color.X.N} refs so the plugin creates Primitives→Themes cross-collection aliases.
   for (const [themeName, themeTree] of Object.entries(layers.themes)) {
-    const fullFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, themeTree]));
+    const fullFlatUnresolved = flattenTokens(mergeTrees([defaultPrimitivesTree, themeTree]));
     const fullFlatResolved = resolveAllReferences(fullFlatUnresolved);
     const themePaths = Object.keys(flattenTokens(themeTree));
     collections.push({
-      collectionName: metadata.figma.collections.themes,
+      collectionName: names.themes[0],
       modeName: capitalise(themeName),
       tokens: filterByPaths(fullFlatResolved, themePaths),
       rawTokens: filterByPaths(fullFlatUnresolved, themePaths),
@@ -157,16 +299,18 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     if (!schemeTree) continue;
 
     // rawTokens: no themes tree in merge — {light.*}/{dark.*} refs remain as literal strings
-    const rawFlatUnresolved = flattenTokens(mergeTrees([primitivesTree, globalTree, schemeTree]));
+    const rawFlatUnresolved = flattenTokens(
+      mergeTrees([defaultPrimitivesTree, globalTree, schemeTree]),
+    );
     const schemePaths = Object.keys(flattenTokens(schemeTree));
 
     // resolved: include default theme so {light.background.brand} → {color.blue.25} → #hex
     const resolvedFlat = resolveAllReferences(
-      flattenTokens(mergeTrees([primitivesTree, defaultThemeTree, globalTree, schemeTree])),
+      flattenTokens(mergeTrees([defaultPrimitivesTree, defaultThemeTree, globalTree, schemeTree])),
     );
 
     collections.push({
-      collectionName: metadata.figma.collections.semantic,
+      collectionName: names.semantic[0],
       modeName: capitalise(scheme),
       tokens: filterByPaths(resolvedFlat, schemePaths),
       rawTokens: filterByPaths(rawFlatUnresolved, schemePaths),
@@ -188,10 +332,15 @@ interface Layers {
   themes: Record<string, TokenTree>;
   /** colorScheme → tree (semantic/light.json, semantic/dark.json, …) */
   semantic: Record<string, TokenTree>;
+  /** sizeModeName → tree (primitives/sizes/{name}.json) — a second, orthogonal
+   * axis on Primitives. Deliberately separate from `primitives` (which stays
+   * single-mode/shared-across-sizes) rather than nested inside it, mirroring
+   * how `themes` is its own layer rather than folded into anything else. */
+  sizes: Record<string, TokenTree>;
 }
 
 function buildLayers(files: Map<string, string>): Layers {
-  const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {} };
+  const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {}, sizes: {} };
 
   for (const [path, content] of files) {
     if (path === "metadata.json") continue;
@@ -206,7 +355,10 @@ function buildLayers(files: Map<string, string>): Layers {
 
     const parts = path.replace(".json", "").split("/");
 
-    if (parts[0] === "primitives") {
+    if (parts[0] === "primitives" && parts[1] === "sizes") {
+      // primitives/sizes/{sizeModeName}.json — one file per size mode
+      layers.sizes[parts[2]] = tree;
+    } else if (parts[0] === "primitives") {
       layers.primitives[parts[1]] = tree;
     } else if (parts[0] === "semantic" && parts[1] === "global") {
       layers.global[parts[2]] = tree;
@@ -290,22 +442,36 @@ function parseMetadata(files: Map<string, string>): Metadata {
     // Support legacy 'brands' field (renamed to 'themes')
     const themes = parsed.themes ?? parsed.brands ?? defaults.themes;
     const colorSchemes = parsed.colorSchemes ?? defaults.colorSchemes;
+    const sizes = parsed.sizes ?? defaults.sizes;
+    const sizeBreakpoints = parsed.sizeBreakpoints ?? defaults.sizeBreakpoints;
 
     const merged: Metadata = {
       ...defaults,
       ...parsed,
       themes,
       colorSchemes,
+      sizes,
+      sizeBreakpoints,
     };
     if (parsed.figma) {
+      const parsedCollections = parsed.figma.collections as
+        | Partial<Record<keyof CollectionNames, unknown>>
+        | undefined;
       merged.figma = {
         ...defaults.figma,
         ...parsed.figma,
         collections: {
-          ...defaults.figma.collections,
-          ...parsed.figma.collections,
+          primitives: coerceToList(
+            parsedCollections?.primitives,
+            defaults.figma.collections.primitives,
+          ),
+          global: coerceToList(parsedCollections?.global, defaults.figma.collections.global),
+          themes: coerceToList(parsedCollections?.themes, defaults.figma.collections.themes),
+          semantic: coerceToList(parsedCollections?.semantic, defaults.figma.collections.semantic),
+          sizes: coerceToList(parsedCollections?.sizes, defaults.figma.collections.sizes),
         },
       };
+      warnOnDuplicateCollectionNames(merged.figma.collections);
     }
     return merged;
   } catch {

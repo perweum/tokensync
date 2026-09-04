@@ -10,7 +10,7 @@ import type {
   FigmaVariableValue,
   TokenValue,
 } from "./messages";
-import type { ResolvedCollection } from "./token-merger";
+import type { ResolvedCollection, CollectionNames, Metadata } from "./token-merger";
 import { fromFigmaVarName, resolveAllReferences } from "./token-format";
 
 export interface TokenFile {
@@ -49,25 +49,34 @@ export interface FigmaToCollectionsResult {
 export function figmaToCollections(
   collections: FigmaVariableCollection[],
   variables: FigmaVariable[],
-  figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
+  metadata: Metadata,
 ): FigmaToCollectionsResult {
+  const figmaCollectionNames = metadata.figma.collections;
   const varById = new Map(variables.map((v) => [v.id, v]));
   const unknownCollectionNames: string[] = [];
 
   // Pass 1: gather every recognized collection's raw (ref-preserving) flat token map
   // per mode, grouped by role. Needed in full before anything can be resolved, since
   // e.g. a theme's refs point at primitives and a semantic token's refs point at the
-  // theme layer. Primitives/Global are merged to a single "Value" entity — consistent
-  // with parseRepository, which makes the same assumption on the GitHub side. A
-  // primitives/global collection with genuinely different per-mode values (e.g. a
-  // breakpoint-driven "Size" collection) isn't handled correctly by this yet — same
-  // open problem as the multi-collection-per-role config, see DECISIONS.md.
+  // theme layer. Global is merged to a single "Value" entity — consistent with
+  // parseRepository, which makes the same assumption on the GitHub side. Primitives
+  // stays single-mode too *for the "primitives"-role collections specifically* — a
+  // Size-role collection (sizeModes below) is the one exception allowed to be
+  // genuinely multi-mode, exactly mirroring how Themes already works.
+  //
+  // A role can be backed by several physical Figma collections (see CollectionNames)
+  // — e.g. "main color" and "support color" both mapped to "themes", each contributing
+  // a mode literally named "Christmas". Those must merge into *one* Christmas entry,
+  // not become two separate ResolvedCollections that both render as [data-theme="christmas"]
+  // — hence keying themeModes/semanticModes/sizeModes by lowercased mode name instead of
+  // pushing every (collection, mode) pair as its own entry.
   let primitivesRaw: Record<string, TokenValue> = {};
   let primitivesModeName: string | undefined;
   let globalRaw: Record<string, TokenValue> = {};
   let globalModeName: string | undefined;
-  const themeModes: Array<{ modeName: string; raw: Record<string, TokenValue> }> = [];
-  const semanticModes: Array<{ modeName: string; raw: Record<string, TokenValue> }> = [];
+  const themeModes = new Map<string, { modeName: string; raw: Record<string, TokenValue> }>();
+  const semanticModes = new Map<string, { modeName: string; raw: Record<string, TokenValue> }>();
+  const sizeModes = new Map<string, { modeName: string; raw: Record<string, TokenValue> }>();
 
   for (const collection of collections) {
     const kind = collectionKind(collection.name, figmaCollectionNames);
@@ -82,34 +91,68 @@ export function figmaToCollections(
       const raw = buildFlatTokens(collVars, mode.modeId, varById);
       if (kind === "primitives") {
         primitivesRaw = { ...primitivesRaw, ...raw };
-        primitivesModeName ??= mode.name; // first mode's real name — must match the raw
-        // Figma data buildFilesFromDiffs later filters against, or a collection that
-        // looks selected in the diff silently drops out of the PR (see DECISIONS.md).
+        primitivesModeName ??= mode.name; // real Figma mode name — see Code Invariant in DECISIONS.md
       } else if (kind === "global") {
         globalRaw = { ...globalRaw, ...raw };
         globalModeName ??= mode.name;
-      } else if (kind === "themes") themeModes.push({ modeName: mode.name, raw });
-      else if (kind === "semantic") semanticModes.push({ modeName: mode.name, raw });
+      } else if (kind === "themes") {
+        mergeIntoMode(themeModes, mode.name, raw);
+      } else if (kind === "semantic") {
+        mergeIntoMode(semanticModes, mode.name, raw);
+      } else if (kind === "sizes") {
+        mergeIntoMode(sizeModes, mode.name, raw);
+      }
     }
   }
+
+  // The single primitives context everything else (Global/Themes/Semantic) resolves
+  // against — shared primitives plus the *default* size mode's values, when a Size
+  // axis exists. Config order (metadata.sizes) wins over whatever order Figma
+  // happened to return modes in; falls back to the first size mode found.
+  const defaultSizeModeRaw =
+    sizeModes.size === 0
+      ? {}
+      : (metadata.sizes
+          .map((name) => sizeModes.get(name.toLowerCase())?.raw)
+          .find((raw): raw is Record<string, TokenValue> => raw !== undefined) ??
+        sizeModes.values().next().value!.raw);
+  const defaultPrimitivesRaw = { ...primitivesRaw, ...defaultSizeModeRaw };
 
   // Pass 2: resolve. Each layer's context is exactly what it's allowed to reference.
   const result: ResolvedCollection[] = [];
 
-  if (Object.keys(primitivesRaw).length > 0) {
-    result.push({
-      collectionName: figmaCollectionNames.primitives,
-      modeName: primitivesModeName ?? "Value",
-      tokens: resolveAllReferences(primitivesRaw),
-      rawTokens: primitivesRaw,
-      typographyStyles: [],
-    });
+  if (sizeModes.size === 0) {
+    if (Object.keys(primitivesRaw).length > 0) {
+      result.push({
+        collectionName: figmaCollectionNames.primitives[0],
+        modeName: primitivesModeName ?? "Value",
+        tokens: resolveAllReferences(primitivesRaw),
+        rawTokens: primitivesRaw,
+        typographyStyles: [],
+      });
+    }
+  } else {
+    // One ResolvedCollection per size mode — mirrors Themes exactly. Each mode
+    // carries the full merged set (shared primitives + that mode's own values)
+    // so it's independently valid, but rawTokens only needs to record what's
+    // this mode's own — the shared part is identical across every mode and
+    // Figma alias creation for it doesn't depend on which mode is active.
+    for (const { modeName, raw } of sizeModes.values()) {
+      const merged = { ...primitivesRaw, ...raw };
+      result.push({
+        collectionName: figmaCollectionNames.primitives[0],
+        modeName,
+        tokens: resolveAllReferences(merged),
+        rawTokens: merged,
+        typographyStyles: [],
+      });
+    }
   }
 
   if (Object.keys(globalRaw).length > 0) {
-    const resolved = resolveAllReferences({ ...primitivesRaw, ...globalRaw });
+    const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...globalRaw });
     result.push({
-      collectionName: figmaCollectionNames.global,
+      collectionName: figmaCollectionNames.global[0],
       modeName: globalModeName ?? "Value",
       tokens: filterByPaths(resolved, Object.keys(globalRaw)),
       rawTokens: globalRaw,
@@ -117,10 +160,10 @@ export function figmaToCollections(
     });
   }
 
-  for (const { modeName, raw } of themeModes) {
-    const resolved = resolveAllReferences({ ...primitivesRaw, ...raw });
+  for (const { modeName, raw } of themeModes.values()) {
+    const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...raw });
     result.push({
-      collectionName: figmaCollectionNames.themes,
+      collectionName: figmaCollectionNames.themes[0],
       modeName,
       tokens: filterByPaths(resolved, Object.keys(raw)),
       rawTokens: raw,
@@ -130,16 +173,16 @@ export function figmaToCollections(
 
   // Semantic resolves against the default (first) theme mode specifically — the same
   // simplification parseRepository makes for display/diff purposes on the GitHub side.
-  const defaultThemeRaw = themeModes[0]?.raw ?? {};
-  for (const { modeName, raw } of semanticModes) {
+  const defaultThemeRaw = themeModes.values().next().value?.raw ?? {};
+  for (const { modeName, raw } of semanticModes.values()) {
     const resolved = resolveAllReferences({
-      ...primitivesRaw,
+      ...defaultPrimitivesRaw,
       ...defaultThemeRaw,
       ...globalRaw,
       ...raw,
     });
     result.push({
-      collectionName: figmaCollectionNames.semantic,
+      collectionName: figmaCollectionNames.semantic[0],
       modeName,
       tokens: filterByPaths(resolved, Object.keys(raw)),
       rawTokens: raw,
@@ -150,6 +193,24 @@ export function figmaToCollections(
   }
 
   return { collections: result, unknownCollectionNames };
+}
+
+/** Merge a mode's raw tokens into an existing entry with the same (lowercased)
+ * name, or start a new one — so two physical collections that both contribute
+ * a mode called "Christmas" produce one merged Christmas entry, not two. The
+ * first-seen exact casing of the name wins for display. */
+function mergeIntoMode(
+  modes: Map<string, { modeName: string; raw: Record<string, TokenValue> }>,
+  modeName: string,
+  raw: Record<string, TokenValue>,
+): void {
+  const key = modeName.toLowerCase();
+  const existing = modes.get(key);
+  if (existing) {
+    existing.raw = { ...existing.raw, ...raw };
+  } else {
+    modes.set(key, { modeName, raw });
+  }
 }
 
 /** Keep only the paths that appear in the allowlist. */
@@ -168,33 +229,87 @@ export function figmaToTokenFiles(
   collections: FigmaVariableCollection[],
   variables: FigmaVariable[],
   tokensPath: string,
-  figmaCollectionNames: { primitives: string; global: string; themes: string; semantic: string },
+  figmaCollectionNames: CollectionNames,
 ): TokenFile[] {
   const varById = new Map(variables.map((v) => [v.id, v]));
-  const files: TokenFile[] = [];
+
+  // Same reasoning as figmaToCollections: a role can be backed by several
+  // physical collections, and two of them can each contribute a mode with the
+  // same name (e.g. "main color" + "support color" both having a "Christmas"
+  // mode). Gathering everything first and writing one file per role/mode
+  // afterwards — instead of writing per Figma collection as we go — means
+  // that case merges into one file instead of the second collection's write
+  // silently overwriting the first at the same repoPath. Each variable keeps
+  // its own modeId since a modeId is only meaningful within its own collection.
+  let primitivesEntries: VarEntry[] = [];
+  let globalEntries: VarEntry[] = [];
+  const themeModeEntries = new Map<string, { modeName: string; entries: VarEntry[] }>();
+  const semanticModeEntries = new Map<string, { modeName: string; entries: VarEntry[] }>();
+  const sizeModeEntries = new Map<string, { modeName: string; entries: VarEntry[] }>();
 
   for (const collection of collections) {
     const collVars = variables.filter((v) => v.collectionId === collection.id);
     const kind = collectionKind(collection.name, figmaCollectionNames);
 
     if (kind === "primitives") {
-      files.push(...buildPrimitiveFiles(collVars, collection.modes[0].modeId, varById, tokensPath));
+      primitivesEntries = primitivesEntries.concat(toEntries(collVars, collection.modes[0].modeId));
     } else if (kind === "global") {
-      files.push(...buildGlobalFiles(collVars, collection.modes[0].modeId, varById, tokensPath));
+      globalEntries = globalEntries.concat(toEntries(collVars, collection.modes[0].modeId));
     } else if (kind === "themes") {
       for (const mode of collection.modes) {
-        const file = buildThemeFile(collVars, mode, varById, tokensPath);
-        if (file) files.push(file);
+        mergeIntoModeEntries(themeModeEntries, mode.name, toEntries(collVars, mode.modeId));
       }
     } else if (kind === "semantic") {
       for (const mode of collection.modes) {
-        const file = buildSemanticFile(collVars, mode, varById, tokensPath);
-        if (file) files.push(file);
+        mergeIntoModeEntries(semanticModeEntries, mode.name, toEntries(collVars, mode.modeId));
+      }
+    } else if (kind === "sizes") {
+      for (const mode of collection.modes) {
+        mergeIntoModeEntries(sizeModeEntries, mode.name, toEntries(collVars, mode.modeId));
       }
     }
   }
 
+  const files: TokenFile[] = [];
+  files.push(...buildPrimitiveFiles(primitivesEntries, varById, tokensPath));
+  files.push(...buildGlobalFiles(globalEntries, varById, tokensPath));
+  for (const { modeName, entries } of themeModeEntries.values()) {
+    const file = buildThemeFile(entries, modeName, varById, tokensPath);
+    if (file) files.push(file);
+  }
+  for (const { modeName, entries } of semanticModeEntries.values()) {
+    const file = buildSemanticFile(entries, modeName, varById, tokensPath);
+    if (file) files.push(file);
+  }
+  for (const { modeName, entries } of sizeModeEntries.values()) {
+    const file = buildSizeFile(entries, modeName, varById, tokensPath);
+    if (file) files.push(file);
+  }
+
   return files;
+}
+
+/** A variable paired with the modeId to read its value at — kept together
+ * once entries from more than one physical collection can be merged, since a
+ * modeId is only meaningful within the collection that issued it. */
+type VarEntry = { variable: FigmaVariable; modeId: string };
+
+function toEntries(vars: FigmaVariable[], modeId: string): VarEntry[] {
+  return vars.map((variable) => ({ variable, modeId }));
+}
+
+function mergeIntoModeEntries(
+  modes: Map<string, { modeName: string; entries: VarEntry[] }>,
+  modeName: string,
+  entries: VarEntry[],
+): void {
+  const key = modeName.toLowerCase();
+  const existing = modes.get(key);
+  if (existing) {
+    existing.entries = existing.entries.concat(entries);
+  } else {
+    modes.set(key, { modeName, entries });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -232,22 +347,20 @@ function buildFlatTokens(
 // ---------------------------------------------------------------------------
 
 function buildPrimitiveFiles(
-  vars: FigmaVariable[],
-  modeId: string,
+  entries: VarEntry[],
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile[] {
   // Group by first path segment: color → color.json, geometry → geometry.json
-  const groups = groupByFirstSegment(vars);
-  return Object.entries(groups).map(([segment, segVars]) => ({
+  const groups = groupByFirstSegment(entries);
+  return Object.entries(groups).map(([segment, segEntries]) => ({
     repoPath: joinPath(tokensPath, "primitives", `${segment}.json`),
-    content: buildJsonFile(segVars, modeId, varById),
+    content: buildJsonFile(segEntries, varById),
   }));
 }
 
 function buildGlobalFiles(
-  vars: FigmaVariable[],
-  modeId: string,
+  entries: VarEntry[],
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile[] {
@@ -269,27 +382,29 @@ function buildGlobalFiles(
     "component",
   ]);
 
-  const typoVars = vars.filter((v) => typoSegments.has(firstSegment(v.name)));
-  const spacingVars = vars.filter((v) => spacingSegments.has(firstSegment(v.name)));
-  const otherVars = vars.filter(
-    (v) => !typoSegments.has(firstSegment(v.name)) && !spacingSegments.has(firstSegment(v.name)),
+  const typoEntries = entries.filter((e) => typoSegments.has(firstSegment(e.variable.name)));
+  const spacingEntries = entries.filter((e) => spacingSegments.has(firstSegment(e.variable.name)));
+  const otherEntries = entries.filter(
+    (e) =>
+      !typoSegments.has(firstSegment(e.variable.name)) &&
+      !spacingSegments.has(firstSegment(e.variable.name)),
   );
 
   const files: TokenFile[] = [];
-  if (typoVars.length > 0)
+  if (typoEntries.length > 0)
     files.push({
       repoPath: joinPath(tokensPath, "semantic/global", "typography.json"),
-      content: buildJsonFile(typoVars, modeId, varById),
+      content: buildJsonFile(typoEntries, varById),
     });
-  if (spacingVars.length > 0)
+  if (spacingEntries.length > 0)
     files.push({
       repoPath: joinPath(tokensPath, "semantic/global", "spacing.json"),
-      content: buildJsonFile(spacingVars, modeId, varById),
+      content: buildJsonFile(spacingEntries, varById),
     });
-  if (otherVars.length > 0)
+  if (otherEntries.length > 0)
     files.push({
       repoPath: joinPath(tokensPath, "semantic/global", "other.json"),
-      content: buildJsonFile(otherVars, modeId, varById),
+      content: buildJsonFile(otherEntries, varById),
     });
 
   return files;
@@ -300,16 +415,16 @@ function buildGlobalFiles(
  * The file contains the full light.* + dark.* token set for this theme variant.
  */
 function buildThemeFile(
-  vars: FigmaVariable[],
-  mode: { modeId: string; name: string },
+  entries: VarEntry[],
+  modeName: string,
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile | null {
-  if (vars.length === 0) return null;
-  const themeName = sanitizeFileName(mode.name);
+  if (entries.length === 0) return null;
+  const themeName = sanitizeFileName(modeName);
   return {
     repoPath: joinPath(tokensPath, "semantic/themes", `${themeName}.json`),
-    content: buildJsonFile(vars, mode.modeId, varById),
+    content: buildJsonFile(entries, varById),
   };
 }
 
@@ -318,17 +433,37 @@ function buildThemeFile(
  * Light → semantic/light.json, Dark → semantic/dark.json.
  */
 function buildSemanticFile(
-  vars: FigmaVariable[],
-  mode: { modeId: string; name: string },
+  entries: VarEntry[],
+  modeName: string,
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
 ): TokenFile | null {
-  if (vars.length === 0) return null;
+  if (entries.length === 0) return null;
 
-  const scheme = sanitizeFileName(mode.name);
+  const scheme = sanitizeFileName(modeName);
   return {
     repoPath: joinPath(tokensPath, "semantic", `${scheme}.json`),
-    content: buildJsonFile(vars, mode.modeId, varById),
+    content: buildJsonFile(entries, varById),
+  };
+}
+
+/**
+ * Write a Size collection mode to primitives/sizes/{name}.json — mirrors
+ * buildThemeFile exactly, one level under primitives instead of semantic.
+ * Only the size-varying values live here; shared primitives stay in the flat
+ * primitives/{segment}.json files buildPrimitiveFiles already writes.
+ */
+function buildSizeFile(
+  entries: VarEntry[],
+  modeName: string,
+  varById: Map<string, FigmaVariable>,
+  tokensPath: string,
+): TokenFile | null {
+  if (entries.length === 0) return null;
+  const sizeName = sanitizeFileName(modeName);
+  return {
+    repoPath: joinPath(tokensPath, "primitives/sizes", `${sizeName}.json`),
+    content: buildJsonFile(entries, varById),
   };
 }
 
@@ -344,14 +479,10 @@ function sanitizeFileName(modeName: string): string {
 // JSON file builder (nested tree from flat variables)
 // ---------------------------------------------------------------------------
 
-function buildJsonFile(
-  vars: FigmaVariable[],
-  modeId: string,
-  varById: Map<string, FigmaVariable>,
-): string {
+function buildJsonFile(entries: VarEntry[], varById: Map<string, FigmaVariable>): string {
   const tree: Record<string, unknown> = {};
 
-  for (const v of vars) {
+  for (const { variable: v, modeId } of entries) {
     const raw = v.valuesByMode[modeId];
     if (raw === undefined) continue;
 
@@ -438,15 +569,20 @@ function inferType(name: string, resolvedType: string): string {
 // Collection kind detection
 // ---------------------------------------------------------------------------
 
-type CollectionKind = "primitives" | "global" | "themes" | "semantic" | "unknown";
+type CollectionKind = "primitives" | "global" | "themes" | "semantic" | "sizes" | "unknown";
 
-type CollectionNames = { primitives: string; global: string; themes: string; semantic: string };
-
+/**
+ * A collection mapped to "sizes" feeds a second, orthogonal axis on
+ * Primitives — one mode per size (mobile/desktop, …), merged with the shared
+ * primitives at resolve time. See docs/design/size-axis.md and the Metadata
+ * `sizes`/`sizeBreakpoints` fields.
+ */
 function collectionKind(name: string, names: CollectionNames): CollectionKind {
-  if (name === names.primitives) return "primitives";
-  if (name === names.global) return "global";
-  if (name === names.themes) return "themes";
-  if (name === names.semantic) return "semantic";
+  if (names.primitives.includes(name)) return "primitives";
+  if (names.global.includes(name)) return "global";
+  if (names.themes.includes(name)) return "themes";
+  if (names.semantic.includes(name)) return "semantic";
+  if (names.sizes.includes(name)) return "sizes";
   return "unknown";
 }
 
@@ -454,12 +590,12 @@ function collectionKind(name: string, names: CollectionNames): CollectionKind {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function groupByFirstSegment(vars: FigmaVariable[]): Record<string, FigmaVariable[]> {
-  const groups: Record<string, FigmaVariable[]> = {};
-  for (const v of vars) {
-    const seg = firstSegment(v.name);
+function groupByFirstSegment(entries: VarEntry[]): Record<string, VarEntry[]> {
+  const groups: Record<string, VarEntry[]> = {};
+  for (const e of entries) {
+    const seg = firstSegment(e.variable.name);
     if (!groups[seg]) groups[seg] = [];
-    groups[seg].push(v);
+    groups[seg].push(e);
   }
   return groups;
 }

@@ -199,3 +199,19 @@ export function groupByCategory(entries: DiffEntry[]): Map<string, DiffEntry[]> 
   }
   return map;
 }
+
+// ---------------------------------------------------------------------------
+// Display label
+// ---------------------------------------------------------------------------
+
+/**
+ * A single-mode collection is stored with the sentinel mode name "Value" —
+ * show just the collection name for those, "Collection / Mode" otherwise.
+ * Shared by Pull and Push so a tab/section always identifies its collection,
+ * not just its mode — two collections can otherwise both have a "Light" mode.
+ */
+export function diffLabel(diff: { collectionName: string; modeName: string }): string {
+  return diff.modeName === "Value"
+    ? diff.collectionName
+    : `${diff.collectionName} / ${diff.modeName}`;
+}

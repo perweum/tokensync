@@ -6,6 +6,14 @@
  *                                                 semantic value identical across every scheme
  *   [data-theme="zero"] { ... }                ← non-default theme — only vars that differ
  *                                                 from the default theme
+ *   [data-size="desktop"] { ... }              ← non-default size mode — explicit pin,
+ *                                                 only vars that differ from the default size
+ *   @media (min-width: …) { :root { ... } }    ← same size-mode override, applied
+ *                                                 automatically by viewport — unconditional,
+ *                                                 no wrapper attribute needed (unlike
+ *                                                 [data-color-scheme="auto"] below: a
+ *                                                 breakpoint is something you're always
+ *                                                 crossing, not an opt-in preference)
  *   [data-color-scheme="light"] { ... }        ← semantic roles that differ between schemes
  *   [data-color-scheme="dark"] { ... }         ← (same, dark)
  *   [data-color-scheme="auto"] + @media        ← follows OS preference
@@ -24,6 +32,13 @@
  * Theme switching cascades automatically: changing [data-theme] on any ancestor
  * updates every CSS var a Theme mode owns, which Semantic selectors pick up
  * through the var(--*) references built by resolveSemanticValue below.
+ *
+ * Primitives is a genuine second axis, not just a single flat set of values:
+ * Size (mobile/desktop breakpoints, e.g.) can vary specific primitives —
+ * font-size, dimension — the same way Themes/Semantic already vary along
+ * their own axes. It reuses exactly the same diffTokens/override mechanism,
+ * just with a viewport-driven selector pair instead of an attribute-only one.
+ * See docs/design/size-axis.md.
  */
 
 import type { ResolvedCollection, Metadata } from "../token-merger";
@@ -34,23 +49,37 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   const blocks: string[] = [cssHeader()];
 
   const names = metadata.figma.collections;
-  const primitives = collections.find((c) => c.collectionName === names.primitives);
-  const global = collections.find((c) => c.collectionName === names.global);
-  const themeCols = collections.filter((c) => c.collectionName === names.themes);
-  const semanticCols = collections.filter((c) => c.collectionName === names.semantic);
+  const primitivesCols = collections.filter((c) => names.primitives.includes(c.collectionName));
+  const global = collections.find((c) => names.global.includes(c.collectionName));
+  const themeCols = collections.filter((c) => names.themes.includes(c.collectionName));
+  const semanticCols = collections.filter((c) => names.semantic.includes(c.collectionName));
+
+  // Config order (metadata.sizes) decides which primitives mode is the base —
+  // written straight into :root — the same way metadata.themes[0]/colorSchemes
+  // already decide the default theme/scheme. Falls back to the first mode
+  // found when sizes isn't configured to match (or primitives has exactly one
+  // mode, the common case with no Size axis at all).
+  const defaultPrimitives =
+    metadata.sizes
+      .map((name) => primitivesCols.find((c) => c.modeName.toLowerCase() === name.toLowerCase()))
+      .find((c): c is ResolvedCollection => c !== undefined) ?? primitivesCols[0];
+  const nonDefaultPrimitives = primitivesCols.filter((c) => c !== defaultPrimitives);
 
   const defaultTheme = themeCols[0];
 
   // Every path that will actually get its own `--var: value;` declaration in
-  // :root (or under a per-theme override, for theme paths) — i.e. every ref a
-  // semantic token could point at and have it resolve to something real at
-  // runtime. A ref is only converted to var(--*) when its target is a member
-  // of this set; this is what replaces "does the ref start with light./dark."
-  // — a semantic alias can be nested arbitrarily ({color.light.X}, not just
+  // :root (or under a per-theme/per-size override) — i.e. every ref a semantic
+  // token could point at and have it resolve to something real at runtime. A
+  // ref is only converted to var(--*) when its target is a member of this
+  // set; this is what replaces "does the ref start with light./dark." — a
+  // semantic alias can be nested arbitrarily ({color.light.X}, not just
   // {light.X}), and the correct test isn't the ref's spelling, it's whether
-  // the thing it points at is really there.
+  // the thing it points at is really there. Every primitives mode's paths are
+  // included, not just the default's — a typography token referencing a
+  // size-varying primitive must still resolve to var(--*), or it would never
+  // pick up the live size-switching cascade at all.
   const referenceableCSSVars = new Set([
-    ...Object.keys(primitives?.tokens ?? {}),
+    ...primitivesCols.flatMap((c) => Object.keys(c.tokens)),
     ...Object.keys(global?.tokens ?? {}),
     ...Object.keys(defaultTheme?.tokens ?? {}),
   ]);
@@ -63,16 +92,19 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
     dark: darkOnly,
   } = splitSharedSemanticTokens(lightCol, darkCol, referenceableCSSVars);
 
-  // :root — primitives, global, the default theme's complete vars, and any semantic
-  // value that's identical across every color scheme (see splitSharedSemanticTokens).
+  // :root — the default primitives mode, global, the default theme's complete
+  // vars, and any semantic value that's identical across every color scheme
+  // (see splitSharedSemanticTokens — those come back as already-final CSS
+  // value strings, not TokenValue, so they're appended rather than merged
+  // into the formatCSSValue path below).
   const rootTokens: Record<string, TokenValue> = {
-    ...primitives?.tokens,
+    ...defaultPrimitives?.tokens,
     ...global?.tokens,
     ...defaultTheme?.tokens,
-    ...sharedSemantic,
   };
-  if (Object.keys(rootTokens).length > 0) {
-    blocks.push(cssBlock(":root", rootTokens));
+  const rootBlock = cssBlockWithExtra(":root", rootTokens, sharedSemantic);
+  if (rootBlock) {
+    blocks.push(rootBlock);
   }
 
   // Non-default themes — only the vars that actually differ from the default theme.
@@ -82,6 +114,43 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
     const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
     const overrides = diffTokens(col.tokens, defaultTheme?.tokens ?? {});
     blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, overrides));
+  }
+
+  // Non-default size modes — explicit [data-size="…"] pin, always diffed
+  // against the base mode: setting the attribute directly is a complete
+  // override, independent of whatever any @media query elsewhere happens to
+  // also match.
+  for (const col of nonDefaultPrimitives) {
+    const sizeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
+    const overrides = diffTokens(col.tokens, defaultPrimitives?.tokens ?? {});
+    blocks.push(cssBlock(`[data-size="${sizeSlug}"]`, overrides));
+  }
+
+  // Responsive @media (min-width) cascade — only for modes with a configured
+  // breakpoint, applied smallest-first. min-width queries aren't mutually
+  // exclusive (a wide viewport matches every smaller breakpoint's query too),
+  // so with 3+ tiers each block must state only what's *new* relative to the
+  // tier immediately below it, not always the base — otherwise a property
+  // that changes at one tier and reverts at a later one stays stuck at the
+  // earlier tier's value once both queries match. Same "small, then medium,
+  // then large" source-order rule Coop's own build tool encodes for exactly
+  // this reason. Two tiers (one non-default mode) can never hit this — there's
+  // nothing to stack — but it's real from three tiers on.
+  const responsiveTiers = nonDefaultPrimitives
+    .map((col) => {
+      const sizeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
+      const breakpoint =
+        metadata.sizeBreakpoints?.[sizeSlug] ?? metadata.sizeBreakpoints?.[col.modeName];
+      return breakpoint === undefined ? null : { col, breakpoint };
+    })
+    .filter((t): t is { col: ResolvedCollection; breakpoint: number } => t !== null)
+    .sort((a, b) => a.breakpoint - b.breakpoint);
+
+  let previousTierTokens = defaultPrimitives?.tokens ?? {};
+  for (const { col, breakpoint } of responsiveTiers) {
+    const overrides = diffTokens(col.tokens, previousTierTokens);
+    blocks.push(sizeMediaBlock(breakpoint, overrides));
+    previousTierTokens = col.tokens;
   }
 
   // Semantic: Light/Dark modes — emit var(--*) for any alias whose target is a real
@@ -147,13 +216,42 @@ function semanticMediaBlock(
   return `@media ${query} {\n${indented}\n}`;
 }
 
+/** Wraps a size mode's overrides in an unconditional @media (min-width) block
+ * targeting :root — see the file header for why this is unconditional rather
+ * than gated behind a wrapper attribute the way color-scheme's "auto" is. */
+function sizeMediaBlock(minWidthPx: number, overrides: Record<string, TokenValue>): string {
+  const inner = cssBlock(":root", overrides);
+  if (!inner) return "";
+  const indented = inner
+    .split("\n")
+    .map((l) => `  ${l}`)
+    .join("\n");
+  return `@media (min-width: ${minWidthPx}px) {\n${indented}\n}`;
+}
+
 function cssBlock(selector: string, tokens: Record<string, TokenValue>): string {
+  return cssBlockWithExtra(selector, tokens, {});
+}
+
+/**
+ * Like cssBlock, but also appends already-final CSS value strings (from
+ * splitSharedSemanticTokens — a var(--*) reference or a pre-formatted
+ * literal) without running them through formatCSSValue a second time, which
+ * would be wrong for a var() reference and could double-convert a fontWeight.
+ */
+function cssBlockWithExtra(
+  selector: string,
+  tokens: Record<string, TokenValue>,
+  extra: Record<string, string>,
+): string {
   const entries = Object.entries(tokens).filter(([, t]) => t.$type !== "boolean");
-  if (entries.length === 0) return "";
   const lines = entries.map(
     ([path, token]) => `  ${toCSSVar(path)}: ${formatCSSValue(token.$type, token.$value)};`,
   );
-  return `${selector} {\n${lines.join("\n")}\n}`;
+  const extraLines = Object.entries(extra).map(([path, value]) => `  ${toCSSVar(path)}: ${value};`);
+  const allLines = [...lines, ...extraLines];
+  if (allLines.length === 0) return "";
+  return `${selector} {\n${allLines.join("\n")}\n}`;
 }
 
 function cssHeader(): string {
@@ -193,7 +291,9 @@ function splitSharedSemanticTokens(
   darkCol: ResolvedCollection | undefined,
   referenceableCSSVars: Set<string>,
 ): {
-  shared: Record<string, TokenValue>;
+  /** Already-final CSS value strings — may be a var(--*) reference, so these
+   * must never be re-run through formatCSSValue (see cssBlockWithExtra). */
+  shared: Record<string, string>;
   light: ResolvedCollection | undefined;
   dark: ResolvedCollection | undefined;
 } {
@@ -201,7 +301,7 @@ function splitSharedSemanticTokens(
     return { shared: {}, light: lightCol, dark: darkCol };
   }
 
-  const shared: Record<string, TokenValue> = {};
+  const shared: Record<string, string> = {};
   const lightTokens: Record<string, TokenValue> = {};
   const darkTokens: Record<string, TokenValue> = {};
 
@@ -210,12 +310,19 @@ function splitSharedSemanticTokens(
   for (const path of allPaths) {
     const lightToken = lightCol.tokens[path];
     const darkToken = darkCol.tokens[path];
+    // Never emitted as CSS either way (see cssBlock/semanticBlock's own
+    // filter) — omit entirely rather than hoisting a bogus --var: true;.
+    if (lightToken?.$type === "boolean" || darkToken?.$type === "boolean") continue;
 
     if (lightToken && darkToken) {
       const lightValue = semanticCSSValue(lightCol, path, lightToken, referenceableCSSVars);
       const darkValue = semanticCSSValue(darkCol, path, darkToken, referenceableCSSVars);
       if (lightValue === darkValue) {
-        shared[path] = lightToken;
+        // The computed value IS the final declaration text (var() reference
+        // or already-formatted literal) — storing the original TokenValue
+        // here instead would silently discard the var() form and re-bake a
+        // resolved literal once this reaches :root.
+        shared[path] = lightValue;
         continue;
       }
     }

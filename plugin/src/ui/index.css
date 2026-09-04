@@ -31,3 +31,131 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* Button variants — kept in sync with theme.ts color tokens by hand.
+   Button.tsx deliberately sets no color/background/border-color inline:
+   an inline style always wins over an external stylesheet rule for the
+   same property regardless of specificity, so :hover/:active here would
+   otherwise be dead on arrival. */
+.ts-btn {
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
+}
+.ts-btn--primary {
+  background: #1a52d8;
+  color: #ffffff;
+  border-color: transparent;
+}
+.ts-btn--primary:not(:disabled):hover {
+  background: #1547bd;
+}
+.ts-btn--primary:not(:disabled):active {
+  background: #123a99;
+}
+.ts-btn--secondary {
+  background: #f0f0f0;
+  color: #1a1a1a;
+  border-color: transparent;
+}
+.ts-btn--secondary:not(:disabled):hover {
+  background: #e4e4e4;
+}
+.ts-btn--secondary:not(:disabled):active {
+  background: #d8d8d8;
+}
+.ts-btn--danger {
+  background: none;
+  color: #c00000;
+  border-color: #f5c6c6;
+}
+.ts-btn--danger:not(:disabled):hover {
+  background: #fff0f0;
+}
+.ts-btn--danger:not(:disabled):active {
+  background: #ffe1e1;
+}
+.ts-btn--dangerFilled {
+  background: #c00000;
+  color: #ffffff;
+  border-color: transparent;
+}
+.ts-btn--dangerFilled:not(:disabled):hover {
+  background: #a30000;
+}
+.ts-btn--dangerFilled:not(:disabled):active {
+  background: #8a0000;
+}
+.ts-btn--ghost {
+  background: none;
+  color: #555555;
+  border-color: transparent;
+}
+.ts-btn--ghost:not(:disabled):hover {
+  background: #f0f0f0;
+  color: #1a1a1a;
+}
+.ts-btn--ghost:not(:disabled):active {
+  background: #e4e4e4;
+}
+.ts-btn:not(:disabled):focus-visible {
+  outline: 2px solid #1a52d8;
+  outline-offset: 1px;
+}
+
+.ts-icon-btn {
+  background: #ffffff;
+  border-color: #dddddd;
+  color: #555555;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease;
+}
+.ts-icon-btn:not(:disabled):hover {
+  background: #eeeeee;
+  border-color: #cccccc;
+}
+.ts-icon-btn:not(:disabled):active {
+  background: #e0e0e0;
+}
+.ts-icon-btn:not(:disabled):focus-visible {
+  outline: 2px solid #1a52d8;
+  outline-offset: 1px;
+}
+
+.ts-collapsible-row {
+  transition: background 100ms ease;
+}
+.ts-collapsible-row--section {
+  background: none;
+}
+.ts-collapsible-row--category {
+  background: #f8f8f8;
+}
+.ts-collapsible-row:hover {
+  background: #eeeeee;
+}
+.ts-collapsible-trigger:focus-visible {
+  outline: 2px solid #1a52d8;
+  outline-offset: -2px;
+}
+
+.ts-tab {
+  background: none;
+  color: #666666;
+  transition:
+    color 100ms ease,
+    background 100ms ease;
+}
+.ts-tab:hover {
+  color: #1a1a1a;
+}
+.ts-tab--active {
+  color: #1a1a1a;
+  font-weight: 500;
+}
+.ts-tab:focus-visible {
+  outline: 2px solid #1a52d8;
+  outline-offset: -2px;
+}

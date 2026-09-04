@@ -1,10 +1,23 @@
 /**
- * Setup view — shown when no project is configured or on first run.
- * Collects GitHub PAT and project details.
+ * Setup view — shown when no project is configured, or when editing one.
+ * A brand-new project goes through the step-by-step AddProjectWizard
+ * instead — see that file. This file only handles editing an existing
+ * project, where a single flat screen is faster than clicking through
+ * steps to change one field.
  */
 
 import { useState } from "react";
 import type { Project } from "../App";
+import { fetchBranches } from "../hooks/useGitHub";
+import { AddProjectWizard } from "./AddProjectWizard";
+import { Button } from "../components/Button";
+import { Field, TextInput } from "../components/Field";
+import { StatusBanner } from "../components/StatusBanner";
+import { ViewHeader } from "../components/ViewHeader";
+import { IconChevron } from "../icons";
+import { color, font, space } from "../theme";
+import { describeGitHubError } from "../errors";
+import type { DescribedError } from "../errors";
 
 interface Props {
   onSave: (project: Project) => void;
@@ -12,19 +25,71 @@ interface Props {
   existing?: Project | null;
 }
 
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+export function Setup({ onSave, onCancel, existing }: Props) {
+  if (!existing) {
+    return <AddProjectWizard onSave={onSave} onCancel={onCancel} />;
+  }
+  return <EditProjectForm project={existing} onSave={onSave} onCancel={onCancel} />;
 }
 
-export function Setup({ onSave, onCancel, existing }: Props) {
-  const [name, setName] = useState(existing?.name ?? "");
-  const [pat, setPat] = useState(existing?.pat ?? "");
-  const [repo, setRepo] = useState(existing?.repo ?? "");
-  const [branch, setBranch] = useState(existing?.branch ?? "main");
-  const [tokensPath, setTokensPath] = useState(existing?.tokensPath ?? "tokens/");
-  const [figmaFileKey, setFigmaFileKey] = useState(existing?.figmaFileKey ?? "");
+// ---------------------------------------------------------------------------
+// Edit — single flat screen; every field is already set, so there's nothing
+// to walk through step by step.
+// ---------------------------------------------------------------------------
+
+type TestState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "success"; message: string }
+  | ({ kind: "error" } & DescribedError);
+
+function EditProjectForm({
+  project,
+  onSave,
+  onCancel,
+}: {
+  project: Project;
+  onSave: (project: Project) => void;
+  onCancel?: () => void;
+}) {
+  const [name, setName] = useState(project.name);
+  const [pat, setPat] = useState(project.pat);
+  const [repo, setRepo] = useState(project.repo);
+  const [branch, setBranch] = useState(project.branch);
+  const [tokensPath, setTokensPath] = useState(project.tokensPath);
+  const [figmaFileKey, setFigmaFileKey] = useState(project.figmaFileKey);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+
+  const [showAdvanced, setShowAdvanced] = useState(true);
+  const [testState, setTestState] = useState<TestState>({ kind: "idle" });
+
+  function resetTestState() {
+    if (testState.kind !== "idle") setTestState({ kind: "idle" });
+  }
+
+  async function handleTestConnection() {
+    if (!pat.trim() || !repo.trim() || !repo.includes("/")) {
+      setTestState({
+        kind: "error",
+        message: "Enter a personal access token and a repository (org/repo-name) first.",
+      });
+      return;
+    }
+    setTestState({ kind: "loading" });
+    try {
+      const branches = await fetchBranches(pat.trim(), repo.trim());
+      const branchName = branch.trim();
+      const branchMissing = branchName && !branches.includes(branchName);
+      setTestState({
+        kind: "success",
+        message: branchMissing
+          ? `Connected, but branch "${branchName}" wasn't found in this repo.`
+          : `Connected — found ${branches.length} branch${branches.length !== 1 ? "es" : ""}.`,
+      });
+    } catch (err) {
+      setTestState({ kind: "error", ...describeGitHubError(err, "fetch-branches") });
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,30 +99,21 @@ export function Setup({ onSave, onCancel, existing }: Props) {
     if (!pat.trim()) return setError("GitHub Personal Access Token is required");
     if (!repo.trim() || !repo.includes("/"))
       return setError("Repository must be in format org/repo-name");
-    setSaved(true);
-    setTimeout(() => {
-      onSave({
-        id: existing?.id ?? generateId(),
-        name: name.trim(),
-        pat: pat.trim(),
-        repo: repo.trim(),
-        branch: branch.trim() || "main",
-        tokensPath: tokensPath.trim() || "tokens/",
-        figmaFileKey: figmaFileKey.trim(),
-      });
-    }, 400);
+
+    onSave({
+      id: project.id,
+      name: name.trim(),
+      pat: pat.trim(),
+      repo: repo.trim(),
+      branch: branch.trim() || "main",
+      tokensPath: tokensPath.trim() || "tokens/",
+      figmaFileKey: figmaFileKey.trim(),
+    });
   }
 
   return (
     <div style={styles.container}>
-      <div style={styles.headingRow}>
-        {onCancel && (
-          <button style={styles.backBtn} onClick={onCancel}>
-            ← Back
-          </button>
-        )}
-        <h2 style={styles.heading}>{existing ? "Edit project" : "Add project"}</h2>
-      </div>
+      <ViewHeader title="Edit project" onBack={onCancel} />
       <p style={styles.subtext}>
         Connect a GitHub repository to this Figma file. Token files will be read from and written to
         the repository via Pull Request.
@@ -65,8 +121,7 @@ export function Setup({ onSave, onCancel, existing }: Props) {
 
       <form onSubmit={handleSubmit} style={styles.form}>
         <Field label="Project name" hint="Used only in this plugin">
-          <input
-            style={styles.input}
+          <TextInput
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="My Design System"
@@ -77,120 +132,112 @@ export function Setup({ onSave, onCancel, existing }: Props) {
           label="GitHub Personal Access Token"
           hint="Needs repo read + write permissions. Stored in Figma clientStorage."
         >
-          <input
-            style={styles.input}
+          <TextInput
             type="password"
             value={pat}
-            onChange={(e) => setPat(e.target.value)}
+            onChange={(e) => {
+              setPat(e.target.value);
+              resetTestState();
+            }}
             placeholder="ghp_xxxxxxxxxxxx"
           />
         </Field>
 
         <Field label="Repository" hint="org/repo-name">
-          <input
-            style={styles.input}
+          <TextInput
             value={repo}
-            onChange={(e) => setRepo(e.target.value)}
+            onChange={(e) => {
+              setRepo(e.target.value);
+              resetTestState();
+            }}
             placeholder="your-org/design-tokens"
           />
         </Field>
 
-        <Field label="Default branch">
-          <input
-            style={styles.input}
-            value={branch}
-            onChange={(e) => setBranch(e.target.value)}
-            placeholder="main"
-          />
-        </Field>
+        <div style={styles.testRow}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="compact"
+            disabled={testState.kind === "loading"}
+            onClick={handleTestConnection}
+          >
+            {testState.kind === "loading" ? "Testing…" : "Test connection"}
+          </Button>
+        </div>
 
-        <Field label="Tokens path" hint="Folder inside the repo containing the tokens/ structure">
-          <input
-            style={styles.input}
-            value={tokensPath}
-            onChange={(e) => setTokensPath(e.target.value)}
-            placeholder="tokens/"
-          />
-        </Field>
+        {testState.kind === "success" && (
+          <StatusBanner tone="success">{testState.message}</StatusBanner>
+        )}
+        {testState.kind === "error" && (
+          <StatusBanner tone="danger" detail={testState.detail}>
+            {testState.message}
+          </StatusBanner>
+        )}
 
-        <Field
-          label="Figma file key"
-          hint="Optional. Found in the URL: figma.com/design/FILE_KEY/..."
+        <Button
+          type="button"
+          variant="ghost"
+          icon={<IconChevron expanded={showAdvanced} size={10} />}
+          onClick={() => setShowAdvanced((v) => !v)}
+          aria-expanded={showAdvanced}
+          style={styles.advancedToggle}
         >
-          <input
-            style={styles.input}
-            value={figmaFileKey}
-            onChange={(e) => setFigmaFileKey(e.target.value)}
-            placeholder="abc123xyz"
-          />
-        </Field>
+          Advanced settings
+        </Button>
 
-        {error && <p style={styles.error}>{error}</p>}
+        {showAdvanced && (
+          <div style={styles.advancedFields}>
+            <Field label="Default branch">
+              <TextInput
+                value={branch}
+                onChange={(e) => {
+                  setBranch(e.target.value);
+                  resetTestState();
+                }}
+                placeholder="main"
+              />
+            </Field>
 
-        <button
-          type="submit"
-          style={{ ...styles.button, ...(saved ? styles.buttonSaved : {}) }}
-          disabled={saved}
-        >
-          {saved ? "✓ Saved" : "Save project"}
-        </button>
+            <Field
+              label="Tokens path"
+              hint="Folder inside the repo containing the tokens/ structure"
+            >
+              <TextInput
+                value={tokensPath}
+                onChange={(e) => setTokensPath(e.target.value)}
+                placeholder="tokens/"
+              />
+            </Field>
+
+            <Field
+              label="Figma file key"
+              hint="Optional, reserved for a future feature. Found in the URL: figma.com/design/FILE_KEY/..."
+            >
+              <TextInput
+                value={figmaFileKey}
+                onChange={(e) => setFigmaFileKey(e.target.value)}
+                placeholder="abc123xyz"
+              />
+            </Field>
+          </div>
+        )}
+
+        {error && <StatusBanner tone="danger">{error}</StatusBanner>}
+
+        <Button type="submit" variant="primary" fullWidth>
+          Save project
+        </Button>
       </form>
     </div>
   );
 }
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={styles.field}>
-      <label style={styles.label}>{label}</label>
-      {hint && <span style={styles.hint}>{hint}</span>}
-      {children}
-    </div>
-  );
-}
-
 const styles: Record<string, React.CSSProperties> = {
-  container: { padding: "24px", display: "flex", flexDirection: "column", gap: "8px" },
-  headingRow: { display: "flex", alignItems: "center", gap: "8px" },
-  heading: { margin: 0, fontSize: "16px", fontWeight: 600 },
-  backBtn: {
-    background: "none",
-    border: "none",
-    fontSize: "12px",
-    color: "#555",
-    cursor: "pointer",
-    padding: "2px 0",
-  },
-  subtext: { margin: 0, fontSize: "12px", color: "#666", lineHeight: 1.5 },
-  form: { display: "flex", flexDirection: "column", gap: "16px", marginTop: "8px" },
-  field: { display: "flex", flexDirection: "column", gap: "4px" },
-  label: { fontSize: "12px", fontWeight: 500 },
-  hint: { fontSize: "11px", color: "#888" },
-  input: {
-    border: "1px solid #ddd",
-    borderRadius: "6px",
-    padding: "8px 10px",
-    fontSize: "12px",
-    outline: "none",
-  },
-  button: {
-    background: "#1a52d8",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    padding: "10px 16px",
-    fontSize: "13px",
-    fontWeight: 500,
-    cursor: "pointer",
-  },
-  error: { margin: 0, fontSize: "12px", color: "#c00" },
-  buttonSaved: { background: "#12702f" },
+  container: { padding: space.xxl, display: "flex", flexDirection: "column", gap: space.sm },
+  subtext: { margin: 0, fontSize: font.size.md, color: color.text.secondary, lineHeight: 1.5 },
+  form: { display: "flex", flexDirection: "column", gap: space.lg, marginTop: space.xs },
+  testRow: { display: "flex", marginTop: -space.xs },
+  advancedToggle: { alignSelf: "flex-start", marginLeft: -space.sm },
+  advancedFields: { display: "flex", flexDirection: "column", gap: space.lg },
 };

@@ -10,6 +10,9 @@ import { Setup } from "./views/Setup";
 import { Sync } from "./views/Sync";
 import { useSendMessage, usePluginMessage } from "./hooks/usePlugin";
 import type { PluginMessage } from "../shared/messages";
+import { Button } from "./components/Button";
+import { IconPlus } from "./icons";
+import { color, font, radius, space } from "./theme";
 
 export interface Project {
   id: string;
@@ -122,8 +125,8 @@ export default function App() {
           alignItems: "center",
           justifyContent: "center",
           height: "100vh",
-          color: "#888",
-          fontSize: 12,
+          color: color.text.muted,
+          fontSize: font.size.md,
         }}
       >
         Loading…
@@ -186,28 +189,26 @@ function ProjectSwitcher({
           </option>
         ))}
       </select>
-      <button style={s.addBtn} onClick={onAdd}>
-        + Add
-      </button>
+      <Button variant="secondary" size="compact" icon={<IconPlus size={11} />} onClick={onAdd}>
+        Add
+      </Button>
     </div>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
-  bar: { display: "flex", gap: "8px", padding: "12px 20px 0", alignItems: "center" },
+  bar: {
+    display: "flex",
+    gap: space.sm,
+    padding: `${space.md}px ${space.xl}px 0`,
+    alignItems: "center",
+  },
   select: {
     flex: 1,
-    fontSize: "12px",
-    padding: "6px 8px",
-    borderRadius: "6px",
-    border: "1px solid #ddd",
-  },
-  addBtn: {
-    fontSize: "12px",
-    padding: "6px 10px",
-    borderRadius: "6px",
-    border: "1px solid #ddd",
-    background: "none",
-    cursor: "pointer",
+    fontSize: font.size.md,
+    padding: `${space.xs}px ${space.sm}px`,
+    borderRadius: radius.sm,
+    border: `1px solid ${color.border.default}`,
+    fontFamily: font.family,
   },
 };

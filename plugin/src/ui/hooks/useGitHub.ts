@@ -20,6 +20,23 @@ export interface PRResult {
   title: string;
 }
 
+/** A failed GitHub REST call. Carries the raw status/method/path so callers
+ * can map it to plain-language copy (see `../errors.ts`) without re-parsing
+ * a formatted string. */
+export class GitHubApiError extends Error {
+  readonly status: number;
+  readonly method: string;
+  readonly path: string;
+
+  constructor(status: number, method: string, path: string) {
+    super(`GitHub ${status}: ${method} /${path}`);
+    this.name = "GitHubApiError";
+    this.status = status;
+    this.method = method;
+    this.path = path;
+  }
+}
+
 // Minimal GitHub API response shapes
 interface TreeResponse {
   tree: Array<{ type: string; path: string }>;
@@ -89,7 +106,7 @@ async function fetchFile(path: string, config: GitHubConfig): Promise<GitHubFile
     `repos/${config.repo}/contents/${path}?ref=${encodeURIComponent(config.branch)}`,
     config.pat,
   );
-  const content = atob(data.content.replace(/\n/g, ""));
+  const content = decodeBase64Utf8(data.content.replace(/\n/g, ""));
   return { path, content, sha: data.sha };
 }
 
@@ -117,7 +134,7 @@ export async function createTokenPR(
   });
 
   for (const file of files) {
-    const encoded = btoa(unescape(encodeURIComponent(file.content)));
+    const encoded = encodeUtf8Base64(file.content);
 
     let existingSha: string | undefined;
     try {
@@ -126,8 +143,11 @@ export async function createTokenPR(
         config.pat,
       );
       existingSha = existing.sha;
-    } catch {
-      // file doesn't exist yet — fine
+    } catch (err) {
+      // 404 means the file doesn't exist yet — fine, we're creating it.
+      // Anything else (auth, rate limit, network) should surface, not be
+      // silently treated as "new file" and fail confusingly on the PUT below.
+      if (!(err instanceof GitHubApiError) || err.status !== 404) throw err;
     }
 
     await apiPut(`repos/${config.repo}/contents/${file.path}`, config.pat, {
@@ -155,6 +175,33 @@ export async function createTokenPR(
 }
 
 // ---------------------------------------------------------------------------
+// Base64 ↔ UTF-8
+// ---------------------------------------------------------------------------
+
+/**
+ * GitHub's Contents API base64-encodes the file's raw UTF-8 bytes. Plain
+ * `atob` decodes base64 into a "binary string" — one JS character per byte,
+ * not one character per Unicode code point — so any multi-byte UTF-8
+ * character (an em dash, say) comes out as several mojibake characters
+ * instead of the original one. Re-interpreting each decoded byte through
+ * `TextDecoder` reassembles the original UTF-8 sequence correctly.
+ */
+export function decodeBase64Utf8(base64: string): string {
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+/** Inverse of decodeBase64Utf8: encode a JS string to UTF-8 bytes first, then
+ * base64 — `btoa` alone throws (or mangles) on any character outside Latin-1. */
+export function encodeUtf8Base64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+// ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
@@ -162,7 +209,7 @@ const BASE = "https://api.github.com";
 
 async function apiGet<T>(path: string, pat: string): Promise<T> {
   const res = await fetch(`${BASE}/${path}`, { headers: headers(pat) });
-  if (!res.ok) throw new Error(`GitHub ${res.status}: GET /${path}`);
+  if (!res.ok) throw new GitHubApiError(res.status, "GET", path);
   return res.json() as Promise<T>;
 }
 
@@ -172,7 +219,7 @@ async function apiPost<T = unknown>(path: string, pat: string, body: unknown): P
     headers: headers(pat),
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`GitHub ${res.status}: POST /${path}`);
+  if (!res.ok) throw new GitHubApiError(res.status, "POST", path);
   return res.json() as Promise<T>;
 }
 
@@ -182,7 +229,7 @@ async function apiPut<T = unknown>(path: string, pat: string, body: unknown): Pr
     headers: headers(pat),
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`GitHub ${res.status}: PUT /${path}`);
+  if (!res.ok) throw new GitHubApiError(res.status, "PUT", path);
   return res.json() as Promise<T>;
 }
 
