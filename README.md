@@ -472,7 +472,7 @@ No changes to `light.json` or `dark.json` are required. Severity tokens are not 
 
 Add `"ignoredCollections": ["primitives"]` to `metadata.json` to exclude layers from pull and push diffs. Entries are layer keys — `primitives`, `global`, `themes`, or `semantic`. Useful for read-only core collections managed elsewhere. Platform output (CSS, JS, Dart, Swift) still includes ignored collections so references resolve.
 
-Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns off applying typography groups (`"$type": "typography"`) to Figma as Text Styles, independent of Variables sync — on by default, remembered per project. This is coarser than `ignoredCollections`: it's all typography styles or none, not per-collection.
+Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns on applying typography groups (`"$type": "typography"`) to Figma as Text Styles, independent of Variables sync — off by default until the full apply flow is verified against your own Figma file, remembered per project. This is coarser than `ignoredCollections`: it's all typography styles or none, not per-collection.
 
 ### Already have a build step?
 

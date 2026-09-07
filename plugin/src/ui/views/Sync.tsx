@@ -79,10 +79,15 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const lastSyncKey = `tokensync:lastSync:${project.id}`;
 
   // Whether to sync typography ("$type": "typography" marked groups) as Figma
-  // Text Styles at all — persisted per project, defaults on. Off just skips
-  // sending APPLY_TEXT_STYLES; it never affects Variables sync.
+  // Text Styles at all — persisted per project, defaults OFF. Off just skips
+  // sending APPLY_TEXT_STYLES; it never affects Variables sync. Defaults off
+  // (not on) because the full apply flow — create-or-find by name, the
+  // combined fontName merge, lineHeight/letterSpacing unit handling — has
+  // not been verified end-to-end against a real Figma file; only one
+  // isolated binding call has been confirmed live. Flip to on once that's
+  // done, or once a team has verified it against their own file.
   const syncTypeStylesKey = `tokensync:syncTypeStyles:${project.id}`;
-  const [syncTypeStyles, setSyncTypeStyles] = useState(true);
+  const [syncTypeStyles, setSyncTypeStyles] = useState(false);
 
   const viewRef = useRef<View>("main");
   const pendingAction = useRef<PendingAction | null>(null);
