@@ -118,28 +118,42 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
     return "ignore";
   }
 
-  // Mode order for the Size axis comes straight from Figma — whichever
-  // collection(s) are assigned the "sizes" role, in the order Figma reports
-  // their modes (first = base, written straight into :root; no reason to
-  // make the user retype names Figma already has). Only the per-mode
-  // breakpoint pixel value has no Figma-side source and needs a real input —
-  // see docs/design/size-axis.md.
-  const sizeModeNames: string[] = (() => {
+  /**
+   * Mode names for a role, straight from Figma — whichever collection(s) are
+   * assigned that role, in the order Figma reports their modes, sanitized
+   * the same way figma-to-tokens.ts names the files it writes (lowercase,
+   * spaces/slashes → hyphens). This match matters: parseRepository looks up
+   * `layers.themes[metadata.themes[0]]` and `layers.semantic[scheme]` by
+   * exact file-name string — a real theme is essentially never going to be
+   * literally named "default" (defaultMetadata()'s placeholder), so without
+   * this, semantic tokens' cross-reference resolution against "the default
+   * theme" silently resolves against an empty tree on every first project,
+   * and generateSchemeJS/Dart/Swift's colorScheme split-mode output silently
+   * skips any scheme name defaultMetadata() didn't happen to already list.
+   * Re-derived from Figma on every save rather than merged with whatever was
+   * there before — Figma's real modes are the single source of truth for
+   * these, the same way figma.collections already is.
+   */
+  function deriveModeNames(role: Role): string[] {
     if (!figmaCollections) return [];
     const seen = new Set<string>();
     const ordered: string[] = [];
     for (const col of figmaCollections) {
-      if ((assignments[col.name] ?? "ignore") !== "sizes") continue;
+      if ((assignments[col.name] ?? "ignore") !== role) continue;
       for (const mode of col.modes) {
-        const key = mode.name.toLowerCase();
+        const key = sanitizeName(mode.name);
         if (!seen.has(key)) {
           seen.add(key);
-          ordered.push(mode.name);
+          ordered.push(key);
         }
       }
     }
     return ordered;
-  })();
+  }
+
+  const sizeModeNames = deriveModeNames("sizes");
+  const themeModeNames = deriveModeNames("themes");
+  const colorSchemeModeNames = deriveModeNames("semantic");
 
   async function handleSave() {
     if (!rawMetadata) return;
@@ -166,8 +180,17 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
       ),
     );
 
+    // themes/colorSchemes only get overwritten when a role actually maps to
+    // something right now — an empty derived list means nothing's assigned
+    // that role in *this* save, not "there are genuinely zero themes," so
+    // falling back to whatever was already there is safer than blanking it.
     const nextMetadata = {
       ...rawMetadata,
+      themes: themeModeNames.length > 0 ? themeModeNames : (rawMetadata.themes ?? ["default"]),
+      colorSchemes:
+        colorSchemeModeNames.length > 0
+          ? colorSchemeModeNames
+          : (rawMetadata.colorSchemes ?? ["light", "dark"]),
       sizes: sizeModeNames,
       sizeBreakpoints: cleanedBreakpoints,
       figma: { ...(rawMetadata.figma as Record<string, unknown>), collections: newCollections },
@@ -327,6 +350,15 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
       )}
     </div>
   );
+}
+
+/** Mode name → the exact string figma-to-tokens.ts's sanitizeFileName uses for
+ * the file it writes — lowercase, spaces/slashes collapsed to "-". Metadata's
+ * themes/colorSchemes/sizes lists must use this form, since parseRepository
+ * looks theme/scheme/size files up by this exact string, not the original
+ * Figma-cased mode name. */
+function sanitizeName(modeName: string): string {
+  return modeName.toLowerCase().replace(/[\s/]+/g, "-");
 }
 
 /** metadata.json lives at the root of tokensPath — same convention buildLayers/

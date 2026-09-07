@@ -218,6 +218,68 @@ describe("parseRepository — collections emitted", () => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// parseRepository — theme/colorScheme name resolution is case-insensitive
+// ────────────────────────────────────────────────────────────────
+
+describe("parseRepository — theme/colorScheme lookup is case-insensitive", () => {
+  // The default fixture's theme file happens to be named "default.json",
+  // coincidentally matching defaultMetadata()'s own placeholder theme name
+  // ("default") — which is exactly how this class of bug stayed invisible: a
+  // real theme is essentially never actually going to be named "default".
+  // These tests use a realistic name instead, with metadata.json casing that
+  // deliberately doesn't match the file, since metadata.json is hand-editable
+  // (docs/principles/no-lock-in.md) and a casing slip must not silently
+  // resolve against an empty tree.
+  const originalTheme = {
+    light: { background: { default: { $type: "color", $value: "{color.white.950}" } } },
+    dark: { background: { default: { $type: "color", $value: "{color.neutral.950}" } } },
+  };
+
+  it("resolves the default theme even when metadata.themes' casing differs from the real file name", () => {
+    const meta = { themes: ["Original"], colorSchemes: ["light", "dark"] };
+    const files = [
+      file("tokens/primitives/color.json", primitiveColor),
+      file("tokens/semantic/themes/original.json", originalTheme),
+      file(
+        "tokens/semantic/light.json",
+        { background: { default: { $type: "color", $value: "{light.background.default}" } } },
+      ),
+      file("tokens/metadata.json", meta),
+    ];
+
+    const { collections } = parseRepository(files, tokensPath);
+    const semantic = collections.find(
+      (c) => c.collectionName === "Semantic" && c.modeName === "Light",
+    )!;
+
+    // If the default-theme lookup silently missed (case-sensitive bug),
+    // this resolves to nothing and the alias is left dangling/unresolved.
+    expect(semantic.tokens["background.default"].$value).toBe("#ffffff");
+  });
+
+  it("reads a color scheme file even when metadata.colorSchemes' casing differs from the real file name", () => {
+    const meta = { themes: ["original"], colorSchemes: ["Light"] };
+    const files = [
+      file("tokens/primitives/color.json", primitiveColor),
+      file("tokens/semantic/themes/original.json", originalTheme),
+      file(
+        "tokens/semantic/light.json",
+        { background: { default: { $type: "color", $value: "{light.background.default}" } } },
+      ),
+      file("tokens/metadata.json", meta),
+    ];
+
+    const { collections } = parseRepository(files, tokensPath);
+    const semanticCollections = collections.filter((c) => c.collectionName === "Semantic");
+
+    // Case-sensitive lookup would silently skip light.json entirely (schemeTree
+    // undefined -> continue), producing zero Semantic collections.
+    expect(semanticCollections).toHaveLength(1);
+    expect(semanticCollections[0].modeName).toBe("Light");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
 // parseRepository — Size axis on Primitives
 // ────────────────────────────────────────────────────────────────
 

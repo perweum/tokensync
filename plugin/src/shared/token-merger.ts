@@ -226,7 +226,9 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     // to file order for a repo that has size files but no metadata.sizes yet.
     const orderedSizeModes =
       metadata.sizes.length > 0
-        ? metadata.sizes.filter((name) => sizeModeNames.includes(name))
+        ? metadata.sizes
+            .map((name) => findCaseInsensitive(sizeModeNames, name))
+            .filter((name): name is string => name !== undefined)
         : sizeModeNames;
 
     for (const sizeModeName of orderedSizeModes) {
@@ -254,7 +256,9 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
       : deepMergeTokenTrees(
           primitivesTree,
           layers.sizes[
-            metadata.sizes.find((name) => sizeModeNames.includes(name)) ?? sizeModeNames[0]
+            metadata.sizes
+              .map((name) => findCaseInsensitive(sizeModeNames, name))
+              .find((name): name is string => name !== undefined) ?? sizeModeNames[0]
           ],
         );
 
@@ -291,12 +295,13 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   // rawTokens keep {light.*} and {dark.*} refs unresolved so the plugin creates
   // Themes→Semantic cross-collection aliases. Severity tokens ref Primitives directly.
   // Resolved tokens substitute the first theme for diff comparison and display.
-  const firstThemeName = metadata.themes[0] ?? "default";
-  const defaultThemeTree = layers.themes[firstThemeName] ?? {};
+  const firstThemeName = findCaseInsensitive(Object.keys(layers.themes), metadata.themes[0] ?? "default");
+  const defaultThemeTree = firstThemeName ? layers.themes[firstThemeName] : {};
 
   for (const scheme of metadata.colorSchemes) {
-    const schemeTree = layers.semantic[scheme];
-    if (!schemeTree) continue;
+    const schemeKey = findCaseInsensitive(Object.keys(layers.semantic), scheme);
+    if (!schemeKey) continue;
+    const schemeTree = layers.semantic[schemeKey];
 
     // rawTokens: no themes tree in merge — {light.*}/{dark.*} refs remain as literal strings
     const rawFlatUnresolved = flattenTokens(
@@ -311,7 +316,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
 
     collections.push({
       collectionName: names.semantic[0],
-      modeName: capitalise(scheme),
+      modeName: capitalise(schemeKey),
       tokens: filterByPaths(resolvedFlat, schemePaths),
       rawTokens: filterByPaths(rawFlatUnresolved, schemePaths),
       typographyStyles: extractTypographyStyles(schemeTree),
@@ -497,4 +502,14 @@ function stripTokensPath(files: GitHubFile[], tokensPath: string): Map<string, s
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Find `target` in `candidates` ignoring case — metadata.json's themes/
+ * colorSchemes/sizes lists are hand-editable (docs/principles/no-lock-in.md:
+ * "config is hand-editable"), so a casing slip ("Original" vs the real file
+ * "original") shouldn't silently resolve against an empty tree instead of
+ * the real one. */
+function findCaseInsensitive(candidates: string[], target: string): string | undefined {
+  const lower = target.toLowerCase();
+  return candidates.find((c) => c.toLowerCase() === lower);
 }
