@@ -529,6 +529,8 @@ The token files Token Sync produces are plain DTCG JSON — see "Already have a 
 
 ## Further reading
 
+- `PRIVACY.md` — what data the plugin handles, where it goes, and what it doesn't do
+- `docs/github-token-setup.md` — creating a fine-grained, single-repository GitHub token instead of a broad one
 - `docs/principles/no-lock-in.md` — the design principle behind the repo-is-source-of-truth stance, and what it requires concretely
 - `docs/interop/token-studio.md` — the Token Studio repository contract and the concrete failure modes worth defending against, from a real 14-brand migration
 - `docs/interop/migration-patterns.md` — what a large multi-brand token system looks like in practice, and what CSS generators need from it
