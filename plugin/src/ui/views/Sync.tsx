@@ -9,11 +9,10 @@ import { fetchTokenFiles, fetchBranches, createBranch, createTokenPR } from "../
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
-import type { ParsedRepository, Metadata } from "../../shared/token-merger";
-import { buildCollectionDiff } from "../../shared/token-diff";
-import { figmaToCollections, figmaToTokenFiles } from "../../shared/figma-to-tokens";
+import type { ParsedRepository } from "../../shared/token-merger";
+import { figmaToCollections } from "../../shared/figma-to-tokens";
 import type { CollectionDiff } from "../../shared/token-diff";
-import { runTransformers } from "../../shared/transformer";
+import { computePullDiff, computePushDiff, buildFilesFromDiffs } from "../../shared/sync-logic";
 import type {
   PluginMessage,
   FigmaVariableCollection,
@@ -300,25 +299,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     setStatus({ kind: "loading", message: "Calculating diff…" });
 
     const figmaMaps = buildFigmaFlatMaps(figmaCollections, figmaVariables);
-
-    const filteredGithubCollections = github.collections.filter(
-      (c) => !isIgnoredCollection(c.collectionName, github.metadata),
+    const { diffs: result, filteredGithubCollections } = computePullDiff(
+      github.collections,
+      github.metadata,
+      figmaMaps,
     );
-
-    const result = filteredGithubCollections.map((githubCol) => {
-      const figmaMap = figmaMaps.find(
-        (m) =>
-          m.collectionName === githubCol.collectionName &&
-          m.modeName.toLowerCase() === githubCol.modeName.toLowerCase(),
-      );
-      return buildCollectionDiff(
-        githubCol.collectionName,
-        githubCol.modeName,
-        githubCol.tokens,
-        figmaMap?.values ?? {},
-        githubCol.rawTokens,
-      );
-    });
 
     const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
 
@@ -532,29 +517,13 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     // Keep raw data for writing complete token files to GitHub (not just diff entries)
     pendingFigmaRaw.current = { collections: figmaCollections, variables: figmaVariables };
 
-    const filteredFigmaCollectionData = figmaCollectionData.filter(
-      (c) => !isIgnoredCollection(c.collectionName, githubParsed.metadata),
+    // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
+    // GitHub, figmaValue = new state from Figma.
+    const { diffs: result } = computePushDiff(
+      figmaCollectionData,
+      githubParsed.collections,
+      githubParsed.metadata,
     );
-
-    // Diff: Figma (new) vs GitHub (current)
-    // githubValue = current state in GitHub, figmaValue = new state from Figma
-    const result: CollectionDiff[] = filteredFigmaCollectionData.map((figmaCol) => {
-      const githubCol = githubParsed.collections.find(
-        (c) =>
-          c.collectionName === figmaCol.collectionName &&
-          c.modeName.toLowerCase() === figmaCol.modeName.toLowerCase(),
-      );
-      // Swap: figmaTokens as "github" (what we're proposing), githubTokens as "figma" (current)
-      return buildCollectionDiff(
-        figmaCol.collectionName,
-        figmaCol.modeName,
-        figmaCol.tokens, // proposed (from Figma)
-        Object.fromEntries(
-          // current (from GitHub) — convert TokenValue to plain string
-          Object.entries(githubCol?.tokens ?? {}).map(([k, v]) => [k, v.$value]),
-        ),
-      );
-    });
 
     const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
     const unknownSuffix = unknownCollectionNames.length
@@ -578,7 +547,18 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   async function handleCreatePR(prTitle: string, selectedKeys: Set<string>) {
     setCreating(true);
     try {
-      const changedFiles = buildFilesFromDiffs(selectedKeys);
+      const raw = pendingFigmaRaw.current;
+      const parsed = pendingParsed.current;
+      const changedFiles =
+        raw && parsed
+          ? buildFilesFromDiffs(
+              selectedKeys,
+              raw,
+              parsed.metadata,
+              project.tokensPath,
+              pendingFigmaCollections.current,
+            )
+          : [];
 
       const result = await createTokenPR(
         {
@@ -603,44 +583,6 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setCreating(false);
       setStatus({ kind: "error", ...describeGitHubError(err, "create-pr") });
     }
-  }
-
-  /**
-   * Build token files for the PR.
-   * selectedKeys: set of "collectionName/modeName" pairs to include.
-   * Writes ALL variables for selected collections (not just changed ones) so GitHub files stay complete.
-   * Also runs platform transformers if configured in metadata.
-   */
-  function buildFilesFromDiffs(
-    selectedKeys: Set<string>,
-  ): Array<{ path: string; content: string }> {
-    const raw = pendingFigmaRaw.current;
-    const parsed = pendingParsed.current;
-    if (!raw || !parsed) return [];
-
-    // Build filtered collections: only selected modes
-    const filteredCollections = raw.collections
-      .map((col) => ({
-        ...col,
-        modes: col.modes.filter((mode) => selectedKeys.has(`${col.name}/${mode.name}`)),
-      }))
-      .filter((col) => col.modes.length > 0);
-
-    const tokenFiles = figmaToTokenFiles(
-      filteredCollections,
-      raw.variables,
-      project.tokensPath,
-      parsed.metadata.figma.collections,
-    ).map((f) => ({ path: f.repoPath, content: f.content }));
-
-    // Platform transformers always use the full collection set (they represent the full design system)
-    const figmaCollections = pendingFigmaCollections.current;
-    if (figmaCollections) {
-      const platformFiles = runTransformers(figmaCollections, parsed.metadata, project.tokensPath);
-      return [...tokenFiles, ...platformFiles];
-    }
-
-    return tokenFiles;
   }
 
   // ---------------------------------------------------------------------------
@@ -879,23 +821,6 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       )}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * True when a collection is listed in metadata.ignoredCollections.
- * Entries are layer keys ("primitives", "global", "themes", "semantic"),
- * matched against the configured Figma collection names.
- */
-function isIgnoredCollection(collectionName: string, metadata: Metadata): boolean {
-  const names = metadata.figma.collections;
-  const key = (Object.keys(names) as Array<keyof typeof names>).find((k) =>
-    names[k].includes(collectionName),
-  );
-  return key !== undefined && (metadata.ignoredCollections ?? []).includes(key);
 }
 
 // ---------------------------------------------------------------------------
