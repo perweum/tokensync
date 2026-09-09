@@ -118,7 +118,7 @@ describe("computePushDiff", () => {
     const figma = [col("Semantic", "Light", { "color.a": { $type: "color", $value: "#111111" } })];
     const github = [col("Semantic", "Light", { "color.a": { $type: "color", $value: "#fffFFF" } })];
 
-    const { diffs } = computePushDiff(figma, github, metadata());
+    const diffs = computePushDiff(figma, github, metadata());
 
     // The diff's "current" values come from githubCol (per the real-value swap
     // computePushDiff makes) — proven by the entry actually showing a change.
@@ -130,7 +130,7 @@ describe("computePushDiff", () => {
     const figma = [col("Semantic", "Light", { "color.a": { $type: "color", $value: "#fff" } })];
     const github = [col("Semantic", "light", { "color.a": { $type: "color", $value: "#fff" } })];
 
-    const { diffs } = computePushDiff(figma, github, metadata());
+    const diffs = computePushDiff(figma, github, metadata());
 
     expect(diffs[0].counts.total).toBe(0);
   });
@@ -142,7 +142,7 @@ describe("computePushDiff", () => {
     ];
     const meta = metadata({ ignoredCollections: ["primitives"] });
 
-    const { diffs } = computePushDiff(figma, [], meta);
+    const diffs = computePushDiff(figma, [], meta);
 
     expect(diffs.map((d) => d.collectionName)).toEqual(["Semantic"]);
   });

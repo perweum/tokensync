@@ -80,12 +80,12 @@ export function computePushDiff(
   figmaCollections: ResolvedCollection[],
   githubCollections: ResolvedCollection[],
   metadata: Metadata,
-): { diffs: CollectionDiff[] } {
+): CollectionDiff[] {
   const filteredFigmaCollections = figmaCollections.filter(
     (c) => !isIgnoredCollection(c.collectionName, metadata),
   );
 
-  const diffs = filteredFigmaCollections.map((figmaCol) => {
+  return filteredFigmaCollections.map((figmaCol) => {
     const githubCol = githubCollections.find(
       (c) =>
         c.collectionName === figmaCol.collectionName &&
@@ -98,8 +98,6 @@ export function computePushDiff(
       Object.fromEntries(Object.entries(githubCol?.tokens ?? {}).map(([k, v]) => [k, v.$value])),
     );
   });
-
-  return { diffs };
 }
 
 /**

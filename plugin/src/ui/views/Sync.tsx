@@ -519,11 +519,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
     // GitHub, figmaValue = new state from Figma.
-    const { diffs: result } = computePushDiff(
-      figmaCollectionData,
-      githubParsed.collections,
-      githubParsed.metadata,
-    );
+    const result = computePushDiff(figmaCollectionData, githubParsed.collections, githubParsed.metadata);
 
     const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
     const unknownSuffix = unknownCollectionNames.length
@@ -549,16 +545,16 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     try {
       const raw = pendingFigmaRaw.current;
       const parsed = pendingParsed.current;
-      const changedFiles =
-        raw && parsed
-          ? buildFilesFromDiffs(
-              selectedKeys,
-              raw,
-              parsed.metadata,
-              project.tokensPath,
-              pendingFigmaCollections.current,
-            )
-          : [];
+      if (!raw || !parsed) {
+        throw new Error("handleCreatePR called without a pending push diff");
+      }
+      const changedFiles = buildFilesFromDiffs(
+        selectedKeys,
+        raw,
+        parsed.metadata,
+        project.tokensPath,
+        pendingFigmaCollections.current,
+      );
 
       const result = await createTokenPR(
         {
