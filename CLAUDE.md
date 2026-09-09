@@ -53,3 +53,17 @@ in progress, and what's not started — check it first. The rest of the document
 is why: architectural decisions and rationale, code invariants that caused real
 bugs when violated, and the full backlog behind the summary. Read it before
 starting non-trivial work.
+
+## Code review cadence
+
+Run the project's `/code-review` skill (`.claude/skills/code-review/`) after a
+big change lands — a feature thread wrapping up, before moving to the next
+unrelated one — not on a fixed schedule and not on every push. It's caught the
+same real bug shape more than once: a fix applied in one place and never
+finished everywhere the same pattern appears. Verify every finding against the
+actual code before acting on it; don't fix from the summary alone.
+
+Once the project accepts changes from more than one source (a real team, or
+external contributions), replace this informal habit with a CI check
+(GitHub Actions) that runs it automatically — informal "run it when we
+remember" stops scaling once more than one person is pushing.
