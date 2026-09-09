@@ -12,12 +12,13 @@ const figmaCollectionNames = {
 };
 
 /** figmaToCollections takes the full Metadata (needs `.sizes` for the default
- * size-mode order) — this wraps a bare CollectionNames into a minimal but
- * complete Metadata for tests that don't care about themes/colorSchemes/sizes. */
-function metadataFor(collections: CollectionNames, sizes: string[] = []): Metadata {
+ * size-mode order, `.themes` for the default theme) — this wraps a bare
+ * CollectionNames into a minimal but complete Metadata for tests that don't
+ * care about the rest. */
+function metadataFor(collections: CollectionNames, sizes: string[] = [], themes = ["default"]): Metadata {
   return {
     version: "1.0.0",
-    themes: ["default"],
+    themes,
     colorSchemes: ["light", "dark"],
     sizes,
     figma: { fileKey: "abc", collections },
@@ -281,5 +282,63 @@ describe("figmaToCollections/figmaToTokenFiles — Size axis on Primitives", () 
     const primitivesCols = result.filter((c) => c.collectionName === "Primitives");
     expect(primitivesCols).toHaveLength(1);
     expect(primitivesCols[0].modeName).toBe("Value");
+  });
+});
+
+describe("figmaToCollections — default theme for Semantic resolution is chosen by metadata.themes", () => {
+  // Figma's own Themes collection mode order has nothing to do with
+  // metadata.themes — a semantic token must still resolve against the
+  // *configured* default theme, not whichever mode Figma happened to list
+  // first.
+  const names = {
+    primitives: ["Primitives"],
+    global: [] as string[],
+    themes: ["Themes"],
+    semantic: ["Semantic"],
+    sizes: [] as string[],
+  };
+
+  const figmaCollections = [
+    {
+      id: "c1",
+      name: "Themes",
+      // Christmas listed first in Figma — unrelated to metadata.themes' order.
+      modes: [
+        { modeId: "m1", name: "Christmas" },
+        { modeId: "m2", name: "Original" },
+      ],
+      variableIds: [],
+    },
+    { id: "c2", name: "Semantic", modes: [{ modeId: "m3", name: "Light" }], variableIds: [] },
+  ];
+
+  const variables: FigmaVariable[] = [
+    {
+      id: "v1",
+      name: "color/accent",
+      resolvedType: "COLOR",
+      valuesByMode: { m1: { r: 0.75, g: 0, b: 0 }, m2: { r: 0, g: 0.26, b: 1 } },
+      collectionId: "c1",
+      collectionName: "Themes",
+    },
+    {
+      id: "v2",
+      name: "background/default",
+      resolvedType: "COLOR",
+      valuesByMode: { m3: { type: "VARIABLE_ALIAS", id: "v1" } },
+      collectionId: "c2",
+      collectionName: "Semantic",
+    },
+  ];
+
+  it("resolves Semantic against metadata.themes[0] ('original'), not Figma's first-listed mode ('Christmas')", () => {
+    const { collections: result } = figmaToCollections(
+      figmaCollections,
+      variables,
+      metadataFor(names, [], ["original", "christmas"]),
+    );
+    const semantic = result.find((c) => c.collectionName === "Semantic")!;
+    // #0042ff would mean it resolved against Christmas instead of Original.
+    expect(semantic.tokens["background.default"].$value).toBe("#0042ff");
   });
 });

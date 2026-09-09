@@ -406,3 +406,27 @@ describe("generateCSS — Size axis on Primitives", () => {
     expect(css.indexOf("min-width: 600px")).toBeLessThan(css.indexOf("min-width: 1024px"));
   });
 });
+
+describe("generateCSS — default theme is chosen by metadata.themes, not array order", () => {
+  // Every other test in this file names the default theme "Default", which
+  // happens to case-insensitively match `metadata.themes`'s own default
+  // value ("default") — masking exactly this bug. A realistic theme name,
+  // with the collections array deliberately in the opposite order from
+  // metadata.themes, is what actually exercises the fix.
+  const realisticMetadata: Metadata = { ...metadata, themes: ["original", "christmas"] };
+
+  it("uses metadata.themes[0] as the default even when it isn't first in the collections array", () => {
+    const collections = [
+      // Christmas listed first — e.g. GitHub tree order, or Figma's own mode order.
+      col(names.themes, "Christmas", { "color.accent": { $type: "color", $value: "#c00000" } }),
+      col(names.themes, "Original", { "color.accent": { $type: "color", $value: "#0142fe" } }),
+    ];
+
+    const css = generateCSS(collections, realisticMetadata);
+
+    // :root must carry Original's value (the configured default), not Christmas's.
+    expect(css).toContain(":root {\n  --color-accent: #0142fe;\n}");
+    expect(css).toContain('[data-theme="christmas"] {\n  --color-accent: #c00000;\n}');
+    expect(css).not.toMatch(/\[data-theme="original"\]/);
+  });
+});

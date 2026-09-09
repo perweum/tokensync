@@ -65,7 +65,15 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
       .find((c): c is ResolvedCollection => c !== undefined) ?? primitivesCols[0];
   const nonDefaultPrimitives = primitivesCols.filter((c) => c !== defaultPrimitives);
 
-  const defaultTheme = themeCols[0];
+  // Same reasoning as defaultPrimitives just above — config order decides the
+  // default, not whatever order themeCols happened to arrive in (GitHub tree
+  // order, or Figma's own mode order on the push side, neither of which is
+  // guaranteed to put metadata.themes[0] first).
+  const defaultTheme =
+    metadata.themes
+      .map((name) => themeCols.find((c) => c.modeName.toLowerCase() === name.toLowerCase()))
+      .find((c): c is ResolvedCollection => c !== undefined) ?? themeCols[0];
+  const nonDefaultThemes = themeCols.filter((c) => c !== defaultTheme);
 
   // Every path that will actually get its own `--var: value;` declaration in
   // :root (or under a per-theme/per-size override) — i.e. every ref a semantic
@@ -110,7 +118,7 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   // Non-default themes — only the vars that actually differ from the default theme.
   // A value identical to the default needs no override: [data-theme] elements
   // already inherit it from :root via the cascade.
-  for (const col of themeCols.slice(1)) {
+  for (const col of nonDefaultThemes) {
     const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
     const overrides = diffTokens(col.tokens, defaultTheme?.tokens ?? {});
     blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, overrides));

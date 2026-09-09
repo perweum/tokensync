@@ -171,9 +171,17 @@ export function figmaToCollections(
     });
   }
 
-  // Semantic resolves against the default (first) theme mode specifically — the same
-  // simplification parseRepository makes for display/diff purposes on the GitHub side.
-  const defaultThemeRaw = themeModes.values().next().value?.raw ?? {};
+  // Semantic resolves against the default theme mode specifically — the same
+  // simplification parseRepository makes for display/diff purposes on the GitHub
+  // side. Config order (metadata.themes) wins over whatever order Figma happened
+  // to return modes in, same reasoning as defaultSizeModeRaw just above.
+  const defaultThemeRaw =
+    themeModes.size === 0
+      ? {}
+      : (metadata.themes
+          .map((name) => themeModes.get(name.toLowerCase())?.raw)
+          .find((raw): raw is Record<string, TokenValue> => raw !== undefined) ??
+        themeModes.values().next().value!.raw);
   for (const { modeName, raw } of semanticModes.values()) {
     const resolved = resolveAllReferences({
       ...defaultPrimitivesRaw,

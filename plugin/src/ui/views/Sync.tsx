@@ -302,7 +302,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     const result = filteredGithubCollections.map((githubCol) => {
       const figmaMap = figmaMaps.find(
-        (m) => m.collectionName === githubCol.collectionName && m.modeName === githubCol.modeName,
+        (m) =>
+          m.collectionName === githubCol.collectionName &&
+          m.modeName.toLowerCase() === githubCol.modeName.toLowerCase(),
       );
       return buildCollectionDiff(
         githubCol.collectionName,
@@ -508,7 +510,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     // githubValue = current state in GitHub, figmaValue = new state from Figma
     const result: CollectionDiff[] = filteredFigmaCollectionData.map((figmaCol) => {
       const githubCol = githubParsed.collections.find(
-        (c) => c.collectionName === figmaCol.collectionName && c.modeName === figmaCol.modeName,
+        (c) =>
+          c.collectionName === figmaCol.collectionName &&
+          c.modeName.toLowerCase() === figmaCol.modeName.toLowerCase(),
       );
       // Swap: figmaTokens as "github" (what we're proposing), githubTokens as "figma" (current)
       return buildCollectionDiff(
