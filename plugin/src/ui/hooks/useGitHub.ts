@@ -48,6 +48,16 @@ interface ContentsResponse {
 interface RefResponse {
   object: { sha: string };
 }
+interface CommitResponse {
+  sha: string;
+  tree: { sha: string };
+}
+interface BlobResponse {
+  sha: string;
+}
+interface TreeCreateResponse {
+  sha: string;
+}
 interface PRResponse {
   html_url: string;
   number: number;
@@ -114,6 +124,17 @@ async function fetchFile(path: string, config: GitHubConfig): Promise<GitHubFile
 // Write (create PR)
 // ---------------------------------------------------------------------------
 
+/**
+ * Writes `files` as a single commit via the Git Data API (blobs → one tree →
+ * one commit → one branch ref) rather than one Contents-API PUT per file.
+ * Two reasons: it's one clean commit instead of N noisy ones, and it's
+ * actually safe to parallelize — a blob is a pure content-addressed object
+ * with no branch/ref state, unlike a sequence of per-file Contents-API
+ * commits, where doing the same in parallel would race each PUT's base sha
+ * against the branch head every other PUT is also moving (a 409 conflict
+ * risk), and running them sequentially (the previous approach) made
+ * PR-creation latency scale linearly with file count.
+ */
 export async function createTokenPR(
   config: GitHubConfig,
   files: Array<{ path: string; content: string }>,
@@ -124,39 +145,45 @@ export async function createTokenPR(
     config.pat,
   );
   const baseSha = baseRef.object.sha;
+  const baseCommit = await apiGet<CommitResponse>(
+    `repos/${config.repo}/git/commits/${baseSha}`,
+    config.pat,
+  );
+
+  const blobs = await Promise.all(
+    files.map((file) =>
+      apiPost<BlobResponse>(`repos/${config.repo}/git/blobs`, config.pat, {
+        content: encodeUtf8Base64(file.content),
+        encoding: "base64",
+      }),
+    ),
+  );
+
+  // base_tree carries over every file this PR doesn't touch — only the
+  // changed paths need listing here.
+  const tree = await apiPost<TreeCreateResponse>(`repos/${config.repo}/git/trees`, config.pat, {
+    base_tree: baseCommit.tree.sha,
+    tree: files.map((file, i) => ({
+      path: file.path,
+      mode: "100644",
+      type: "blob",
+      sha: blobs[i].sha,
+    })),
+  });
+
+  const commit = await apiPost<CommitResponse>(`repos/${config.repo}/git/commits`, config.pat, {
+    message,
+    tree: tree.sha,
+    parents: [baseSha],
+  });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const newBranch = `tokens/sync-${timestamp}`;
 
   await apiPost(`repos/${config.repo}/git/refs`, config.pat, {
     ref: `refs/heads/${newBranch}`,
-    sha: baseSha,
+    sha: commit.sha,
   });
-
-  for (const file of files) {
-    const encoded = encodeUtf8Base64(file.content);
-
-    let existingSha: string | undefined;
-    try {
-      const existing = await apiGet<ContentsResponse>(
-        `repos/${config.repo}/contents/${file.path}?ref=${newBranch}`,
-        config.pat,
-      );
-      existingSha = existing.sha;
-    } catch (err) {
-      // 404 means the file doesn't exist yet — fine, we're creating it.
-      // Anything else (auth, rate limit, network) should surface, not be
-      // silently treated as "new file" and fail confusingly on the PUT below.
-      if (!(err instanceof GitHubApiError) || err.status !== 404) throw err;
-    }
-
-    await apiPut(`repos/${config.repo}/contents/${file.path}`, config.pat, {
-      message: `chore: update ${file.path}`,
-      content: encoded,
-      branch: newBranch,
-      ...(existingSha ? { sha: existingSha } : {}),
-    });
-  }
 
   const pr = await apiPost<PRResponse>(`repos/${config.repo}/pulls`, config.pat, {
     title: message,
@@ -223,15 +250,6 @@ async function apiPost<T = unknown>(path: string, pat: string, body: unknown): P
   return res.json() as Promise<T>;
 }
 
-async function apiPut<T = unknown>(path: string, pat: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/${path}`, {
-    method: "PUT",
-    headers: headers(pat),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new GitHubApiError(res.status, "PUT", path);
-  return res.json() as Promise<T>;
-}
 
 function headers(pat: string): Record<string, string> {
   return {

@@ -72,3 +72,24 @@ export function resolveTextCase(value: string): FigmaTextCase | null {
 export function resolveTextDecoration(value: string): FigmaTextDecoration | null {
   return TEXT_DECORATION_ALIASES[normalizeKey(value)] ?? null;
 }
+
+/**
+ * Figma's lineHeight/letterSpacing fields carry an explicit PIXELS/PERCENT
+ * unit that a plain numeric token $value has nowhere to record — encoded
+ * here as a string suffix instead: a bare number ("150") means PERCENT
+ * (this repo's own convention, confirmed in tokens/primitives/typography.json
+ * — "150" = 150%), an explicit "px" suffix ("16px") means PIXELS. Every
+ * existing PERCENT-based token round-trips through this completely
+ * unchanged; only the previously-undistinguished PIXELS case is now
+ * recoverable. formatUnitValue is the read direction, unitFromLiteral the
+ * write direction.
+ */
+export function formatUnitValue(v: { value: number; unit: "PIXELS" | "PERCENT" }): string {
+  return v.unit === "PIXELS" ? `${v.value}px` : String(v.value);
+}
+
+/** Inverse of formatUnitValue's unit marker — a bare number defaults to
+ * PERCENT, matching every token written before this fix existed. */
+export function unitFromLiteral(literal: string): "PIXELS" | "PERCENT" {
+  return literal.endsWith("px") ? "PIXELS" : "PERCENT";
+}

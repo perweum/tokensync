@@ -92,6 +92,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const viewRef = useRef<View>("main");
   const pendingAction = useRef<PendingAction | null>(null);
   const applyAllRemaining = useRef(0);
+  // Accumulates errors across every collection in a batch apply — including
+  // ones whose task threw entirely (reported as a plain ERROR message, not a
+  // TOKENS_APPLIED/TEXT_STYLES_APPLIED with its own errors array) — so the
+  // final summary reflects the whole batch, not just whichever message
+  // happened to be the last one processed.
+  const applyAllBatchErrors = useRef<string[]>([]);
   const pendingGitHub = useRef<ReturnType<typeof parseRepository> | null>(null);
   const pendingGitHubCollections = useRef<ReturnType<typeof parseRepository>["collections"] | null>(
     null,
@@ -197,23 +203,17 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           pendingAction.current = null;
         }
         if (msg.type === "TOKENS_APPLIED") {
-          const errSuffix = msg.errors.length
-            ? ` (${msg.errors.length} error${msg.errors.length > 1 ? "s" : ""}: ${msg.errors[0]})`
-            : "";
           const removedSuffix = msg.removed > 0 ? `, ${msg.removed} removed` : "";
           if (applyAllRemaining.current > 0) {
+            applyAllBatchErrors.current.push(...msg.errors);
             applyAllRemaining.current--;
             if (applyAllRemaining.current === 0) {
-              setApplying(false);
-              viewRef.current = "main";
-              setView("main");
-              if (!msg.errors.length) saveLastSync("pull");
-              setStatus({
-                kind: msg.errors.length ? "error" : "success",
-                message: `All collections applied to Figma${removedSuffix}${errSuffix}`,
-              });
+              finishApplyBatch(`All collections applied to Figma${removedSuffix}`);
             }
           } else {
+            const errSuffix = msg.errors.length
+              ? ` (${msg.errors.length} error${msg.errors.length > 1 ? "s" : ""}: ${msg.errors[0]})`
+              : "";
             setApplying(false);
             viewRef.current = "main";
             setView("main");
@@ -225,24 +225,29 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           }
         }
         if (msg.type === "TEXT_STYLES_APPLIED") {
-          const errSuffix = msg.errors.length
-            ? ` (${msg.errors.length} error${msg.errors.length > 1 ? "s" : ""}: ${msg.errors[0]})`
-            : "";
           if (applyAllRemaining.current > 0) {
+            applyAllBatchErrors.current.push(...msg.errors);
             applyAllRemaining.current--;
             if (applyAllRemaining.current === 0) {
-              setApplying(false);
-              viewRef.current = "main";
-              setView("main");
-              if (!msg.errors.length) saveLastSync("pull");
-              setStatus({
-                kind: msg.errors.length ? "error" : "success",
-                message: `All collections applied to Figma${errSuffix}`,
-              });
+              finishApplyBatch("All collections applied to Figma");
             }
           }
         }
         if (msg.type === "ERROR") {
+          // Mid-batch: this task failed before it could send its own
+          // TOKENS_APPLIED/TEXT_STYLES_APPLIED at all (e.g. collection.addMode
+          // rejected outside the per-token try/catch) — still counts against
+          // the batch the same way a reported error would, or the counter
+          // never reaches zero and the collections that DID succeed never get
+          // a final summary shown.
+          if (applyAllRemaining.current > 0) {
+            applyAllBatchErrors.current.push(msg.message);
+            applyAllRemaining.current--;
+            if (applyAllRemaining.current === 0) {
+              finishApplyBatch("All collections applied to Figma");
+            }
+            return;
+          }
           setApplying(false);
           setCreating(false);
           const described = describePluginError(msg.message, msg.context);
@@ -385,6 +390,29 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     });
   }
 
+  /**
+   * Shared finalize step once every task in a batch apply has reported back
+   * — whether via its own TOKENS_APPLIED/TEXT_STYLES_APPLIED, or because it
+   * threw entirely and came back as a plain ERROR instead (see the message
+   * handler above). Both paths funnel through the same applyAllRemaining/
+   * applyAllBatchErrors bookkeeping, so there's exactly one place that
+   * decides the batch is done and what its final summary says.
+   */
+  function finishApplyBatch(baseMessage: string) {
+    const allErrors = applyAllBatchErrors.current;
+    const errSuffix = allErrors.length
+      ? ` (${allErrors.length} error${allErrors.length > 1 ? "s" : ""}: ${allErrors[0]})`
+      : "";
+    setApplying(false);
+    viewRef.current = "main";
+    setView("main");
+    if (!allErrors.length) saveLastSync("pull");
+    setStatus({
+      kind: allErrors.length ? "error" : "success",
+      message: `${baseMessage}${errSuffix}`,
+    });
+  }
+
   function handleApplyAll(selectedKeys: Set<string>) {
     const pending = diffs.filter(
       (d) => d.counts.total > 0 && selectedKeys.has(`${d.collectionName}/${d.modeName}`),
@@ -398,6 +426,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const typographyPayload = syncTypeStyles ? collectTypographyPayload(relevantCollections) : null;
 
     applyAllRemaining.current = pending.length + (typographyPayload ? 1 : 0);
+    applyAllBatchErrors.current = [];
     setApplying(true);
     for (const diff of pending) {
       sendApplyDiff(diff);
@@ -419,6 +448,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     const typographyPayload = syncTypeStyles ? collectTypographyPayload(allCollections) : null;
     applyAllRemaining.current = allCollections.length + (typographyPayload ? 1 : 0);
+    applyAllBatchErrors.current = [];
     setApplying(true);
     // Only send cleanApply=true for the first mode of each collection.
     // Multi-mode collections (e.g. Semantic with Light + Dark) share variables —

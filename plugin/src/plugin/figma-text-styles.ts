@@ -16,6 +16,8 @@ import {
   FIGMA_BINDABLE_FIELD,
   resolveTextCase,
   resolveTextDecoration,
+  formatUnitValue,
+  unitFromLiteral,
 } from "../shared/text-style-figma-fields";
 import { toFigmaVarName, fromFigmaVarName } from "../shared/token-format";
 import { toFigmaValue } from "./figma-variables";
@@ -74,11 +76,9 @@ function readLiteralField(style: TextStyle, field: TypographyField): string | nu
     case "fontSize":
       return String(style.fontSize);
     case "lineHeight":
-      // "AUTO" has no numeric value. PERCENT vs PIXELS is not distinguished in
-      // the emitted token — see the write-side note on the same assumption.
-      return style.lineHeight.unit === "AUTO" ? null : String(style.lineHeight.value);
+      return style.lineHeight.unit === "AUTO" ? null : formatUnitValue(style.lineHeight);
     case "letterSpacing":
-      return "value" in style.letterSpacing ? String(style.letterSpacing.value) : null;
+      return formatUnitValue(style.letterSpacing);
     case "paragraphSpacing":
       return String(style.paragraphSpacing);
     case "paragraphIndent":
@@ -132,8 +132,13 @@ export async function applyTypographyStyles(
         style.name = figmaName;
         stylesByName.set(figmaName, style);
       }
+      // Only count a style as applied if none of its own fields errored —
+      // applyOneStyle pushes into the shared errors array rather than
+      // throwing, so a per-field failure (an unrecognized textCase, e.g.)
+      // wouldn't otherwise be reflected in the count at all.
+      const errorsBefore = errors.length;
       applyOneStyle(style, typographyStyle, allVarsByName, resolvedFallback, errors);
-      count++;
+      if (errors.length === errorsBefore) count++;
     } catch (err) {
       errors.push(`${figmaName}: ${String(err)}`);
     }
@@ -182,16 +187,16 @@ function applyOneStyle(
       }
       case "lineHeight": {
         const n = toFigmaValue(literal, "FLOAT");
-        // Assumed PERCENT — matches this repo's own convention (lineHeight
-        // tokens store a percentage magnitude, e.g. "150" = 150%). A repo
-        // storing lineHeight in absolute pixels would need this to be PIXELS
-        // instead; not yet distinguished. See DECISIONS.md.
-        if (typeof n === "number") style.lineHeight = { value: n, unit: "PERCENT" };
+        // A bare number means PERCENT (this repo's own convention — "150" =
+        // 150%); an explicit "px" suffix means PIXELS. See formatUnitValue's
+        // read-side comment for why this string doubles as the unit marker.
+        if (typeof n === "number") style.lineHeight = { value: n, unit: unitFromLiteral(literal) };
         break;
       }
       case "letterSpacing": {
         const n = toFigmaValue(literal, "FLOAT");
-        if (typeof n === "number") style.letterSpacing = { value: n, unit: "PERCENT" };
+        if (typeof n === "number")
+          style.letterSpacing = { value: n, unit: unitFromLiteral(literal) };
         break;
       }
       case "paragraphSpacing": {

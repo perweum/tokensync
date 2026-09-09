@@ -3,6 +3,8 @@ import {
   FIGMA_BINDABLE_FIELD,
   resolveTextCase,
   resolveTextDecoration,
+  formatUnitValue,
+  unitFromLiteral,
 } from "./text-style-figma-fields";
 
 describe("FIGMA_BINDABLE_FIELD", () => {
@@ -60,5 +62,29 @@ describe("resolveTextDecoration", () => {
 
   it("returns null for an unrecognized value", () => {
     expect(resolveTextDecoration("wavy")).toBeNull();
+  });
+});
+
+describe("formatUnitValue / unitFromLiteral — lineHeight/letterSpacing PIXELS-vs-PERCENT round trip", () => {
+  // The bug this fixes: a Text Style with PIXELS-based letterSpacing/lineHeight
+  // used to always come back out as PERCENT on apply, silently changing an
+  // absolute size into a percentage of font size — e.g. 2px became 2% (of a
+  // 16px font, 0.32px), a huge, silent visual change.
+  it("encodes PERCENT as a bare number — this repo's existing convention, unchanged", () => {
+    expect(formatUnitValue({ value: 150, unit: "PERCENT" })).toBe("150");
+  });
+
+  it("encodes PIXELS with an explicit px suffix instead of losing the unit", () => {
+    expect(formatUnitValue({ value: 2, unit: "PIXELS" })).toBe("2px");
+  });
+
+  it("round-trips both units through format -> parse", () => {
+    expect(unitFromLiteral(formatUnitValue({ value: 150, unit: "PERCENT" }))).toBe("PERCENT");
+    expect(unitFromLiteral(formatUnitValue({ value: 2, unit: "PIXELS" }))).toBe("PIXELS");
+  });
+
+  it("defaults a bare number (every token written before this fix) to PERCENT", () => {
+    expect(unitFromLiteral("150")).toBe("PERCENT");
+    expect(unitFromLiteral("-2")).toBe("PERCENT");
   });
 });
