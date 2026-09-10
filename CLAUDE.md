@@ -67,3 +67,17 @@ Once the project accepts changes from more than one source (a real team, or
 external contributions), replace this informal habit with a CI check
 (GitHub Actions) that runs it automatically — informal "run it when we
 remember" stops scaling once more than one person is pushing.
+
+## Branching for bigger changes
+
+Don't commit straight to `main` for a change that touches push/pull core logic
+(`sync-logic.ts`, `figma-to-tokens.ts`, `token-diff.ts`, `token-merger.ts`) or
+spans several files — open a branch, push it, and open a PR with `gh pr create`
+for review before merging. This is exactly the shape of change most likely to
+quietly break sync for everyone if an assumption turns out wrong (see the Text
+Styles push-direction work, committed twice straight to `main`, that prompted
+this rule).
+
+Small, single-file fixes, doc-only edits, and `/code-review` follow-ups still go
+straight to `main` — the branch requirement is for changes big or risky enough
+to want a real diff review first, not a tax on every commit.
