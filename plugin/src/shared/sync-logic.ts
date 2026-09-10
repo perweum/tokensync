@@ -8,11 +8,12 @@
  * mode-name case-sensitivity fix, the ignored-collection role lookup).
  */
 
-import type { Metadata, ResolvedCollection } from "./token-merger";
+import type { Metadata, ResolvedCollection, CollectionNames } from "./token-merger";
 import type { FigmaVariableCollection, FigmaVariable } from "./messages";
 import { buildCollectionDiff } from "./token-diff";
 import type { CollectionDiff } from "./token-diff";
 import { figmaToTokenFiles, collectionKind } from "./figma-to-tokens";
+import type { CollectionKind } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -122,8 +123,10 @@ export function buildFilesFromDiffs(
   tokensPath: string,
   allFigmaCollections: ResolvedCollection[] | null,
 ): Array<{ path: string; content: string }> {
+  const names = metadata.figma.collections;
+  const selectedList = Array.from(selectedKeys);
   const filteredCollections = figmaRaw.collections
-    .map((col) => ({ ...col, modes: col.modes.filter((mode) => isModeSelected(col, mode, metadata, selectedKeys)) }))
+    .map((col) => ({ ...col, modes: col.modes.filter((mode) => isModeSelected(col, mode, names, selectedList)) }))
     .filter((col) => col.modes.length > 0);
 
   const tokenFiles = figmaToTokenFiles(
@@ -141,6 +144,18 @@ export function buildFilesFromDiffs(
 
   return tokenFiles;
 }
+
+/** Fallback name for a role with nothing mapped to it (`names.role === []`) —
+ * matches the same fallback figmaToCollections/parseRepository use when
+ * building the synthetic collection itself, so a key built from either side
+ * always agrees on what to call an unmapped role. */
+const ROLE_DEFAULT_NAME: Record<Exclude<CollectionKind, "unknown">, string> = {
+  primitives: "Primitives",
+  global: "Global",
+  themes: "Themes",
+  semantic: "Semantic",
+  sizes: "Sizes",
+};
 
 /**
  * Whether a real (collection, mode) pair belongs to a selected diff entry.
@@ -167,30 +182,20 @@ export function buildFilesFromDiffs(
 function isModeSelected(
   col: FigmaVariableCollection,
   mode: { modeId: string; name: string },
-  metadata: Metadata,
-  selectedKeys: Set<string>,
+  names: CollectionNames,
+  selectedList: string[],
 ): boolean {
-  const names = metadata.figma.collections;
   const kind = collectionKind(col.name, names);
-  const selectedList = Array.from(selectedKeys);
+  if (kind === "unknown") return false; // never included, same as before
+
+  const syntheticName = names[kind][0] ?? ROLE_DEFAULT_NAME[kind];
 
   if (kind === "primitives" || kind === "global") {
-    const syntheticName = kind === "primitives" ? (names.primitives[0] ?? "Primitives") : (names.global[0] ?? "Global");
     return selectedList.some((key) => key.startsWith(`${syntheticName}/`));
   }
 
-  if (kind === "themes" || kind === "semantic" || kind === "sizes") {
-    const syntheticName =
-      kind === "themes"
-        ? (names.themes[0] ?? "Themes")
-        : kind === "semantic"
-          ? (names.semantic[0] ?? "Semantic")
-          : (names.sizes[0] ?? "Sizes");
-    return selectedList.some((key) => {
-      const slash = key.indexOf("/");
-      return key.slice(0, slash) === syntheticName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
-    });
-  }
-
-  return false; // "unknown" collection — never included, same as before
+  return selectedList.some((key) => {
+    const slash = key.indexOf("/");
+    return key.slice(0, slash) === syntheticName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
+  });
 }
