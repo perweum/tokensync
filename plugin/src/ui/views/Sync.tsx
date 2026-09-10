@@ -309,7 +309,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const figmaMaps = mergeTypographyIntoFigmaMaps(
       buildFigmaFlatMaps(figmaCollections, figmaVariables),
       figmaTypographyStyles,
-      github.metadata.figma.collections,
+      github.metadata,
     );
     const { diffs: result, filteredGithubCollections } = computePullDiff(
       github.collections,
