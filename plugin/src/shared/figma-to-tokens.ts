@@ -625,6 +625,11 @@ function inferType(name: string, resolvedType: string): string {
   if (resolvedType === "COLOR") return "color";
   if (resolvedType === "BOOLEAN") return "boolean";
   if (resolvedType === "STRING") {
+    // Check "weight" first — "fontWeight/light" also matches /family|font/i,
+    // since it contains "font", and would otherwise always be misclassified
+    // as fontFamily. Named weights ("Light", "Bold") are STRING-typed in
+    // real usage, not FLOAT — see the fontWeight/fontStyle decision above.
+    if (/weight/i.test(name)) return "fontWeight";
     if (/family|font/i.test(name)) return "fontFamily";
     return "string";
   }
