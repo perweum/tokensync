@@ -161,7 +161,13 @@ export function figmaToCollections(
   if (Object.keys(globalRaw).length > 0) {
     const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...globalRaw });
     result.push({
-      collectionName: figmaCollectionNames.global[0],
+      // Falls back to a literal "Global" when no Figma collection is actually
+      // mapped to the role (figmaCollectionNames.global === []) — a real,
+      // common case for a project whose only typography source is Text
+      // Styles, with no matching decomposed Variables ever set up. Without
+      // this, collectionName was `undefined`, which renders as a blank diff
+      // tab label — the row still showed a count, just no title.
+      collectionName: figmaCollectionNames.global[0] ?? "Global",
       modeName: globalModeName ?? "Value",
       tokens: filterByPaths(resolved, Object.keys(globalRaw)),
       rawTokens: globalRaw,
