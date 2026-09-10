@@ -18,6 +18,7 @@ import {
   buildFilesFromDiffs,
   buildApplyPayloads,
   buildCleanApplyPayloads,
+  mergeTypographyIntoFigmaMaps,
 } from "../../shared/sync-logic";
 import type { PluginMessage, FigmaVariableCollection, FigmaVariable, TokenValue } from "../../shared/messages";
 import type { TypographyStyle } from "../../shared/typography-styles";
@@ -201,7 +202,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         }
         if (msg.type === "COLLECTIONS_LOADED") {
           if (pendingAction.current === "pull") {
-            handlePullCollectionsLoaded(msg.collections, msg.variables);
+            handlePullCollectionsLoaded(msg.collections, msg.variables, msg.typographyStyles);
           } else if (pendingAction.current === "push") {
             handlePushCollectionsLoaded(msg.collections, msg.variables, msg.typographyStyles);
           }
@@ -298,13 +299,18 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   function handlePullCollectionsLoaded(
     figmaCollections: FigmaVariableCollection[],
     figmaVariables: FigmaVariable[],
+    figmaTypographyStyles: TypographyStyle[] = [],
   ) {
     const github = pendingGitHub.current;
     if (!github) return;
 
     setStatus({ kind: "loading", message: "Calculating diff…" });
 
-    const figmaMaps = buildFigmaFlatMaps(figmaCollections, figmaVariables);
+    const figmaMaps = mergeTypographyIntoFigmaMaps(
+      buildFigmaFlatMaps(figmaCollections, figmaVariables),
+      figmaTypographyStyles,
+      github.metadata.figma.collections,
+    );
     const { diffs: result, filteredGithubCollections } = computePullDiff(
       github.collections,
       github.metadata,

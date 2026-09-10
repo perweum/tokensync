@@ -540,7 +540,7 @@ function buildJsonFile(entries: VarEntry[], varById: Map<string, FigmaVariable>)
  * token, so it isn't diffable in this flat-map model; see injectTypographyStyles
  * below for where it actually gets written.
  */
-function flattenTypographyStyles(styles: TypographyStyle[]): Record<string, TokenValue> {
+export function flattenTypographyStyles(styles: TypographyStyle[]): Record<string, TokenValue> {
   const flat: Record<string, TokenValue> = {};
   for (const style of styles) {
     for (const [field, token] of Object.entries(style.fields)) {
@@ -627,7 +627,7 @@ function rawToTokenValue(
 // Type inference from variable name + Figma resolvedType
 // ---------------------------------------------------------------------------
 
-function inferType(name: string, resolvedType: string): string {
+export function inferType(name: string, resolvedType: string): string {
   if (resolvedType === "COLOR") return "color";
   if (resolvedType === "BOOLEAN") return "boolean";
   if (resolvedType === "STRING") {

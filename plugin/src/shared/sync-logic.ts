@@ -12,7 +12,7 @@ import type { Metadata, ResolvedCollection, CollectionNames, CollectionSources }
 import type { FigmaVariableCollection, FigmaVariable, TokenValue } from "./messages";
 import { buildCollectionDiff } from "./token-diff";
 import type { CollectionDiff } from "./token-diff";
-import { figmaToTokenFiles, collectionKind } from "./figma-to-tokens";
+import { figmaToTokenFiles, collectionKind, flattenTypographyStyles } from "./figma-to-tokens";
 import type { CollectionKind } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
 import type { TypographyStyle } from "./typography-styles";
@@ -81,6 +81,43 @@ function figmaValuesFor(
     return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
   });
   return Object.assign({}, ...matching.map((m) => m.values));
+}
+
+/**
+ * Merges Figma's live Text Style fields into a new Global-role FigmaFlatMap
+ * entry for pull comparison — the pull-side mirror of figmaToCollections'
+ * identical merge on the push side (flattenTypographyStyles into globalRaw).
+ * Needed because buildFigmaFlatMaps (useFigmaValues.ts) only ever reads
+ * Variables — a Text Style field, bound or not, was completely invisible to
+ * computePullDiff, so every already-pushed typography token showed as
+ * permanently "added" on every single pull, never "unchanged."
+ *
+ * A bound field's raw value is a {ref} into a real Variable's dot-path (see
+ * getLocalTypographyStyles) — resolved here with one direct lookup against
+ * every other FigmaFlatMap's already-resolved values, no chain-walking
+ * needed since buildFigmaFlatMaps already walked each Variable's own alias
+ * chain to a final value.
+ */
+export function mergeTypographyIntoFigmaMaps(
+  figmaMaps: FigmaFlatMap[],
+  typographyStyles: TypographyStyle[],
+  names: CollectionNames,
+): FigmaFlatMap[] {
+  if (typographyStyles.length === 0) return figmaMaps;
+
+  const allResolved: Record<string, string> = {};
+  for (const map of figmaMaps) Object.assign(allResolved, map.values);
+
+  const typographyValues: Record<string, string> = {};
+  for (const [path, token] of Object.entries(flattenTypographyStyles(typographyStyles))) {
+    const match = /^\{(.+)\}$/.exec(token.$value);
+    typographyValues[path] = match ? (allResolved[match[1]] ?? token.$value) : token.$value;
+  }
+
+  return [
+    ...figmaMaps,
+    { collectionName: names.global[0] ?? "Global", modeName: "Value", values: typographyValues },
+  ];
 }
 
 /**
