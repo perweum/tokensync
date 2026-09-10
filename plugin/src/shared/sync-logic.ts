@@ -12,7 +12,7 @@ import type { Metadata, ResolvedCollection } from "./token-merger";
 import type { FigmaVariableCollection, FigmaVariable } from "./messages";
 import { buildCollectionDiff } from "./token-diff";
 import type { CollectionDiff } from "./token-diff";
-import { figmaToTokenFiles } from "./figma-to-tokens";
+import { figmaToTokenFiles, collectionKind } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -123,10 +123,7 @@ export function buildFilesFromDiffs(
   allFigmaCollections: ResolvedCollection[] | null,
 ): Array<{ path: string; content: string }> {
   const filteredCollections = figmaRaw.collections
-    .map((col) => ({
-      ...col,
-      modes: col.modes.filter((mode) => selectedKeys.has(`${col.name}/${mode.name}`)),
-    }))
+    .map((col) => ({ ...col, modes: col.modes.filter((mode) => isModeSelected(col, mode, metadata, selectedKeys)) }))
     .filter((col) => col.modes.length > 0);
 
   const tokenFiles = figmaToTokenFiles(
@@ -143,4 +140,57 @@ export function buildFilesFromDiffs(
   }
 
   return tokenFiles;
+}
+
+/**
+ * Whether a real (collection, mode) pair belongs to a selected diff entry.
+ *
+ * `selectedKeys` holds *synthetic* "collectionName/modeName" pairs — the ones
+ * figmaToCollections actually produced for diffing, named after
+ * metadata.figma.collections[role][0]. When a role is backed by more than one
+ * physical Figma collection (a supported, documented case — see "Multiple
+ * Figma Collections Per Role"), a real collection's own name/mode often
+ * doesn't match that synthetic key directly, even though its tokens were
+ * merged into the diff the user reviewed and checked. Matching selectedKeys
+ * against `col.name` directly (the previous approach) silently dropped every
+ * contributing collection except whichever one happened to share its name
+ * with metadata.figma.collections[role][0] — found live via a real project
+ * where "primitives" role was backed by both "size" and "primitives"
+ * collections; only "size"'s tokens ever reached the pushed files.
+ *
+ * Primitives and Global merge every physical collection into one indivisible
+ * synthetic entry regardless of mode name (see figmaToCollections) — the diff
+ * never offers a way to select part of that, so the whole role is in or out
+ * together. Themes/Semantic/Sizes instead produce one entry per real mode
+ * name, merged case-insensitively (mergeIntoMode) — matched the same way here.
+ */
+function isModeSelected(
+  col: FigmaVariableCollection,
+  mode: { modeId: string; name: string },
+  metadata: Metadata,
+  selectedKeys: Set<string>,
+): boolean {
+  const names = metadata.figma.collections;
+  const kind = collectionKind(col.name, names);
+  const selectedList = Array.from(selectedKeys);
+
+  if (kind === "primitives" || kind === "global") {
+    const syntheticName = kind === "primitives" ? (names.primitives[0] ?? "Primitives") : (names.global[0] ?? "Global");
+    return selectedList.some((key) => key.startsWith(`${syntheticName}/`));
+  }
+
+  if (kind === "themes" || kind === "semantic" || kind === "sizes") {
+    const syntheticName =
+      kind === "themes"
+        ? (names.themes[0] ?? "Themes")
+        : kind === "semantic"
+          ? (names.semantic[0] ?? "Semantic")
+          : (names.sizes[0] ?? "Sizes");
+    return selectedList.some((key) => {
+      const slash = key.indexOf("/");
+      return key.slice(0, slash) === syntheticName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
+    });
+  }
+
+  return false; // "unknown" collection — never included, same as before
 }
