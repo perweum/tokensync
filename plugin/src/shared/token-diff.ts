@@ -15,9 +15,10 @@ export interface DiffEntry {
   path: string;
   type: string;
   status: DiffStatus;
-  githubValue: string | null; // resolved value — used for display and comparison
-  githubRawValue: string | null; // unresolved value — may contain "{color.blue.200}" refs for Figma aliases
-  figmaValue: string | null; // current value in Figma
+  githubValue: string | null; // resolved value — added/removed detection and Figma alias creation fallback
+  githubRawValue: string | null; // one-hop value — may contain "{color.blue.200}" refs; used for display and comparison
+  figmaValue: string | null; // current resolved value in Figma
+  figmaRawValue: string | null; // current one-hop value in Figma — may contain a "{ref}"; used for display and comparison
   description?: string; // $description from the GitHub token, if present
 }
 
@@ -35,13 +36,16 @@ export interface CollectionDiff {
 /**
  * Produces a diff between GitHub tokens and Figma variable values.
  *
- * @param githubTokens  Flat resolved token map from parseRepository()
- * @param figmaValues   Flat resolved variable map: variable name (dot-notation) → raw value string
+ * @param githubTokens    Flat resolved token map from parseRepository()
+ * @param figmaValues     Flat resolved variable map: variable name (dot-notation) → resolved value string
+ * @param rawTokens       Flat one-hop GitHub token map — may contain "{ref}" strings
+ * @param figmaRawValues  Flat one-hop Figma variable map — may contain "{ref}" strings
  */
 export function diffTokens(
   githubTokens: Record<string, TokenValue>,
   figmaValues: Record<string, string>,
   rawTokens?: Record<string, TokenValue>,
+  figmaRawValues?: Record<string, string>,
 ): DiffEntry[] {
   const entries: DiffEntry[] = [];
   const allPaths = new Set([...Object.keys(githubTokens), ...Object.keys(figmaValues)]);
@@ -52,9 +56,10 @@ export function diffTokens(
 
     const githubValue = github?.$value ?? null;
     const githubRawValue = rawTokens?.[path]?.$value ?? githubValue; // falls back to resolved
+    const figmaRawValue = figmaRawValues?.[path] ?? figmaRaw; // falls back to resolved
     const type = github?.$type ?? "unknown";
 
-    const status = deriveStatus(githubValue, figmaRaw, type);
+    const status = deriveStatus(githubValue, figmaRaw, githubRawValue, figmaRawValue, type);
     if (status === "unchanged") continue;
 
     const description = rawTokens?.[path]?.$description ?? github?.$description;
@@ -65,6 +70,7 @@ export function diffTokens(
       githubValue,
       githubRawValue,
       figmaValue: figmaRaw,
+      figmaRawValue,
       description,
     });
   }
@@ -78,8 +84,9 @@ export function buildCollectionDiff(
   githubTokens: Record<string, TokenValue>,
   figmaValues: Record<string, string>,
   rawTokens?: Record<string, TokenValue>,
+  figmaRawValues?: Record<string, string>,
 ): CollectionDiff {
-  const entries = diffTokens(githubTokens, figmaValues, rawTokens);
+  const entries = diffTokens(githubTokens, figmaValues, rawTokens, figmaRawValues);
   const counts = {
     added: entries.filter((e) => e.status === "added").length,
     changed: entries.filter((e) => e.status === "changed").length,
@@ -96,15 +103,22 @@ export function buildCollectionDiff(
 function deriveStatus(
   githubValue: string | null,
   figmaValue: string | null,
+  githubRawValue: string | null,
+  figmaRawValue: string | null,
   type: string,
 ): DiffStatus {
+  // Added/removed is about whether the token exists at all — always based on
+  // resolved presence, which is identical to raw presence in practice.
   if (githubValue === null && figmaValue !== null) return "removed";
   if (githubValue !== null && figmaValue === null) return "added";
   if (githubValue === null || figmaValue === null) return "unchanged";
 
-  // Normalise before comparing
-  const a = normalise(githubValue, type);
-  const b = normalise(figmaValue, type);
+  // "Changed" compares each side's own definition (a literal, or which
+  // variable it aliases) rather than the fully-resolved value — editing a
+  // primitive should surface once, at its own definition, not as a separate
+  // "changed" entry for every token that happens to reference it.
+  const a = normalise(githubRawValue ?? githubValue, type);
+  const b = normalise(figmaRawValue ?? figmaValue, type);
   return a === b ? "unchanged" : "changed";
 }
 

@@ -86,13 +86,17 @@ function DiffRow({ entry }: { entry: DiffEntry }) {
 
       <div style={{ display: "flex", alignItems: "center", gap: space.xs, flexShrink: 0 }}>
         {entry.figmaValue !== null && (
-          <Value value={entry.figmaValue} isColor={isColor} faded={entry.status === "changed"} />
+          <Value
+            value={entry.figmaRawValue ?? entry.figmaValue}
+            isColor={isColor}
+            faded={entry.status === "changed"}
+          />
         )}
         {entry.status === "changed" && (
           <IconArrowRight size={11} style={{ color: color.text.faint }} />
         )}
         {entry.githubValue !== null && (
-          <Value value={entry.githubValue} isColor={isColor} faded={false} />
+          <Value value={entry.githubRawValue ?? entry.githubValue} isColor={isColor} faded={false} />
         )}
       </div>
     </div>

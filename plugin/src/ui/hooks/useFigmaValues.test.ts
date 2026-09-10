@@ -75,3 +75,60 @@ describe("buildFigmaFlatMaps — number formatting only appends \"px\" for genui
     expect(semantic.values["semantic.overlay-value"]).toBe("30");
   });
 });
+
+describe("buildFigmaFlatMaps — rawValues stop at one hop, unlike the fully-resolved values", () => {
+  // Supports raw-based diffing (see token-diff.ts): editing one primitive
+  // shouldn't make every alias that references it look individually
+  // "changed" — only a token whose own {ref} definition actually changed
+  // should. That requires knowing what a token aliases, not just its final
+  // resolved value, which buildFigmaFlatMaps didn't track at all before.
+  it("an alias's raw value is \"{target.path}\", not the resolved final value", () => {
+    const collections = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      { id: "c2", name: "Themes", modes: [{ modeId: "m2", name: "Masterbrand" }], variableIds: ["v2"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "color/blue/600",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 0, g: 0.349, b: 0.698, a: 1 } },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+      {
+        id: "v2",
+        name: "theme/border-default",
+        resolvedType: "COLOR",
+        valuesByMode: { m2: { type: "VARIABLE_ALIAS", id: "v1" } },
+        collectionId: "c2",
+        collectionName: "Themes",
+      },
+    ];
+
+    const maps = buildFigmaFlatMaps(collections, variables);
+    const theme = maps.find((m) => m.collectionName === "Themes")!;
+    expect(theme.values["theme.border-default"]).toBe("#0059b2"); // fully resolved
+    expect(theme.rawValues["theme.border-default"]).toBe("{color.blue.600}"); // one hop only
+  });
+
+  it("a literal's raw value equals its resolved value", () => {
+    const collections = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "opacity/low",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 30 },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+    ];
+
+    const [map] = buildFigmaFlatMaps(collections, variables);
+    expect(map.rawValues["opacity.low"]).toBe(map.values["opacity.low"]);
+    expect(map.rawValues["opacity.low"]).toBe("30");
+  });
+});
