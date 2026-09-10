@@ -497,6 +497,57 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
     expect(global.tokens["text.heading.display.fontFamily"].$value).toBe("Inter");
   });
 
+  it("resolves a Text Style field that's a ref into a theme-scoped group, not just Primitives", () => {
+    // Reproduces a real bug found live: the actual reference chain is
+    // fontFamily (Primitives) -> Theme (e.g. Masterbrand) -> type styles —
+    // a theme picks its own named font choice ({font-family.display}), and
+    // a Text Style field references *that*, not a primitive directly. The
+    // Global collection's resolution context here never merged in any theme
+    // (only Semantic did), so this ref had nothing to resolve against and
+    // stayed as the literal unresolved string in the push diff — showing a
+    // false "changed" entry (GitHub's already-fixed resolved value vs.
+    // Figma's still-literal one) even when nothing had actually changed.
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      { id: "c2", name: "Theme", modes: [{ modeId: "m2", name: "Masterbrand" }], variableIds: ["v2"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "fontFamily/coop-sans",
+        resolvedType: "STRING",
+        valuesByMode: { m1: "Coop Sans" },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+      {
+        id: "v2",
+        name: "font-family/display",
+        resolvedType: "STRING",
+        valuesByMode: { m2: { type: "VARIABLE_ALIAS", id: "v1" } },
+        collectionId: "c2",
+        collectionName: "Theme",
+      },
+    ];
+    const namesWithThemes = { ...names, primitives: ["Primitives"], themes: ["Theme"] };
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "typography.banner",
+        fields: { fontFamily: { $type: "fontFamily", $value: "{font-family.display}" } },
+      },
+    ];
+
+    const { collections: result } = figmaToCollections(
+      collections,
+      variables,
+      metadataFor(namesWithThemes, [], ["masterbrand"]),
+      typographyStyles,
+    );
+    const global = result.find((c) => c.collectionName === "Global")!;
+
+    expect(global.tokens["typography.banner.fontFamily"].$value).toBe("Coop Sans");
+  });
+
   it("falls back to a literal \"Global\" collection name when no Figma collection is mapped to that role", () => {
     // Reproduces a real bug found live against a production Figma file: a
     // project whose only typography source is Text Styles (no decomposed
@@ -646,5 +697,44 @@ describe("figmaToTokenFiles — STRING variable type inference", () => {
     const tree = JSON.parse(files[0].content);
 
     expect(tree.fontFamily.sans.$type).toBe("fontFamily");
+  });
+});
+
+describe("figmaToTokenFiles — FLOAT variable type inference", () => {
+  const names = {
+    primitives: ["Primitives"],
+    global: [] as string[],
+    themes: [] as string[],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+
+  it("classifies a FLOAT variable literally named \"dimension\" as dimension, not number", () => {
+    // Real bug found live: a variable group literally named "dimension"
+    // (e.g. "dimension/0") didn't match the FLOAT-classification regex
+    // (size|spacing|padding|radius|width|height|border|gap) — none of those
+    // keywords appear in the word "dimension" itself — so it fell through to
+    // "number", which formats without a "px" suffix. Every pull then showed
+    // a permanent false "changed" diff (e.g. Figma's live "0px" vs GitHub's
+    // stored "0"), even though the numeric value never actually changed.
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "dimension/0",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 4 },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+    ];
+
+    const files = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const tree = JSON.parse(files[0].content);
+
+    expect(tree.dimension["0"].$type).toBe("dimension");
+    expect(tree.dimension["0"].$value).toBe("4px");
   });
 });
