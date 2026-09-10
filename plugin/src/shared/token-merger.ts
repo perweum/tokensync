@@ -283,8 +283,8 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
         );
 
   // --- Global collection ---
-  const globalTree = mergeTrees(Object.values(layers.global));
-  const globalWithPrimitivesFlat = flattenTokens(mergeTrees([defaultPrimitivesTree, globalTree]));
+  const globalTree = deepMergeTrees(Object.values(layers.global));
+  const globalWithPrimitivesFlat = flattenTokens(deepMergeTrees([defaultPrimitivesTree, globalTree]));
   const globalResolved = resolveAllReferences(globalWithPrimitivesFlat);
   const globalPaths = Object.keys(flattenTokens(globalTree));
   collections.push({
@@ -307,7 +307,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   // Each theme file has light.* and dark.* groups referencing Primitives.
   // rawTokens keep {color.X.N} refs so the plugin creates Primitives→Themes cross-collection aliases.
   for (const [themeName, themeTree] of Object.entries(layers.themes)) {
-    const fullFlatUnresolved = flattenTokens(mergeTrees([defaultPrimitivesTree, themeTree]));
+    const fullFlatUnresolved = flattenTokens(deepMergeTrees([defaultPrimitivesTree, themeTree]));
     const fullFlatResolved = resolveAllReferences(fullFlatUnresolved);
     const themePaths = Object.keys(flattenTokens(themeTree));
     collections.push({
@@ -333,13 +333,13 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
 
     // rawTokens: no themes tree in merge — {light.*}/{dark.*} refs remain as literal strings
     const rawFlatUnresolved = flattenTokens(
-      mergeTrees([defaultPrimitivesTree, globalTree, schemeTree]),
+      deepMergeTrees([defaultPrimitivesTree, globalTree, schemeTree]),
     );
     const schemePaths = Object.keys(flattenTokens(schemeTree));
 
     // resolved: include default theme so {light.background.brand} → {color.blue.25} → #hex
     const resolvedFlat = resolveAllReferences(
-      flattenTokens(mergeTrees([defaultPrimitivesTree, defaultThemeTree, globalTree, schemeTree])),
+      flattenTokens(deepMergeTrees([defaultPrimitivesTree, defaultThemeTree, globalTree, schemeTree])),
     );
 
     collections.push({
@@ -411,18 +411,6 @@ function buildLayers(files: Map<string, string>): Layers {
 // ---------------------------------------------------------------------------
 // Tree utilities
 // ---------------------------------------------------------------------------
-
-/** Shallow-merge multiple TokenTree objects (later wins at key level). */
-function mergeTrees(trees: TokenTree[]): TokenTree {
-  const result: TokenTree = {};
-  for (const tree of trees) {
-    for (const [k, v] of Object.entries(tree)) {
-      if (k.startsWith("$")) continue;
-      result[k] = v;
-    }
-  }
-  return result;
-}
 
 /** Deep-merge multiple TokenTree objects. */
 function deepMergeTrees(trees: TokenTree[]): TokenTree {
