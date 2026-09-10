@@ -476,6 +476,44 @@ describe("parseRepository — deep merge of primitives", () => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// parseRepository — a theme/global/semantic file sharing a top-level key
+// with Primitives must not blot out the rest of that Primitives group
+// ────────────────────────────────────────────────────────────────
+
+describe("parseRepository — theme file reuses Primitives' top-level key", () => {
+  // Reproduces a real bug found live: a theme file (e.g. semantic/themes/
+  // masterbrand.json) commonly nests its light/dark groups under a "color"
+  // key, the same top-level key primitives/color.json uses. The merge that
+  // builds each theme's resolution context used to be a *shallow* merge
+  // (mergeTrees) — the theme's own "color" key completely replaced
+  // Primitives' "color" key instead of merging into it, silently dropping
+  // every other primitive color from scope. A ref like {color.blue.950}
+  // then failed to resolve and stayed as the literal unresolved string,
+  // even though color.blue.950 is a real, correctly-defined primitive.
+  it("resolves a primitive ref even when the theme's own top-level key is also \"color\"", () => {
+    const files = [
+      file("tokens/primitives/color.json", {
+        color: { blue: { 950: { $type: "color", $value: "#001224" } } },
+      }),
+      file("tokens/semantic/themes/masterbrand.json", {
+        color: {
+          dark: {
+            accent: {
+              "background-default": { $type: "color", $value: "{color.blue.950}" },
+            },
+          },
+        },
+      }),
+      file("tokens/semantic/light.json", semanticLight),
+      file("tokens/semantic/dark.json", semanticDark),
+    ];
+    const { collections } = parseRepository(files, tokensPath);
+    const theme = collections.find((c) => c.collectionName === "Themes" && c.modeName === "Masterbrand")!;
+    expect(theme.tokens["color.dark.accent.background-default"].$value).toBe("#001224");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
 // parseRepository — Global collection name falls back when no role is mapped
 // ────────────────────────────────────────────────────────────────
 
