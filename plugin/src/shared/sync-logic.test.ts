@@ -136,6 +136,42 @@ describe("computePullDiff", () => {
 
     expect(diffs[0].counts.total).toBeGreaterThan(0);
   });
+
+  it("merges Figma values from every physical collection backing a role, not just the one matching by exact name", () => {
+    // Reproduces a real bug found live: primitives role backed by "size" and
+    // "primitives". GitHub's merged entry is named "size" (collections.primitives[0]),
+    // but the actual color values live in the "primitives" Figma collection's
+    // OWN flat map entry — a plain .find() by exact name could only ever match
+    // one of the two, so colors showed as "added" on every single pull,
+    // forever, even immediately after pushing those exact same values.
+    const github = [
+      col("size", "mobile", {
+        "primitive.font-size.1": { $type: "dimension", $value: "16px" },
+        "Black.100": { $type: "color", $value: "rgba(0, 0, 0, 0.15)" },
+      }),
+    ];
+    const figmaMaps: FigmaFlatMap[] = [
+      { collectionName: "size", modeName: "mobile", values: { "primitive.font-size.1": "16px" } },
+      { collectionName: "primitives", modeName: "color", values: { "Black.100": "rgba(0, 0, 0, 0.15)" } },
+    ];
+    const meta = metadata({
+      figma: {
+        fileKey: "abc",
+        collections: {
+          primitives: ["size", "primitives"],
+          global: ["Global"],
+          themes: ["Themes"],
+          semantic: ["Semantic"],
+          sizes: [],
+        },
+      },
+    });
+
+    const { diffs } = computePullDiff(github, meta, figmaMaps);
+
+    // Both values already match what's in Figma — genuinely nothing changed.
+    expect(diffs[0].counts.total).toBe(0);
+  });
 });
 
 describe("computePushDiff", () => {
