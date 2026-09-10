@@ -120,6 +120,20 @@ export function figmaToCollections(
         sizeModes.values().next().value!.raw);
   const defaultPrimitivesRaw = { ...primitivesRaw, ...defaultSizeModeRaw };
 
+  // The default theme's raw values — needed by both Global (a type style's
+  // fontFamily/fontWeight fields commonly reference a theme-scoped choice
+  // like {font-family.display}, not Primitives directly — see
+  // parseRepository's identical fix on the GitHub side) and Semantic below.
+  // Config order (metadata.themes) wins over whatever order Figma happened
+  // to return modes in, same reasoning as defaultSizeModeRaw just above.
+  const defaultThemeRaw =
+    themeModes.size === 0
+      ? {}
+      : (metadata.themes
+          .map((name) => themeModes.get(name.toLowerCase())?.raw)
+          .find((raw): raw is Record<string, TokenValue> => raw !== undefined) ??
+        themeModes.values().next().value!.raw);
+
   // Pass 2: resolve. Each layer's context is exactly what it's allowed to reference.
   const result: ResolvedCollection[] = [];
 
@@ -159,7 +173,7 @@ export function figmaToCollections(
   globalRaw = { ...globalRaw, ...flattenTypographyStyles(typographyStyles) };
 
   if (Object.keys(globalRaw).length > 0) {
-    const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...globalRaw });
+    const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...defaultThemeRaw, ...globalRaw });
     result.push({
       // Falls back to a literal "Global" when no Figma collection is actually
       // mapped to the role (figmaCollectionNames.global === []) — a real,
@@ -188,15 +202,7 @@ export function figmaToCollections(
 
   // Semantic resolves against the default theme mode specifically — the same
   // simplification parseRepository makes for display/diff purposes on the GitHub
-  // side. Config order (metadata.themes) wins over whatever order Figma happened
-  // to return modes in, same reasoning as defaultSizeModeRaw just above.
-  const defaultThemeRaw =
-    themeModes.size === 0
-      ? {}
-      : (metadata.themes
-          .map((name) => themeModes.get(name.toLowerCase())?.raw)
-          .find((raw): raw is Record<string, TokenValue> => raw !== undefined) ??
-        themeModes.values().next().value!.raw);
+  // side.
   for (const { modeName, raw } of semanticModes.values()) {
     const resolved = resolveAllReferences({
       ...defaultPrimitivesRaw,
@@ -634,7 +640,7 @@ function inferType(name: string, resolvedType: string): string {
     return "string";
   }
   if (resolvedType === "FLOAT") {
-    if (/size|spacing|padding|radius|width|height|border|gap/i.test(name)) return "dimension";
+    if (/dimension|size|spacing|padding|radius|width|height|border|gap/i.test(name)) return "dimension";
     if (/weight/i.test(name)) return "fontWeight";
     if (/lineHeight|line.height/i.test(name)) return "number";
     if (/letterSpacing|letter.spacing/i.test(name)) return "dimension";

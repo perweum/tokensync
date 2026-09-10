@@ -570,8 +570,8 @@ describe("buildFilesFromDiffs", () => {
 
     const allContent = files.map((f) => f.content).join("\n");
     expect(allContent).toContain("rgba(0, 0, 0, 0.15)"); // shared primitives — included regardless of mode
-    expect(allContent).toContain('"$value": "4"'); // mobile's own dimension value
-    expect(allContent).not.toContain('"$value": "7"'); // desktop's — must NOT be pulled in by selecting mobile
+    expect(allContent).toContain('"$value": "4px"'); // mobile's own dimension value
+    expect(allContent).not.toContain('"$value": "7px"'); // desktop's — must NOT be pulled in by selecting mobile
   });
 });
 
