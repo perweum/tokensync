@@ -4,6 +4,53 @@ This document records the core architectural decisions, design guidelines, and c
 
 ---
 
+## Core Priorities (read before making any architecture trade-off)
+
+Established explicitly by the user (September 2026), after a real incident
+below showed what happens without this written down. In priority order:
+
+1. **Two-way sync between Figma and GitHub that never breaks.** This is the
+   whole point of the plugin. Nothing else matters if this is unreliable.
+2. **Both Variables and Typography sync correctly** — not just Variables.
+   Typography is explicitly part of "the core," not a bonus feature.
+3. **The JSON committed to GitHub must be clean and genuinely usable by a
+   team** — readable, sensibly split (e.g. a `primitives/` folder with
+   separate `color.json`/size file/dimensions file, not one compounded blob),
+   not merely "technically round-trips."
+4. **References resolve correctly** wherever they're consumed — pulling into
+   Figma, generating CSS/Dart/Swift/JS output, anything else built later.
+5. **Theming works out of the gate.**
+
+**`primitives → themes → semantic` layering is a real structural convention
+— a "golden rule" — but it is explicitly *not* the most important thing on
+this list.** It's in service of the priorities above, not an end in itself.
+
+**Multi-collection-per-role support, the Size axis, Map Collections, and
+collection provenance tracking are NOT the core.** They exist to make the
+core above more understandable, flexible, and robust. They must never be
+allowed to compromise it — if a flexibility feature's edge case requires
+risky surgery on stable, well-tested core code, that is a signal to pause and
+weigh the trade-off explicitly, not to keep patching narrower and narrower
+symptoms.
+
+**The incident that prompted writing this down**: chasing a real bug (Size
+axis on Primitives combined with a multi-collection Primitives role) through
+five narrow patches in a row, in increasingly deep parts of the sync/apply
+logic, before stepping back to ask whether the underlying representation was
+wrong in the first place (it was — `figmaToCollections` was compounding
+shared primitives into every size mode's entry instead of exposing clean,
+separate, single-role entries — see §1 "`figmaToCollections` Composite-Entry
+Fix" once that lands). The lesson: when a "flexibility" bug needs more than
+one or two attempts to actually fix, stop and ask whether it's really a core
+issue in disguise (as this one turned out to be — clean, separate primitive
+files *is* the core "usable JSON" requirement) before continuing to patch
+symptoms in isolation. Also surfaced a real gap in priority 2: Typography
+sync has never actually been verified end-to-end in a real Figma file,
+despite being explicitly part of the core — worth prioritizing over further
+edge-case flexibility work.
+
+---
+
 ## Status at a Glance
 
 Updated whenever something below changes state. For *why* something was built the way it was, follow the section reference — every line here points at a fuller entry.
