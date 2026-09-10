@@ -45,7 +45,7 @@ export function isIgnoredCollection(collectionName: string, metadata: Metadata):
  * entry as `githubCol` — i.e. the Figma-side counterpart of how
  * figmaToCollections already merges multiple physical collections sharing a
  * role. Primitives/global collapse every contributing collection into one
- * flat map regardless of mode (see figmaToCollections); themes/semantic/sizes
+ * flat map regardless of mode (see figmaToCollections); themes/semantic
  * match by mode name case-insensitively, same as `isModeSelected`.
  *
  * Matching a single FigmaFlatMap by exact real collection name (the previous
@@ -55,6 +55,13 @@ export function isIgnoredCollection(collectionName: string, metadata: Metadata):
  * was pushed and re-pulled, since the lookup could never find where they
  * actually lived in Figma. Found live: colors from a "primitives" collection
  * never matched a merged "primitives" role entry named after "size".
+ *
+ * `role` is always resolved from `githubCol.collectionName`, which for a
+ * Size-mode entry is always `names.primitives[0]` — never `names.sizes[0]`
+ * (see `isModeSelected`'s doc comment for why). So a `"primitives"` role here
+ * can genuinely be the primitives+sizes composite `figmaToCollections`
+ * builds: merge in every real `sizes`-role map whose own mode also matches
+ * `githubCol.modeName`, alongside the unconditional primitives merge.
  */
 function figmaValuesFor(
   githubCol: ResolvedCollection,
@@ -63,8 +70,14 @@ function figmaValuesFor(
 ): Record<string, string> {
   const role = collectionKind(githubCol.collectionName, names);
   const matching = figmaMaps.filter((m) => {
-    if (collectionKind(m.collectionName, names) !== role) return false;
-    if (role === "primitives" || role === "global") return true;
+    const mKind = collectionKind(m.collectionName, names);
+    if (role === "primitives") {
+      if (mKind === "primitives") return true;
+      if (mKind === "sizes") return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
+      return false;
+    }
+    if (mKind !== role) return false;
+    if (role === "global") return true;
     return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
   });
   return Object.assign({}, ...matching.map((m) => m.values));
@@ -202,8 +215,19 @@ const ROLE_DEFAULT_NAME: Record<Exclude<CollectionKind, "unknown">, string> = {
  * Primitives and Global merge every physical collection into one indivisible
  * synthetic entry regardless of mode name (see figmaToCollections) — the diff
  * never offers a way to select part of that, so the whole role is in or out
- * together. Themes/Semantic/Sizes instead produce one entry per real mode
- * name, merged case-insensitively (mergeIntoMode) — matched the same way here.
+ * together. Themes/Semantic instead produce one entry per real mode name,
+ * merged case-insensitively (mergeIntoMode) — matched the same way here.
+ *
+ * Sizes is a special case of the primitives branch, not its own: a Size axis
+ * on Primitives makes figmaToCollections build one *composite* entry per size
+ * mode — shared primitives (colors, etc.) merged with that mode's own data —
+ * always labeled `names.primitives[0]`, never `names.sizes[0]` (sizes is a
+ * second axis ON primitives, not an independently displayed role — see the
+ * Size axis decision in DECISIONS.md). So a real `sizes`-role collection is
+ * "selected" exactly when the matching `Primitives/<thisMode>` key was
+ * checked — matching on `names.sizes[0]` (the previous approach) checked for
+ * a key that never exists in `selectedList`, silently excluding every sizes
+ * collection from push no matter what was checked in the UI.
  */
 function isModeSelected(
   col: FigmaVariableCollection,
@@ -214,12 +238,20 @@ function isModeSelected(
   const kind = collectionKind(col.name, names);
   if (kind === "unknown") return false; // never included, same as before
 
-  const syntheticName = names[kind][0] ?? ROLE_DEFAULT_NAME[kind];
-
   if (kind === "primitives" || kind === "global") {
+    const syntheticName = names[kind][0] ?? ROLE_DEFAULT_NAME[kind];
     return selectedList.some((key) => key.startsWith(`${syntheticName}/`));
   }
 
+  if (kind === "sizes") {
+    const primitivesName = names.primitives[0] ?? ROLE_DEFAULT_NAME.primitives;
+    return selectedList.some((key) => {
+      const slash = key.indexOf("/");
+      return key.slice(0, slash) === primitivesName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
+    });
+  }
+
+  const syntheticName = names[kind][0] ?? ROLE_DEFAULT_NAME[kind];
   return selectedList.some((key) => {
     const slash = key.indexOf("/");
     return key.slice(0, slash) === syntheticName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
@@ -248,13 +280,28 @@ export interface ApplyPayload {
  * CollectionSources recorded for its top-level segment, or `fallbackName`
  * (today's behavior — collections[role][0]) when nothing was ever recorded,
  * e.g. before "Map collections" has been saved since this feature shipped.
+ *
+ * `role === "primitives"` checks `sources.sizes` too, not just
+ * `sources.primitives`: a segment that only ever lived in a real `sizes`-role
+ * collection (e.g. `primitive.dimension.*` in a Size-axis setup) is recorded
+ * under `sources.sizes`, since `buildCollectionSources` derives each
+ * variable's role from its own real collection — but the *diff entry* asking
+ * to route it is always labeled `"primitives"` (see `isModeSelected`'s doc
+ * comment for why). Checking only `sources.primitives` would silently miss
+ * it and fall back to routing it at the shared primitives collection instead
+ * of the real sizes collection it belongs to.
  */
 function resolveTarget(
   path: string,
-  roleSources: Record<string, string> | undefined,
+  role: CollectionKind,
+  sources: CollectionSources,
   fallbackName: string,
 ): string {
-  return roleSources?.[path.split(".")[0]] ?? fallbackName;
+  const segment = path.split(".")[0];
+  if (role === "primitives") {
+    return sources.primitives?.[segment] ?? sources.sizes?.[segment] ?? fallbackName;
+  }
+  return (role === "unknown" ? undefined : sources[role]?.[segment]) ?? fallbackName;
 }
 
 function bucket<T>(map: Map<string, T>, key: string, make: () => T): T {
@@ -280,7 +327,6 @@ export function buildApplyPayloads(
   sources: CollectionSources,
 ): ApplyPayload[] {
   const role = collectionKind(diff.collectionName, names);
-  const roleSources = role === "unknown" ? undefined : sources[role];
 
   const groups = new Map<
     string,
@@ -289,7 +335,7 @@ export function buildApplyPayloads(
 
   for (const entry of diff.entries) {
     if (entry.status === "unchanged") continue;
-    const target = resolveTarget(entry.path, roleSources, diff.collectionName);
+    const target = resolveTarget(entry.path, role, sources, diff.collectionName);
     const group = bucket(groups, target, () => ({ tokens: {}, resolvedValues: {}, removedPaths: [] }));
 
     if (entry.status === "removed") {
@@ -325,12 +371,11 @@ export function buildCleanApplyPayloads(
   sources: CollectionSources,
 ): ApplyPayload[] {
   const role = collectionKind(col.collectionName, names);
-  const roleSources = role === "unknown" ? undefined : sources[role];
 
   const groups = new Map<string, { tokens: Record<string, TokenValue>; resolvedValues: Record<string, string> }>();
 
   for (const [path, token] of Object.entries(col.rawTokens)) {
-    const target = resolveTarget(path, roleSources, col.collectionName);
+    const target = resolveTarget(path, role, sources, col.collectionName);
     const group = bucket(groups, target, () => ({ tokens: {}, resolvedValues: {} }));
     group.tokens[path] = token;
     const resolved = col.tokens[path];

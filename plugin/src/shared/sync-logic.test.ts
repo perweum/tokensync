@@ -172,6 +172,48 @@ describe("computePullDiff", () => {
     // Both values already match what's in Figma — genuinely nothing changed.
     expect(diffs[0].counts.total).toBe(0);
   });
+
+  it("merges a real sizes-role collection's matching mode into a Primitives+Sizes composite entry, not just the primitives-role map", () => {
+    // Reproduces a real bug found live: after a completely clean repo wipe
+    // and fresh push, pulling straight back still showed every dimension as
+    // permanently "added" — parseRepository's Primitives+Sizes composite
+    // entry (colors + this mode's own dimensions, both labeled "Primitives")
+    // was only ever compared against Figma's "primitives"-role map, since
+    // role was derived from githubCol.collectionName ("Primitives" — never
+    // "size", see figmaValuesFor's doc comment) and the old code required an
+    // exact role match, excluding the real "size" collection's data entirely.
+    const github = [
+      col("Primitives", "Mobile", {
+        "Black.100": { $type: "color", $value: "rgba(0, 0, 0, 0.15)" },
+        "primitive.dimension.1": { $type: "number", $value: "4" },
+      }),
+    ];
+    const figmaMaps: FigmaFlatMap[] = [
+      { collectionName: "Primitives", modeName: "Value", values: { "Black.100": "rgba(0, 0, 0, 0.15)" } },
+      { collectionName: "Size", modeName: "mobile", values: { "primitive.dimension.1": "4" } },
+      // Desktop's own value for the same path — must NOT be pulled in when
+      // comparing against the "Mobile" entry.
+      { collectionName: "Size", modeName: "desktop", values: { "primitive.dimension.1": "7" } },
+    ];
+    const meta = metadata({
+      figma: {
+        fileKey: "abc",
+        collections: {
+          primitives: ["Primitives"],
+          global: ["Global"],
+          themes: ["Themes"],
+          semantic: ["Semantic"],
+          sizes: ["Size"],
+        },
+      },
+    });
+
+    const { diffs } = computePullDiff(github, meta, figmaMaps);
+
+    // Everything already matches what's in the correct (mobile) Figma
+    // sources — genuinely nothing changed.
+    expect(diffs[0].counts.total).toBe(0);
+  });
 });
 
 describe("computePushDiff", () => {
@@ -466,6 +508,71 @@ describe("buildFilesFromDiffs", () => {
     expect(allContent).toContain('"primary"');
     expect(allContent).toContain('"accent"');
   });
+
+  it("selects a real sizes-role collection's matching mode, and the shared primitives collection regardless of mode — the Primitives+Sizes composite", () => {
+    // Reproduces a real bug found live: primitives role backed by a single
+    // "primitives" collection (colors), with "size" mapped to the dedicated
+    // sizes role (mobile/desktop). figmaToCollections labels every size-mode
+    // entry "Primitives" (never "size" — see isModeSelected's doc comment),
+    // so selecting "Primitives/mobile" must resolve to the real "size"
+    // collection's mobile mode specifically, and separately always include
+    // the real "primitives" collection since it's shared across every mode.
+    const realCollections: FigmaVariableCollection[] = [
+      { id: "c1", name: "primitives", modes: [{ modeId: "m1", name: "color" }], variableIds: ["v1"] },
+      {
+        id: "c2",
+        name: "size",
+        modes: [
+          { modeId: "m2", name: "mobile" },
+          { modeId: "m3", name: "desktop" },
+        ],
+        variableIds: ["v2"],
+      },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "Black/100",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 0, g: 0, b: 0, a: 0.15 } },
+        collectionId: "c1",
+        collectionName: "primitives",
+      },
+      {
+        id: "v2",
+        name: "primitive/dimension/1",
+        resolvedType: "FLOAT",
+        valuesByMode: { m2: 4, m3: 7 },
+        collectionId: "c2",
+        collectionName: "size",
+      },
+    ];
+    const names = {
+      primitives: ["primitives"],
+      global: ["Global"],
+      themes: ["Themes"],
+      semantic: ["Semantic"],
+      sizes: ["size"],
+    };
+    // Exactly what the diff view produces and lets the user check — one
+    // "primitives/mobile" entry (named after collections.primitives[0],
+    // lowercase to match this real collection's actual name), never
+    // "size/mobile".
+    const selectedKeys = new Set(["primitives/mobile"]);
+
+    const files = buildFilesFromDiffs(
+      selectedKeys,
+      { collections: realCollections, variables },
+      metadata({ figma: { fileKey: "abc", collections: names } }),
+      "tokens/",
+      null,
+    );
+
+    const allContent = files.map((f) => f.content).join("\n");
+    expect(allContent).toContain("rgba(0, 0, 0, 0.15)"); // shared primitives — included regardless of mode
+    expect(allContent).toContain('"$value": "4"'); // mobile's own dimension value
+    expect(allContent).not.toContain('"$value": "7"'); // desktop's — must NOT be pulled in by selecting mobile
+  });
 });
 
 describe("buildApplyPayloads", () => {
@@ -528,6 +635,42 @@ describe("buildApplyPayloads", () => {
     expect(payloads).toHaveLength(1);
     expect(payloads[0].collectionId).toBe("Support Color");
     expect(payloads[0].removedPaths).toEqual(["support.old"]);
+  });
+
+  it("checks sources.sizes too when the diff's own role resolves to primitives — the Primitives+Sizes composite", () => {
+    // Different from the "routes each entry..." test above: there, BOTH
+    // physical collections are mapped to the primitives role directly. Here,
+    // "size" is mapped to the dedicated sizes role instead — so the diff
+    // entry's OWN resolved role is "primitives" (figmaToCollections/
+    // parseRepository always label a size-mode composite entry that way,
+    // never "sizes" — see isModeSelected's doc comment), but the segment's
+    // provenance was recorded under sources.sizes, since buildCollectionSources
+    // derives it from the segment's own real collection. Checking only
+    // sources.primitives would miss it and fall back to the wrong collection.
+    const d = diff("Primitives", "Mobile", [
+      entry("Black.100", "added", "rgba(0, 0, 0, 0.15)"),
+      entry("primitive.dimension.1", "added", "4"),
+    ]);
+    const names = {
+      primitives: ["Primitives"],
+      global: ["Global"],
+      themes: ["Themes"],
+      semantic: ["Semantic"],
+      sizes: ["Size"],
+    };
+    const sources: CollectionSources = {
+      primitives: { Black: "Primitives" },
+      sizes: { primitive: "Size" },
+    };
+
+    const payloads = buildApplyPayloads(d, names, sources);
+
+    const primitivesPayload = payloads.find((p) => p.collectionId === "Primitives")!;
+    const sizePayload = payloads.find((p) => p.collectionId === "Size")!;
+    expect(primitivesPayload.tokens["Black.100"].$value).toBe("rgba(0, 0, 0, 0.15)");
+    expect(primitivesPayload.tokens["primitive.dimension.1"]).toBeUndefined();
+    expect(sizePayload.tokens["primitive.dimension.1"].$value).toBe("4");
+    expect(sizePayload.tokens["Black.100"]).toBeUndefined();
   });
 });
 
