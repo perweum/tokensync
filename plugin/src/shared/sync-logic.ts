@@ -41,6 +41,36 @@ export function isIgnoredCollection(collectionName: string, metadata: Metadata):
 }
 
 /**
+ * Every real Figma flat value map that belongs to the same merged GitHub
+ * entry as `githubCol` — i.e. the Figma-side counterpart of how
+ * figmaToCollections already merges multiple physical collections sharing a
+ * role. Primitives/global collapse every contributing collection into one
+ * flat map regardless of mode (see figmaToCollections); themes/semantic/sizes
+ * match by mode name case-insensitively, same as `isModeSelected`.
+ *
+ * Matching a single FigmaFlatMap by exact real collection name (the previous
+ * approach) meant a role backed by more than one physical collection could
+ * only ever match one of them — every token belonging to the others showed
+ * as permanently "added" on every pull, no matter how many times the repo
+ * was pushed and re-pulled, since the lookup could never find where they
+ * actually lived in Figma. Found live: colors from a "primitives" collection
+ * never matched a merged "primitives" role entry named after "size".
+ */
+function figmaValuesFor(
+  githubCol: ResolvedCollection,
+  names: CollectionNames,
+  figmaMaps: FigmaFlatMap[],
+): Record<string, string> {
+  const role = collectionKind(githubCol.collectionName, names);
+  const matching = figmaMaps.filter((m) => {
+    if (collectionKind(m.collectionName, names) !== role) return false;
+    if (role === "primitives" || role === "global") return true;
+    return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
+  });
+  return Object.assign({}, ...matching.map((m) => m.values));
+}
+
+/**
  * Pull direction: GitHub (current) vs Figma (proposed target) — what would
  * change in Figma if applied. Mode names are matched case-insensitively:
  * parseRepository always capitalise()s a GitHub-side mode name, but the real
@@ -51,24 +81,20 @@ export function computePullDiff(
   metadata: Metadata,
   figmaMaps: FigmaFlatMap[],
 ): { diffs: CollectionDiff[]; filteredGithubCollections: ResolvedCollection[] } {
+  const names = metadata.figma.collections;
   const filteredGithubCollections = githubCollections.filter(
     (c) => !isIgnoredCollection(c.collectionName, metadata),
   );
 
-  const diffs = filteredGithubCollections.map((githubCol) => {
-    const figmaMap = figmaMaps.find(
-      (m) =>
-        m.collectionName === githubCol.collectionName &&
-        m.modeName.toLowerCase() === githubCol.modeName.toLowerCase(),
-    );
-    return buildCollectionDiff(
+  const diffs = filteredGithubCollections.map((githubCol) =>
+    buildCollectionDiff(
       githubCol.collectionName,
       githubCol.modeName,
       githubCol.tokens,
-      figmaMap?.values ?? {},
+      figmaValuesFor(githubCol, names, figmaMaps),
       githubCol.rawTokens,
-    );
-  });
+    ),
+  );
 
   return { diffs, filteredGithubCollections };
 }
