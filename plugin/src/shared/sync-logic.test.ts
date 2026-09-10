@@ -6,8 +6,10 @@ import {
   buildFilesFromDiffs,
   buildApplyPayloads,
   buildCleanApplyPayloads,
+  mergeTypographyIntoFigmaMaps,
 } from "./sync-logic";
 import type { Metadata, ResolvedCollection, CollectionSources } from "./token-merger";
+import type { TypographyStyle } from "./typography-styles";
 import type { FigmaFlatMap } from "./sync-logic";
 import type { FigmaVariableCollection, FigmaVariable } from "./messages";
 import type { CollectionDiff, DiffEntry } from "./token-diff";
@@ -213,6 +215,76 @@ describe("computePullDiff", () => {
     // Everything already matches what's in the correct (mobile) Figma
     // sources — genuinely nothing changed.
     expect(diffs[0].counts.total).toBe(0);
+  });
+});
+
+describe("mergeTypographyIntoFigmaMaps", () => {
+  // Reproduces a real bug found live: buildFigmaFlatMaps (useFigmaValues.ts)
+  // only ever reads Figma Variables — a Text Style field, bound or not, was
+  // completely invisible to computePullDiff, so every already-pushed
+  // typography token showed as permanently "added" on every single pull,
+  // never "unchanged," even immediately after pushing those exact values.
+  const names = {
+    primitives: ["Primitives"],
+    global: ["Global"],
+    themes: ["Themes"],
+    semantic: ["Semantic"],
+    sizes: [] as string[],
+  };
+
+  it("adds an unbound field's literal value as a new Global-role entry", () => {
+    const typographyStyles: TypographyStyle[] = [
+      { path: "text.heading.caption", fields: { textCase: { $type: "string", $value: "uppercase" } } },
+    ];
+
+    const merged = mergeTypographyIntoFigmaMaps([], typographyStyles, names);
+
+    const global = merged.find((m) => m.collectionName === "Global")!;
+    expect(global.values["text.heading.caption.textCase"]).toBe("uppercase");
+  });
+
+  it("resolves a bound field's {ref} against the other FigmaFlatMaps' already-resolved values", () => {
+    const figmaMaps: FigmaFlatMap[] = [
+      { collectionName: "Theme", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
+    ];
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "typography.banner",
+        fields: { fontFamily: { $type: "fontFamily", $value: "{font-family.display}" } },
+      },
+    ];
+
+    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, names);
+
+    const global = merged.find((m) => m.collectionName === "Global")!;
+    expect(global.values["typography.banner.fontFamily"]).toBe("Coop Sans");
+  });
+
+  it("end-to-end: computePullDiff shows no change when GitHub's resolved typography matches Figma's live Text Style", () => {
+    const github = [
+      col("Global", "Value", {
+        "typography.banner.fontFamily": { $type: "fontFamily", $value: "Coop Sans" },
+      }),
+    ];
+    const figmaMaps: FigmaFlatMap[] = [
+      { collectionName: "Theme", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
+    ];
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "typography.banner",
+        fields: { fontFamily: { $type: "fontFamily", $value: "{font-family.display}" } },
+      },
+    ];
+
+    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, names);
+    const { diffs } = computePullDiff(github, metadata({ figma: { fileKey: "abc", collections: names } }), merged);
+
+    expect(diffs[0].counts.total).toBe(0);
+  });
+
+  it("returns figmaMaps unchanged when there are no typography styles", () => {
+    const figmaMaps: FigmaFlatMap[] = [{ collectionName: "Primitives", modeName: "Value", values: {} }];
+    expect(mergeTypographyIntoFigmaMaps(figmaMaps, [], names)).toBe(figmaMaps);
   });
 });
 

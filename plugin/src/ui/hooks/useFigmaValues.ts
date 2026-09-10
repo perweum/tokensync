@@ -11,6 +11,7 @@ import type {
   FigmaVariableValue,
 } from "../../shared/messages";
 import { fromFigmaVarName } from "../../shared/token-format";
+import { inferType } from "../../shared/figma-to-tokens";
 
 export interface FigmaFlatMap {
   collectionName: string;
@@ -56,7 +57,7 @@ function buildModeMap(
     const raw = variable.valuesByMode[modeId];
     if (raw === undefined) continue;
 
-    const resolved = resolveValue(raw, modeId, varById);
+    const resolved = resolveValue(raw, variable, modeId, varById);
     if (resolved === null) continue;
 
     const path = fromFigmaVarName(variable.name);
@@ -68,6 +69,7 @@ function buildModeMap(
 
 function resolveValue(
   value: FigmaVariableValue,
+  variable: FigmaVariable,
   modeId: string,
   varById: Map<string, FigmaVariable>,
   depth = 0,
@@ -87,7 +89,7 @@ function resolveValue(
     // Fall back to the first available mode value when the current modeId is not found.
     const targetValue = target.valuesByMode[modeId] ?? Object.values(target.valuesByMode)[0];
     if (targetValue === undefined) return null;
-    return resolveValue(targetValue, modeId, varById, depth + 1);
+    return resolveValue(targetValue, target, modeId, varById, depth + 1);
   }
 
   // RGBA color
@@ -95,9 +97,14 @@ function resolveValue(
     return rgbaToHex(value as { r: number; g: number; b: number; a: number });
   }
 
-  // Number (dimension stored as raw px)
+  // Number — only a genuine "dimension" gets a "px" suffix, same rule
+  // figma-to-tokens.ts's rawToTokenValue uses on the push side. Previously
+  // every number got "px" unconditionally, so a plain number token (e.g.
+  // opacity.low = 30, not a pixel dimension at all) permanently mismatched
+  // GitHub's correctly bare-number value on every pull.
   if (typeof value === "number") {
-    return `${value}px`;
+    const type = inferType(variable.name, variable.resolvedType);
+    return type === "dimension" ? `${value}px` : String(value);
   }
 
   // String
