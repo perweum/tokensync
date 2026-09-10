@@ -109,6 +109,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const pendingFigmaRaw = useRef<{
     collections: FigmaVariableCollection[];
     variables: FigmaVariable[];
+    typographyStyles: TypographyStyle[];
   } | null>(null); // push: raw Figma data for file generation
 
   const send = useSendMessage();
@@ -197,7 +198,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           if (pendingAction.current === "pull") {
             handlePullCollectionsLoaded(msg.collections, msg.variables);
           } else if (pendingAction.current === "push") {
-            handlePushCollectionsLoaded(msg.collections, msg.variables);
+            handlePushCollectionsLoaded(msg.collections, msg.variables, msg.typographyStyles);
           }
           pendingAction.current = null;
         }
@@ -496,6 +497,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   function handlePushCollectionsLoaded(
     figmaCollections: FigmaVariableCollection[],
     figmaVariables: FigmaVariable[],
+    figmaTypographyStyles: TypographyStyle[],
   ) {
     const githubFiles = pendingFiles.current;
     if (!githubFiles) return;
@@ -511,11 +513,16 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       figmaCollections,
       figmaVariables,
       githubParsed.metadata,
+      figmaTypographyStyles,
     );
     setUnrecognizedCollections(unknownCollectionNames);
     pendingFigmaCollections.current = figmaCollectionData;
     // Keep raw data for writing complete token files to GitHub (not just diff entries)
-    pendingFigmaRaw.current = { collections: figmaCollections, variables: figmaVariables };
+    pendingFigmaRaw.current = {
+      collections: figmaCollections,
+      variables: figmaVariables,
+      typographyStyles: figmaTypographyStyles,
+    };
 
     // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
     // GitHub, figmaValue = new state from Figma.

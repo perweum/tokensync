@@ -8,6 +8,7 @@ import {
 import type { Metadata, ResolvedCollection } from "./token-merger";
 import type { FigmaFlatMap } from "./sync-logic";
 import type { FigmaVariableCollection, FigmaVariable } from "./messages";
+import { figmaToCollections } from "./figma-to-tokens";
 
 function metadata(overrides: Partial<Metadata> = {}): Metadata {
   return {
@@ -146,6 +147,24 @@ describe("computePushDiff", () => {
 
     expect(diffs.map((d) => d.collectionName)).toEqual(["Semantic"]);
   });
+
+  it("surfaces a real Figma Text Style field as a reviewable diff entry, not just a file write", () => {
+    // End-to-end proof that the push diff view (built from figmaToCollections'
+    // output, see handlePushCollectionsLoaded in Sync.tsx) actually shows a
+    // Text Style change before it's pushed — textCase has no Variable
+    // counterpart at all, so this is the only path it can appear on.
+    const { collections: figmaCollections } = figmaToCollections([], [], metadata(), [
+      { path: "text.heading.caption", fields: { textCase: { $type: "string", $value: "uppercase" } } },
+    ]);
+
+    const diffs = computePushDiff(figmaCollections, [], metadata());
+    const globalDiff = diffs.find((d) => d.collectionName === "Global")!;
+
+    expect(globalDiff).toBeDefined();
+    const entry = globalDiff.entries.find((e) => e.path === "text.heading.caption.textCase");
+    expect(entry?.status).toBe("added");
+    expect(entry?.githubValue).toBe("uppercase");
+  });
 });
 
 describe("buildFilesFromDiffs", () => {
@@ -240,5 +259,34 @@ describe("buildFilesFromDiffs", () => {
     // Semantic wasn't in selectedKeys, but platform output reflects the full
     // design system regardless — confirmed by its value showing up in the CSS.
     expect(cssFile?.content).toContain("--background-default: #ffffff");
+  });
+
+  it("threads real Figma Text Styles through to the pushed typography.json", () => {
+    const globalCollections: FigmaVariableCollection[] = [
+      { id: "c3", name: "Global", modes: [{ modeId: "m4", name: "Value" }], variableIds: [] },
+    ];
+    const selectedKeys = new Set(["Global/Value"]);
+
+    const files = buildFilesFromDiffs(
+      selectedKeys,
+      {
+        collections: globalCollections,
+        variables: [],
+        typographyStyles: [
+          {
+            path: "text.heading.caption",
+            fields: { textCase: { $type: "string", $value: "uppercase" } },
+          },
+        ],
+      },
+      metadata(),
+      "tokens/",
+      null,
+    );
+
+    const typoFile = files.find((f) => f.path === "tokens/semantic/global/typography.json")!;
+    const tree = JSON.parse(typoFile.content);
+    expect(tree.text.heading.caption.$type).toBe("typography");
+    expect(tree.text.heading.caption.textCase.$value).toBe("uppercase");
   });
 });

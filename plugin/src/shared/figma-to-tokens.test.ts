@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { figmaToCollections, figmaToTokenFiles } from "./figma-to-tokens";
 import type { FigmaVariable, FigmaVariableCollection } from "./messages";
 import type { CollectionNames, Metadata } from "./token-merger";
+import type { TypographyStyle } from "./typography-styles";
 
 const figmaCollectionNames = {
   primitives: ["Primitives"],
@@ -340,5 +341,159 @@ describe("figmaToCollections — default theme for Semantic resolution is chosen
     const semantic = result.find((c) => c.collectionName === "Semantic")!;
     // #0042ff would mean it resolved against Christmas instead of Original.
     expect(semantic.tokens["background.default"].$value).toBe("#0042ff");
+  });
+});
+
+describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.json", () => {
+  const names = {
+    primitives: [] as string[],
+    global: ["Global"],
+    themes: [] as string[],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+
+  it("adds the group-level $type marker onto a group that already exists via decomposed Variables", () => {
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Global", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "text/heading/display/fontSize",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 32 },
+        collectionId: "c1",
+        collectionName: "Global",
+      },
+    ];
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "text.heading.display",
+        fields: { fontSize: { $type: "dimension", $value: "32px" } },
+      },
+    ];
+
+    const files = figmaToTokenFiles(collections, variables, "tokens/", names, typographyStyles);
+    const typoFile = files.find((f) => f.repoPath === "tokens/semantic/global/typography.json")!;
+    const tree = JSON.parse(typoFile.content);
+
+    expect(tree.text.heading.display.$type).toBe("typography");
+    expect(tree.text.heading.display.fontSize.$value).toBe("32px");
+  });
+
+  it("writes a typography.json group from Text Style fields alone when no matching Variable exists", () => {
+    // Reproduces the actual gap being fixed: a Text Style created by hand in
+    // Figma, with fields that were never separately decomposed into
+    // Variables (in particular textCase/textDecoration, which Figma doesn't
+    // support binding to a Variable at all, so they can ONLY ever reach the
+    // file through this path).
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Global", modes: [{ modeId: "m1", name: "Value" }], variableIds: [] },
+    ];
+    const variables: FigmaVariable[] = [];
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "text.heading.caption",
+        fields: {
+          fontFamily: { $type: "fontFamily", $value: "Arial" },
+          textCase: { $type: "string", $value: "uppercase" },
+        },
+      },
+    ];
+
+    const files = figmaToTokenFiles(collections, variables, "tokens/", names, typographyStyles);
+    const typoFile = files.find((f) => f.repoPath === "tokens/semantic/global/typography.json")!;
+    const tree = JSON.parse(typoFile.content);
+
+    expect(tree.text.heading.caption.$type).toBe("typography");
+    expect(tree.text.heading.caption.fontFamily.$value).toBe("Arial");
+    expect(tree.text.heading.caption.textCase.$value).toBe("uppercase");
+  });
+
+  it("writes nothing typography-related when there are no typography-tagged Variables and no Text Styles", () => {
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Global", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "spacing/small",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 4 },
+        collectionId: "c1",
+        collectionName: "Global",
+      },
+    ];
+
+    const files = figmaToTokenFiles(collections, variables, "tokens/", names, []);
+    expect(files.some((f) => f.repoPath === "tokens/semantic/global/typography.json")).toBe(false);
+  });
+});
+
+describe("figmaToCollections — real Figma Text Styles are diffable, not just written to file", () => {
+  // The push diff view is built from figmaToCollections' output (see
+  // computePushDiff in sync-logic.ts) — a field only shows as a reviewable
+  // change if it's present in the flat token map here, entirely separate
+  // from figmaToTokenFiles' file-writing path above.
+  const names = {
+    primitives: [] as string[],
+    global: ["Global"],
+    themes: [] as string[],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+
+  it("includes a Text Style field with no backing Variable in the Global collection's flat tokens", () => {
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "text.heading.caption",
+        fields: { textCase: { $type: "string", $value: "uppercase" } },
+      },
+    ];
+
+    const { collections } = figmaToCollections([], [], metadataFor(names), typographyStyles);
+    const global = collections.find((c) => c.collectionName === "Global")!;
+
+    expect(global).toBeDefined();
+    expect(global.tokens["text.heading.caption.textCase"].$value).toBe("uppercase");
+  });
+
+  it("resolves a Text Style field that's a ref into a primitive, same as any other Global token", () => {
+    const collections: FigmaVariableCollection[] = [
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "fontFamily/sans",
+        resolvedType: "STRING",
+        valuesByMode: { m1: "Inter" },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+    ];
+    const namesWithPrimitives = { ...names, primitives: ["Primitives"] };
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "text.heading.display",
+        fields: { fontFamily: { $type: "fontFamily", $value: "{fontFamily.sans}" } },
+      },
+    ];
+
+    const { collections: result } = figmaToCollections(
+      collections,
+      variables,
+      metadataFor(namesWithPrimitives),
+      typographyStyles,
+    );
+    const global = result.find((c) => c.collectionName === "Global")!;
+
+    expect(global.tokens["text.heading.display.fontFamily"].$value).toBe("Inter");
   });
 });

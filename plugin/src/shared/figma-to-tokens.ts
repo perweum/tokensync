@@ -12,6 +12,7 @@ import type {
 } from "./messages";
 import type { ResolvedCollection, CollectionNames, Metadata } from "./token-merger";
 import { fromFigmaVarName, resolveAllReferences } from "./token-format";
+import type { TypographyStyle } from "./typography-styles";
 
 export interface TokenFile {
   repoPath: string; // e.g. "tokens/primitives/color.json"
@@ -50,6 +51,7 @@ export function figmaToCollections(
   collections: FigmaVariableCollection[],
   variables: FigmaVariable[],
   metadata: Metadata,
+  typographyStyles: TypographyStyle[] = [],
 ): FigmaToCollectionsResult {
   const figmaCollectionNames = metadata.figma.collections;
   const varById = new Map(variables.map((v) => [v.id, v]));
@@ -149,6 +151,13 @@ export function figmaToCollections(
     }
   }
 
+  // Real Figma Text Style fields join the flat Global map like any other
+  // token — including textCase/textDecoration, which have no Variable
+  // representation at all and would otherwise never appear in the diff view.
+  // A bound field's value here already matches what its Variable-derived
+  // entry (if any) produces, see injectTypographyStyles below for why.
+  globalRaw = { ...globalRaw, ...flattenTypographyStyles(typographyStyles) };
+
   if (Object.keys(globalRaw).length > 0) {
     const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...globalRaw });
     result.push({
@@ -238,6 +247,7 @@ export function figmaToTokenFiles(
   variables: FigmaVariable[],
   tokensPath: string,
   figmaCollectionNames: CollectionNames,
+  typographyStyles: TypographyStyle[] = [],
 ): TokenFile[] {
   const varById = new Map(variables.map((v) => [v.id, v]));
 
@@ -280,7 +290,7 @@ export function figmaToTokenFiles(
 
   const files: TokenFile[] = [];
   files.push(...buildPrimitiveFiles(primitivesEntries, varById, tokensPath));
-  files.push(...buildGlobalFiles(globalEntries, varById, tokensPath));
+  files.push(...buildGlobalFiles(globalEntries, varById, tokensPath, typographyStyles));
   for (const { modeName, entries } of themeModeEntries.values()) {
     const file = buildThemeFile(entries, modeName, varById, tokensPath);
     if (file) files.push(file);
@@ -371,6 +381,7 @@ function buildGlobalFiles(
   entries: VarEntry[],
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
+  typographyStyles: TypographyStyle[],
 ): TokenFile[] {
   const typoSegments = new Set([
     "text",
@@ -399,10 +410,10 @@ function buildGlobalFiles(
   );
 
   const files: TokenFile[] = [];
-  if (typoEntries.length > 0)
+  if (typoEntries.length > 0 || typographyStyles.length > 0)
     files.push({
       repoPath: joinPath(tokensPath, "semantic/global", "typography.json"),
-      content: buildJsonFile(typoEntries, varById),
+      content: injectTypographyStyles(buildJsonFile(typoEntries, varById), typographyStyles),
     });
   if (spacingEntries.length > 0)
     files.push({
@@ -506,6 +517,54 @@ function buildJsonFile(entries: VarEntry[], varById: Map<string, FigmaVariable>)
     setNested(tree, path.split("."), entry);
   }
 
+  return JSON.stringify(tree, null, 2);
+}
+
+/**
+ * Flattens Text Style fields into the same "dot.path" → TokenValue shape
+ * every other Global token uses, so they diff and resolve exactly like an
+ * ordinary Variable-derived entry (see figmaToCollections). The group-level
+ * `$type: "typography"` marker itself has no equivalent here — it isn't a
+ * token, so it isn't diffable in this flat-map model; see injectTypographyStyles
+ * below for where it actually gets written.
+ */
+function flattenTypographyStyles(styles: TypographyStyle[]): Record<string, TokenValue> {
+  const flat: Record<string, TokenValue> = {};
+  for (const style of styles) {
+    for (const [field, token] of Object.entries(style.fields)) {
+      flat[`${style.path}.${field}`] = token;
+    }
+  }
+  return flat;
+}
+
+/**
+ * Overlays real Figma Text Styles onto a built typography.json: sets the
+ * group-level `$type: "typography"` marker (which has no Variable
+ * counterpart — it only exists because a matching Text Style does) and
+ * writes every field the Text Style reports directly from that read.
+ *
+ * Fields are written unconditionally rather than merged with whatever the
+ * Variable-derived tree already had at that path, for two reasons: a bound
+ * field's value here is already exactly what the matching Variable-derived
+ * entry would produce (same underlying bound variable, see
+ * getLocalTypographyStyles), so overwriting is a no-op; and textCase/
+ * textDecoration have no Variable counterpart at all — Figma doesn't support
+ * binding them — so they only ever reach the file through this path. This
+ * also covers a Text Style created by hand with no matching Variables yet:
+ * the group is created fresh from the style's own fields.
+ */
+function injectTypographyStyles(json: string, styles: TypographyStyle[]): string {
+  if (styles.length === 0) return json;
+
+  const tree = JSON.parse(json) as Record<string, unknown>;
+  for (const style of styles) {
+    const keys = style.path.split(".");
+    setNested(tree, [...keys, "$type"], "typography");
+    for (const [field, token] of Object.entries(style.fields)) {
+      setNested(tree, [...keys, field], token);
+    }
+  }
   return JSON.stringify(tree, null, 2);
 }
 

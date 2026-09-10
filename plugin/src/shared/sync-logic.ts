@@ -14,6 +14,7 @@ import { buildCollectionDiff } from "./token-diff";
 import type { CollectionDiff } from "./token-diff";
 import { figmaToTokenFiles } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
+import type { TypographyStyle } from "./typography-styles";
 
 /** A flat resolved value map for one collection/mode from Figma — same shape
  * the UI's useFigmaValues.ts (`buildFigmaFlatMaps`) produces. Duplicated as a
@@ -112,7 +113,11 @@ export function computePushDiff(
  */
 export function buildFilesFromDiffs(
   selectedKeys: Set<string>,
-  figmaRaw: { collections: FigmaVariableCollection[]; variables: FigmaVariable[] },
+  figmaRaw: {
+    collections: FigmaVariableCollection[];
+    variables: FigmaVariable[];
+    typographyStyles?: TypographyStyle[];
+  },
   metadata: Metadata,
   tokensPath: string,
   allFigmaCollections: ResolvedCollection[] | null,
@@ -129,6 +134,7 @@ export function buildFilesFromDiffs(
     figmaRaw.variables,
     tokensPath,
     metadata.figma.collections,
+    figmaRaw.typographyStyles ?? [],
   ).map((f) => ({ path: f.repoPath, content: f.content }));
 
   if (allFigmaCollections) {
