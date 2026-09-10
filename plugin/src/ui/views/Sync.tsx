@@ -9,7 +9,7 @@ import { fetchTokenFiles, fetchBranches, createBranch, createTokenPR } from "../
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
-import type { ParsedRepository, Metadata } from "../../shared/token-merger";
+import type { ParsedRepository, Metadata, CollectionNames, CollectionSources } from "../../shared/token-merger";
 import { figmaToCollections } from "../../shared/figma-to-tokens";
 import type { CollectionDiff } from "../../shared/token-diff";
 import {
@@ -373,15 +373,30 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     });
   }
 
+  /**
+   * handleApplyAll/handleCleanApplyAll are only reachable once the PullDiff
+   * view is showing, which requires pendingGitHubMetadata.current to have
+   * just been set (handlePullCollectionsLoaded sets it in the same
+   * statement block as pendingGitHubCollections.current, and never nulls it
+   * independently) — so a missing metadata here means that invariant broke,
+   * not a normal, expected state. Throwing surfaces that loudly instead of
+   * clicking Apply silently doing nothing.
+   */
+  function requirePendingMetadata(): { names: CollectionNames; sources: CollectionSources } {
+    const metadata = pendingGitHubMetadata.current;
+    if (!metadata) {
+      throw new Error("Apply attempted with no pending pull metadata");
+    }
+    return { names: metadata.figma.collections, sources: metadata.figma.collectionSources ?? {} };
+  }
+
   function handleApplyAll(selectedKeys: Set<string>) {
     const pending = diffs.filter(
       (d) => d.counts.total > 0 && selectedKeys.has(`${d.collectionName}/${d.modeName}`),
     );
     if (pending.length === 0) return;
 
-    const names = pendingGitHubMetadata.current?.figma.collections;
-    if (!names) return;
-    const sources = pendingGitHubMetadata.current?.figma.collectionSources ?? {};
+    const { names, sources } = requirePendingMetadata();
 
     // A role backed by more than one physical Figma collection can now fan
     // out into more than one APPLY_TOKENS payload — each routed to the real
@@ -425,9 +440,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const allCollections = pendingGitHubCollections.current;
     if (!allCollections) return;
 
-    const names = pendingGitHubMetadata.current?.figma.collections;
-    if (!names) return;
-    const sources = pendingGitHubMetadata.current?.figma.collectionSources ?? {};
+    const { names, sources } = requirePendingMetadata();
 
     const typographyPayload = syncTypeStyles ? collectTypographyPayload(allCollections) : null;
     const payloads = allCollections.flatMap((col) => buildCleanApplyPayloads(col, names, sources));
