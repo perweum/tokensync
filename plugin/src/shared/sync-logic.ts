@@ -94,19 +94,47 @@ function figmaValuesFor(
  *
  * A bound field's raw value is a {ref} into a real Variable's dot-path (see
  * getLocalTypographyStyles) — resolved here with one direct lookup against
- * every other FigmaFlatMap's already-resolved values, no chain-walking
- * needed since buildFigmaFlatMaps already walked each Variable's own alias
- * chain to a final value.
+ * the other FigmaFlatMaps' already-resolved values, no chain-walking needed
+ * since buildFigmaFlatMaps already walked each Variable's own alias chain to
+ * a final value. That lookup must pick exactly one mode for "sizes"- and
+ * "themes"-role maps (mirroring figmaToCollections' own defaultSizeModeRaw/
+ * defaultThemeRaw) rather than union every mode's map together — a
+ * size-varying or theme-scoped path exists once per mode with a genuinely
+ * different value each time, so a blind union lets whichever mode's map
+ * happens to be processed last silently win, with no error or indication
+ * anything was wrong (found live: desktop's font-size scale won over
+ * mobile's, purely from FigmaFlatMap array order).
  */
 export function mergeTypographyIntoFigmaMaps(
   figmaMaps: FigmaFlatMap[],
   typographyStyles: TypographyStyle[],
-  names: CollectionNames,
+  metadata: Metadata,
 ): FigmaFlatMap[] {
   if (typographyStyles.length === 0) return figmaMaps;
 
+  const names = metadata.figma.collections;
   const allResolved: Record<string, string> = {};
-  for (const map of figmaMaps) Object.assign(allResolved, map.values);
+
+  // primitives/global/semantic: single-mode or shared-regardless-of-mode —
+  // safe to union directly, same assumption figmaValuesFor already makes.
+  for (const map of figmaMaps) {
+    const kind = collectionKind(map.collectionName, names);
+    if (kind === "primitives" || kind === "global" || kind === "semantic") {
+      Object.assign(allResolved, map.values);
+    }
+  }
+
+  // sizes/themes: genuinely multi-mode with different values per mode — only
+  // the configured default mode's map may be merged in.
+  for (const kind of ["sizes", "themes"] as const) {
+    const configOrder = kind === "sizes" ? metadata.sizes : metadata.themes;
+    const modeMaps = figmaMaps.filter((m) => collectionKind(m.collectionName, names) === kind);
+    const defaultMap =
+      configOrder
+        .map((name) => modeMaps.find((m) => m.modeName.toLowerCase() === name.toLowerCase()))
+        .find((m): m is FigmaFlatMap => m !== undefined) ?? modeMaps[0];
+    if (defaultMap) Object.assign(allResolved, defaultMap.values);
+  }
 
   const typographyValues: Record<string, string> = {};
   for (const [path, token] of Object.entries(flattenTypographyStyles(typographyStyles))) {
@@ -373,7 +401,11 @@ export function buildApplyPayloads(
   for (const entry of diff.entries) {
     if (entry.status === "unchanged") continue;
     const target = resolveTarget(entry.path, role, sources, diff.collectionName);
-    const group = bucket(groups, target, () => ({ tokens: {}, resolvedValues: {}, removedPaths: [] }));
+    const group = bucket(groups, target, () => ({
+      tokens: {} as Record<string, TokenValue>,
+      resolvedValues: {} as Record<string, string>,
+      removedPaths: [] as string[],
+    }));
 
     if (entry.status === "removed") {
       group.removedPaths.push(entry.path);
@@ -413,7 +445,10 @@ export function buildCleanApplyPayloads(
 
   for (const [path, token] of Object.entries(col.rawTokens)) {
     const target = resolveTarget(path, role, sources, col.collectionName);
-    const group = bucket(groups, target, () => ({ tokens: {}, resolvedValues: {} }));
+    const group = bucket(groups, target, () => ({
+      tokens: {} as Record<string, TokenValue>,
+      resolvedValues: {} as Record<string, string>,
+    }));
     group.tokens[path] = token;
     const resolved = col.tokens[path];
     if (resolved && token.$value !== resolved.$value) {

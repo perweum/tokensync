@@ -231,13 +231,14 @@ describe("mergeTypographyIntoFigmaMaps", () => {
     semantic: ["Semantic"],
     sizes: [] as string[],
   };
+  const meta = metadata({ figma: { fileKey: "abc", collections: names } });
 
   it("adds an unbound field's literal value as a new Global-role entry", () => {
     const typographyStyles: TypographyStyle[] = [
       { path: "text.heading.caption", fields: { textCase: { $type: "string", $value: "uppercase" } } },
     ];
 
-    const merged = mergeTypographyIntoFigmaMaps([], typographyStyles, names);
+    const merged = mergeTypographyIntoFigmaMaps([], typographyStyles, meta);
 
     const global = merged.find((m) => m.collectionName === "Global")!;
     expect(global.values["text.heading.caption.textCase"]).toBe("uppercase");
@@ -245,7 +246,7 @@ describe("mergeTypographyIntoFigmaMaps", () => {
 
   it("resolves a bound field's {ref} against the other FigmaFlatMaps' already-resolved values", () => {
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "Theme", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
+      { collectionName: "Themes", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
     ];
     const typographyStyles: TypographyStyle[] = [
       {
@@ -254,7 +255,7 @@ describe("mergeTypographyIntoFigmaMaps", () => {
       },
     ];
 
-    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, names);
+    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, meta);
 
     const global = merged.find((m) => m.collectionName === "Global")!;
     expect(global.values["typography.banner.fontFamily"]).toBe("Coop Sans");
@@ -267,7 +268,7 @@ describe("mergeTypographyIntoFigmaMaps", () => {
       }),
     ];
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "Theme", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
+      { collectionName: "Themes", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
     ];
     const typographyStyles: TypographyStyle[] = [
       {
@@ -276,15 +277,46 @@ describe("mergeTypographyIntoFigmaMaps", () => {
       },
     ];
 
-    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, names);
-    const { diffs } = computePullDiff(github, metadata({ figma: { fileKey: "abc", collections: names } }), merged);
+    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, meta);
+    const { diffs } = computePullDiff(github, meta, merged);
 
     expect(diffs[0].counts.total).toBe(0);
   });
 
   it("returns figmaMaps unchanged when there are no typography styles", () => {
     const figmaMaps: FigmaFlatMap[] = [{ collectionName: "Primitives", modeName: "Value", values: {} }];
-    expect(mergeTypographyIntoFigmaMaps(figmaMaps, [], names)).toBe(figmaMaps);
+    expect(mergeTypographyIntoFigmaMaps(figmaMaps, [], meta)).toBe(figmaMaps);
+  });
+
+  it("resolves a size-varying ref against the DEFAULT size mode, not whichever mode's map comes last", () => {
+    // Reproduces a real bug found live: a naive union of every FigmaFlatMap's
+    // values let desktop's font-size scale silently win over mobile's
+    // (metadata.sizes[0], the configured default) purely because it happened
+    // to be processed later in the array — every typography fontSize showed
+    // as "changed" (desktop's value vs. GitHub's correctly mobile-resolved
+    // one) even when nothing had actually changed.
+    const figmaMaps: FigmaFlatMap[] = [
+      { collectionName: "Size", modeName: "desktop", values: { "primitive.font-size.6": "21px" } },
+      { collectionName: "Size", modeName: "mobile", values: { "primitive.font-size.6": "17px" } },
+    ];
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "typography.action-large",
+        fields: { fontSize: { $type: "dimension", $value: "{primitive.font-size.6}" } },
+      },
+    ];
+    const sizeMeta = metadata({
+      sizes: ["mobile", "desktop"],
+      figma: {
+        fileKey: "abc",
+        collections: { ...names, sizes: ["Size"] },
+      },
+    });
+
+    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, sizeMeta);
+
+    const global = merged.find((m) => m.collectionName === "Global")!;
+    expect(global.values["typography.action-large.fontSize"]).toBe("17px");
   });
 });
 
