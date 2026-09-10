@@ -496,4 +496,30 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
 
     expect(global.tokens["text.heading.display.fontFamily"].$value).toBe("Inter");
   });
+
+  it("falls back to a literal \"Global\" collection name when no Figma collection is mapped to that role", () => {
+    // Reproduces a real bug found live against a production Figma file: a
+    // project whose only typography source is Text Styles (no decomposed
+    // Variables ever set up) has figma.collections.global === [] — the
+    // previous code used figmaCollectionNames.global[0] directly, which came
+    // out `undefined` and rendered as a blank push-diff tab label (the row
+    // still showed a change count, just no title).
+    const namesWithNoGlobalRole = { ...names, global: [] as string[] };
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "text.heading.caption",
+        fields: { textCase: { $type: "string", $value: "uppercase" } },
+      },
+    ];
+
+    const { collections } = figmaToCollections(
+      [],
+      [],
+      metadataFor(namesWithNoGlobalRole),
+      typographyStyles,
+    );
+
+    expect(collections.some((c) => c.collectionName === "Global")).toBe(true);
+    expect(collections.some((c) => c.collectionName === undefined)).toBe(false);
+  });
 });

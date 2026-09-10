@@ -161,7 +161,13 @@ export function figmaToCollections(
   if (Object.keys(globalRaw).length > 0) {
     const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...globalRaw });
     result.push({
-      collectionName: figmaCollectionNames.global[0],
+      // Falls back to a literal "Global" when no Figma collection is actually
+      // mapped to the role (figmaCollectionNames.global === []) — a real,
+      // common case for a project whose only typography source is Text
+      // Styles, with no matching decomposed Variables ever set up. Without
+      // this, collectionName was `undefined`, which renders as a blank diff
+      // tab label — the row still showed a count, just no title.
+      collectionName: figmaCollectionNames.global[0] ?? "Global",
       modeName: globalModeName ?? "Value",
       tokens: filterByPaths(resolved, Object.keys(globalRaw)),
       rawTokens: globalRaw,
@@ -636,7 +642,7 @@ function inferType(name: string, resolvedType: string): string {
 // Collection kind detection
 // ---------------------------------------------------------------------------
 
-type CollectionKind = "primitives" | "global" | "themes" | "semantic" | "sizes" | "unknown";
+export type CollectionKind = "primitives" | "global" | "themes" | "semantic" | "sizes" | "unknown";
 
 /**
  * A collection mapped to "sizes" feeds a second, orthogonal axis on
@@ -644,7 +650,7 @@ type CollectionKind = "primitives" | "global" | "themes" | "semantic" | "sizes" 
  * primitives at resolve time. See docs/design/size-axis.md and the Metadata
  * `sizes`/`sizeBreakpoints` fields.
  */
-function collectionKind(name: string, names: CollectionNames): CollectionKind {
+export function collectionKind(name: string, names: CollectionNames): CollectionKind {
   if (names.primitives.includes(name)) return "primitives";
   if (names.global.includes(name)) return "global";
   if (names.themes.includes(name)) return "themes";

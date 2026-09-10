@@ -289,4 +289,121 @@ describe("buildFilesFromDiffs", () => {
     expect(tree.text.heading.caption.$type).toBe("typography");
     expect(tree.text.heading.caption.textCase.$value).toBe("uppercase");
   });
+
+  it("includes every physical collection sharing a role, not just the one whose real name matches figma.collections[0]", () => {
+    // Reproduces a real bug found live: primitives role backed by two real
+    // Figma collections, "size" and "primitives" (figma.collections.primitives
+    // === ["size", "primitives"]). figmaToCollections merges both into ONE
+    // synthetic ResolvedCollection named after figma.collections.primitives[0]
+    // ("size") for diffing — the diff correctly showed both collections'
+    // tokens together. But selection filtering here matched selectedKeys
+    // against each REAL collection's own name, so "primitives" (color) never
+    // matched "size/mobile" and was silently dropped from the actual PR file,
+    // even though it was shown, counted, and checked in the diff the user approved.
+    const realCollections: FigmaVariableCollection[] = [
+      { id: "c1", name: "size", modes: [{ modeId: "m1", name: "mobile" }], variableIds: ["v1"] },
+      { id: "c2", name: "primitives", modes: [{ modeId: "m2", name: "color" }], variableIds: ["v2"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "primitive/font-size/1",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 16 },
+        collectionId: "c1",
+        collectionName: "size",
+      },
+      {
+        id: "v2",
+        name: "Black/100",
+        resolvedType: "COLOR",
+        valuesByMode: { m2: { r: 0, g: 0, b: 0, a: 0.15 } },
+        collectionId: "c2",
+        collectionName: "primitives",
+      },
+    ];
+    // This is exactly the one key the diff view would have produced and had
+    // checked — computePushDiff/figmaToCollections only ever emit one merged
+    // entry for the whole role, named figma.collections.primitives[0].
+    const selectedKeys = new Set(["size/mobile"]);
+
+    const files = buildFilesFromDiffs(
+      selectedKeys,
+      { collections: realCollections, variables },
+      metadata({
+        figma: {
+          fileKey: "abc",
+          collections: {
+            primitives: ["size", "primitives"],
+            global: ["Global"],
+            themes: ["Themes"],
+            semantic: ["Semantic"],
+            sizes: [],
+          },
+        },
+      }),
+      "tokens/",
+      null,
+    );
+
+    const allContent = files.map((f) => f.content).join("\n");
+    expect(allContent).toContain('"font-size"');
+    expect(allContent).toContain("rgba(0, 0, 0, 0.15)");
+  });
+
+  it("matches selected mode names case-insensitively, for a themes role backed by two physical collections", () => {
+    // The same class of bug, on the mode-name-matching branch instead of the
+    // whole-role branch — "Main Color" and "Support Color" both contribute a
+    // "Christmas" mode (a real, documented case — see figma-to-tokens.test.ts
+    // "multiple physical collections mapped to one role"), and mode names
+    // merge case-insensitively (mergeIntoMode). The selection check must too.
+    const realCollections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Main Color", modes: [{ modeId: "m1", name: "Christmas" }], variableIds: ["v1"] },
+      { id: "c2", name: "Support Color", modes: [{ modeId: "m2", name: "christmas" }], variableIds: ["v2"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "color/primary",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 1, g: 0, b: 0 } },
+        collectionId: "c1",
+        collectionName: "Main Color",
+      },
+      {
+        id: "v2",
+        name: "color/accent",
+        resolvedType: "COLOR",
+        valuesByMode: { m2: { r: 0, g: 1, b: 0 } },
+        collectionId: "c2",
+        collectionName: "Support Color",
+      },
+    ];
+    // The diff produces one merged entry per mode name, named after
+    // figma.collections.themes[0] — "Main Color/Christmas" here.
+    const selectedKeys = new Set(["Main Color/Christmas"]);
+
+    const files = buildFilesFromDiffs(
+      selectedKeys,
+      { collections: realCollections, variables },
+      metadata({
+        figma: {
+          fileKey: "abc",
+          collections: {
+            primitives: ["Primitives"],
+            global: ["Global"],
+            themes: ["Main Color", "Support Color"],
+            semantic: ["Semantic"],
+            sizes: [],
+          },
+        },
+      }),
+      "tokens/",
+      null,
+    );
+
+    const allContent = files.map((f) => f.content).join("\n");
+    expect(allContent).toContain('"primary"');
+    expect(allContent).toContain('"accent"');
+  });
 });

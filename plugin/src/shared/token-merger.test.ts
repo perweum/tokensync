@@ -474,3 +474,49 @@ describe("parseRepository — deep merge of primitives", () => {
     expect(prim.tokens).toHaveProperty("geometry.radius.sm");
   });
 });
+
+// ────────────────────────────────────────────────────────────────
+// parseRepository — Global collection name falls back when no role is mapped
+// ────────────────────────────────────────────────────────────────
+
+describe("parseRepository — Global collection falls back to a real name when nothing is mapped to that role", () => {
+  // Reproduces a real bug found live: a Token Studio migration typically has
+  // figma.collections.global === [] (composite typography lives only in
+  // token files, never as a Figma variable — docs/interop/token-studio.md).
+  // Before the fix, collectionName came out `undefined` here — not just a
+  // blank pull-diff tab label, but the exact value handleApplyAll sends as
+  // `collectionId` to APPLY_TOKENS, which would reach
+  // figma.variables.createVariableCollection(undefined) on apply.
+  const meta = {
+    version: "1.0.0",
+    themes: ["default"],
+    colorSchemes: ["light", "dark"],
+    figma: {
+      fileKey: "abc123",
+      collections: { primitives: "Primitives", global: [], themes: "Themes", semantic: "Semantic" },
+    },
+  };
+  const typography = {
+    text: {
+      heading: {
+        caption: {
+          $type: "typography",
+          fontSize: { $type: "dimension", $value: "16px" },
+          textCase: { $type: "string", $value: "uppercase" },
+        },
+      },
+    },
+  };
+
+  it("names the collection \"Global\" instead of leaving it undefined", () => {
+    const files = [
+      ...makeFiles(),
+      file("tokens/metadata.json", meta),
+      file("tokens/semantic/global/typography.json", typography),
+    ];
+    const { collections } = parseRepository(files, tokensPath);
+
+    expect(collections.some((c) => c.collectionName === "Global")).toBe(true);
+    expect(collections.some((c) => c.collectionName === undefined)).toBe(false);
+  });
+});

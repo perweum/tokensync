@@ -268,7 +268,15 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   const globalResolved = resolveAllReferences(globalWithPrimitivesFlat);
   const globalPaths = Object.keys(flattenTokens(globalTree));
   collections.push({
-    collectionName: names.global[0],
+    // Falls back to a literal "Global" when nothing is mapped to that role
+    // (names.global === []) — the expected shape for a Token Studio
+    // migration, where composite typography lives only in token files, never
+    // as a Figma variable (docs/interop/token-studio.md). Without this,
+    // collectionName was `undefined`, which — via handleApplyAll's
+    // `collectionId: diff.collectionName` — reached
+    // `figma.variables.createVariableCollection(undefined)` on apply, not
+    // just a blank diff tab label like the equivalent push-side bug.
+    collectionName: names.global[0] ?? "Global",
     modeName: "Value",
     tokens: filterByPaths(globalResolved, globalPaths),
     rawTokens: filterByPaths(globalWithPrimitivesFlat, globalPaths),
