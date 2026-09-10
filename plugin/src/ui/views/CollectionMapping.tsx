@@ -17,7 +17,8 @@ import { fetchTokenFiles, createTokenPR, type PRResult } from "../hooks/useGitHu
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { parseRepository } from "../../shared/token-merger";
 import type { CollectionNames } from "../../shared/token-merger";
-import type { FigmaVariableCollection, PluginMessage } from "../../shared/messages";
+import { buildCollectionSources } from "../../shared/figma-to-tokens";
+import type { FigmaVariableCollection, FigmaVariable, PluginMessage } from "../../shared/messages";
 import { Button } from "../components/Button";
 import { StatusBanner } from "../components/StatusBanner";
 import { ViewHeader } from "../components/ViewHeader";
@@ -57,6 +58,7 @@ interface Props {
 
 export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Props) {
   const [figmaCollections, setFigmaCollections] = useState<FigmaVariableCollection[] | null>(null);
+  const [figmaVariables, setFigmaVariables] = useState<FigmaVariable[]>([]);
   const [collectionNames, setCollectionNames] = useState<CollectionNames | null>(null);
   const [rawMetadata, setRawMetadata] = useState<Record<string, unknown> | null>(null);
   const [assignments, setAssignments] = useState<Record<string, Role>>({});
@@ -91,6 +93,7 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
   usePluginMessage((msg: PluginMessage) => {
     if (msg.type === "COLLECTIONS_LOADED") {
       setFigmaCollections(msg.collections);
+      setFigmaVariables(msg.variables);
     }
     if (msg.type === "ERROR") {
       setError({ message: msg.message, detail: msg.context });
@@ -184,6 +187,15 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
     // something right now — an empty derived list means nothing's assigned
     // that role in *this* save, not "there are genuinely zero themes," so
     // falling back to whatever was already there is safer than blanking it.
+    // Records which real Figma collection each top-level path segment
+    // currently lives in, per role — lets a later pull/apply route a token
+    // back to the collection it actually belongs to instead of guessing
+    // collections[role][0] for everything, wrong whenever a role is split
+    // across more than one physical collection (see CollectionSources' own
+    // doc comment in token-merger.ts). Computed fresh from live Figma state
+    // every save, same as themes/colorSchemes/sizes above — never hand-edited.
+    const collectionSources = buildCollectionSources(figmaVariables, newCollections);
+
     const nextMetadata = {
       ...rawMetadata,
       themes: themeModeNames.length > 0 ? themeModeNames : (rawMetadata.themes ?? ["default"]),
@@ -193,7 +205,11 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
           : (rawMetadata.colorSchemes ?? ["light", "dark"]),
       sizes: sizeModeNames,
       sizeBreakpoints: cleanedBreakpoints,
-      figma: { ...(rawMetadata.figma as Record<string, unknown>), collections: newCollections },
+      figma: {
+        ...(rawMetadata.figma as Record<string, unknown>),
+        collections: newCollections,
+        collectionSources,
+      },
     };
 
     try {

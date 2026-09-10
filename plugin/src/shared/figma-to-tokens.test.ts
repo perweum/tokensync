@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { figmaToCollections, figmaToTokenFiles } from "./figma-to-tokens";
+import { figmaToCollections, figmaToTokenFiles, buildCollectionSources } from "./figma-to-tokens";
 import type { FigmaVariable, FigmaVariableCollection } from "./messages";
 import type { CollectionNames, Metadata } from "./token-merger";
 import type { TypographyStyle } from "./typography-styles";
@@ -521,5 +521,72 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
 
     expect(collections.some((c) => c.collectionName === "Global")).toBe(true);
     expect(collections.some((c) => c.collectionName === undefined)).toBe(false);
+  });
+});
+
+describe("buildCollectionSources", () => {
+  const names = {
+    primitives: ["size", "primitives"],
+    global: ["Global"],
+    themes: ["Themes"],
+    semantic: ["Semantic"],
+    sizes: [] as string[],
+  };
+
+  it("records which real collection each top-level segment came from, for a role backed by two collections", () => {
+    // The exact real-world shape that exposed the bug: "size" (font-size,
+    // multi-mode) and "primitives" (colors) both mapped to the primitives role.
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "primitive/font-size/1",
+        resolvedType: "FLOAT",
+        valuesByMode: {},
+        collectionId: "c1",
+        collectionName: "size",
+      },
+      {
+        id: "v2",
+        name: "Black/100",
+        resolvedType: "COLOR",
+        valuesByMode: {},
+        collectionId: "c2",
+        collectionName: "primitives",
+      },
+      {
+        id: "v3",
+        name: "Blue/100",
+        resolvedType: "COLOR",
+        valuesByMode: {},
+        collectionId: "c2",
+        collectionName: "primitives",
+      },
+    ];
+
+    const sources = buildCollectionSources(variables, names);
+
+    expect(sources.primitives).toEqual({
+      primitive: "size",
+      Black: "primitives",
+      Blue: "primitives",
+    });
+  });
+
+  it("skips variables from collections mapped to no role at all", () => {
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "dominant/background-default",
+        resolvedType: "COLOR",
+        valuesByMode: {},
+        collectionId: "c1",
+        collectionName: "main color", // not listed under any role — "Ignore" in Map Collections
+      },
+    ];
+
+    const sources = buildCollectionSources(variables, names);
+
+    expect(sources.primitives ?? {}).toEqual({});
+    expect(sources.themes ?? {}).toEqual({});
   });
 });

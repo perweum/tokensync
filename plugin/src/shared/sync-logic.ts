@@ -8,8 +8,8 @@
  * mode-name case-sensitivity fix, the ignored-collection role lookup).
  */
 
-import type { Metadata, ResolvedCollection, CollectionNames } from "./token-merger";
-import type { FigmaVariableCollection, FigmaVariable } from "./messages";
+import type { Metadata, ResolvedCollection, CollectionNames, CollectionSources } from "./token-merger";
+import type { FigmaVariableCollection, FigmaVariable, TokenValue } from "./messages";
 import { buildCollectionDiff } from "./token-diff";
 import type { CollectionDiff } from "./token-diff";
 import { figmaToTokenFiles, collectionKind } from "./figma-to-tokens";
@@ -198,4 +198,125 @@ function isModeSelected(
     const slash = key.indexOf("/");
     return key.slice(0, slash) === syntheticName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Apply (pull direction) — routing tokens back to the real Figma collection
+// they came from, for a role backed by more than one physical collection.
+// ---------------------------------------------------------------------------
+
+/** What one `APPLY_TOKENS` message needs — `cleanApply` is added by the
+ * caller, since it depends on cross-payload state (has this real collection
+ * already been wiped by an earlier payload?) that these pure builders don't
+ * track themselves. */
+export interface ApplyPayload {
+  collectionId: string;
+  modeId: string;
+  tokens: Record<string, TokenValue>;
+  resolvedValues?: Record<string, string>;
+  removedPaths?: string[];
+}
+
+/**
+ * Which real Figma collection a token path should apply to: the one
+ * CollectionSources recorded for its top-level segment, or `fallbackName`
+ * (today's behavior — collections[role][0]) when nothing was ever recorded,
+ * e.g. before "Map collections" has been saved since this feature shipped.
+ */
+function resolveTarget(
+  path: string,
+  roleSources: Record<string, string> | undefined,
+  fallbackName: string,
+): string {
+  return roleSources?.[path.split(".")[0]] ?? fallbackName;
+}
+
+function bucket<T>(map: Map<string, T>, key: string, make: () => T): T {
+  let value = map.get(key);
+  if (!value) {
+    value = make();
+    map.set(key, value);
+  }
+  return value;
+}
+
+/**
+ * Builds one `APPLY_TOKENS` payload per real Figma collection a diff's
+ * changed/removed entries actually belong to — a faithful extraction of what
+ * used to be Sync.tsx's `sendApplyDiff`, generalized to fan out instead of
+ * always targeting `diff.collectionName`. With no CollectionSources recorded
+ * for this role, every entry resolves to `diff.collectionName` and this
+ * returns exactly one payload, identical to the old single-message behavior.
+ */
+export function buildApplyPayloads(
+  diff: CollectionDiff,
+  names: CollectionNames,
+  sources: CollectionSources,
+): ApplyPayload[] {
+  const role = collectionKind(diff.collectionName, names);
+  const roleSources = role === "unknown" ? undefined : sources[role];
+
+  const groups = new Map<
+    string,
+    { tokens: Record<string, TokenValue>; resolvedValues: Record<string, string>; removedPaths: string[] }
+  >();
+
+  for (const entry of diff.entries) {
+    if (entry.status === "unchanged") continue;
+    const target = resolveTarget(entry.path, roleSources, diff.collectionName);
+    const group = bucket(groups, target, () => ({ tokens: {}, resolvedValues: {}, removedPaths: [] }));
+
+    if (entry.status === "removed") {
+      group.removedPaths.push(entry.path);
+      continue;
+    }
+    const value = entry.githubRawValue ?? entry.githubValue;
+    if (!value) continue;
+    group.tokens[entry.path] = { $type: entry.type, $value: value };
+    if (entry.githubValue && entry.githubRawValue && entry.githubRawValue !== entry.githubValue) {
+      group.resolvedValues[entry.path] = entry.githubValue;
+    }
+  }
+
+  return Array.from(groups.entries()).map(([collectionId, group]) => ({
+    collectionId,
+    modeId: diff.modeName,
+    tokens: group.tokens,
+    resolvedValues: Object.keys(group.resolvedValues).length > 0 ? group.resolvedValues : undefined,
+    removedPaths: group.removedPaths.length > 0 ? group.removedPaths : undefined,
+  }));
+}
+
+/**
+ * Same routing as buildApplyPayloads, for Clean Apply — which sends every
+ * token in the collection (not just the changed ones) and has no concept of
+ * "removed" entries of its own (deletion there is handled by `cleanApply`
+ * wiping the target collection first, applied by the caller per real target).
+ */
+export function buildCleanApplyPayloads(
+  col: ResolvedCollection,
+  names: CollectionNames,
+  sources: CollectionSources,
+): ApplyPayload[] {
+  const role = collectionKind(col.collectionName, names);
+  const roleSources = role === "unknown" ? undefined : sources[role];
+
+  const groups = new Map<string, { tokens: Record<string, TokenValue>; resolvedValues: Record<string, string> }>();
+
+  for (const [path, token] of Object.entries(col.rawTokens)) {
+    const target = resolveTarget(path, roleSources, col.collectionName);
+    const group = bucket(groups, target, () => ({ tokens: {}, resolvedValues: {} }));
+    group.tokens[path] = token;
+    const resolved = col.tokens[path];
+    if (resolved && token.$value !== resolved.$value) {
+      group.resolvedValues[path] = resolved.$value;
+    }
+  }
+
+  return Array.from(groups.entries()).map(([collectionId, group]) => ({
+    collectionId,
+    modeId: col.modeName,
+    tokens: group.tokens,
+    resolvedValues: Object.keys(group.resolvedValues).length > 0 ? group.resolvedValues : undefined,
+  }));
 }

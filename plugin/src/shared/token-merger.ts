@@ -48,6 +48,24 @@ export interface CollectionNames {
   sizes: string[];
 }
 
+/**
+ * Which real Figma collection each top-level path segment (`black`, `blue`,
+ * `primitive`, …) came from, per role — the same granularity
+ * `figma-to-tokens.ts`'s `groupByFirstSegment` already uses to split a role's
+ * tokens into separate files. Needed only when a role is backed by more than
+ * one physical Figma collection: without it, applying a pull has no way to
+ * know which of them a given token belongs to, and defaults every token in
+ * the role to `collections[role][0]` — wrong (and, worse, duplicate-creating,
+ * since Figma variable lookups on apply are scoped to one collection) for
+ * anything that actually lives in a different one.
+ *
+ * Auto-computed by `buildCollectionSources` (figma-to-tokens.ts) and written
+ * whenever "Map collections" is saved — never hand-edited. A segment with no
+ * entry here (a fresh repo, or a token added by hand since the last save)
+ * falls back to `collections[role][0]`, identical to today's behavior.
+ */
+export type CollectionSources = Partial<Record<keyof CollectionNames, Record<string, string>>>;
+
 export interface Metadata {
   version: string;
   /** Named theme variants — each becomes a mode in the Themes collection. */
@@ -69,6 +87,7 @@ export interface Metadata {
   figma: {
     fileKey: string;
     collections: CollectionNames;
+    collectionSources?: CollectionSources;
   };
   ignoredCollections?: string[];
   /** Per-platform code output, run by `runTransformers` on push. All optional
@@ -109,6 +128,7 @@ function defaultMetadata(): Metadata {
         semantic: ["Semantic"],
         sizes: [],
       },
+      collectionSources: {},
     },
     ignoredCollections: [],
   };
