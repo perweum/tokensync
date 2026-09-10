@@ -4,10 +4,13 @@ import {
   computePullDiff,
   computePushDiff,
   buildFilesFromDiffs,
+  buildApplyPayloads,
+  buildCleanApplyPayloads,
 } from "./sync-logic";
-import type { Metadata, ResolvedCollection } from "./token-merger";
+import type { Metadata, ResolvedCollection, CollectionSources } from "./token-merger";
 import type { FigmaFlatMap } from "./sync-logic";
 import type { FigmaVariableCollection, FigmaVariable } from "./messages";
+import type { CollectionDiff, DiffEntry } from "./token-diff";
 import { figmaToCollections } from "./figma-to-tokens";
 
 function metadata(overrides: Partial<Metadata> = {}): Metadata {
@@ -38,6 +41,27 @@ function col(
   rawTokens: ResolvedCollection["rawTokens"] = tokens,
 ): ResolvedCollection {
   return { collectionName, modeName, tokens, rawTokens, typographyStyles: [] };
+}
+
+function entry(path: string, status: DiffEntry["status"], value = "#fff"): DiffEntry {
+  return {
+    path,
+    type: "color",
+    status,
+    githubValue: status === "removed" ? null : value,
+    githubRawValue: status === "removed" ? null : value,
+    figmaValue: status === "added" ? null : "#000",
+  };
+}
+
+function diff(collectionName: string, modeName: string, entries: DiffEntry[]): CollectionDiff {
+  const counts = {
+    added: entries.filter((e) => e.status === "added").length,
+    changed: entries.filter((e) => e.status === "changed").length,
+    removed: entries.filter((e) => e.status === "removed").length,
+    total: entries.length,
+  };
+  return { collectionName, modeName, entries, counts };
 }
 
 describe("isIgnoredCollection", () => {
@@ -405,5 +429,101 @@ describe("buildFilesFromDiffs", () => {
     const allContent = files.map((f) => f.content).join("\n");
     expect(allContent).toContain('"primary"');
     expect(allContent).toContain('"accent"');
+  });
+});
+
+describe("buildApplyPayloads", () => {
+  it("with no provenance recorded, sends exactly one payload targeting diff.collectionName — identical to the old single-message behavior", () => {
+    const d = diff("Primitives", "Value", [
+      entry("color.brand", "added", "#0142fe"),
+      entry("color.accent", "changed", "#003ee0"),
+      entry("color.old", "removed"),
+    ]);
+
+    const payloads = buildApplyPayloads(d, metadata().figma.collections, {});
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].collectionId).toBe("Primitives");
+    expect(payloads[0].modeId).toBe("Value");
+    expect(payloads[0].tokens["color.brand"]).toEqual({ $type: "color", $value: "#0142fe" });
+    expect(payloads[0].tokens["color.accent"]).toEqual({ $type: "color", $value: "#003ee0" });
+    expect(payloads[0].removedPaths).toEqual(["color.old"]);
+  });
+
+  it("routes each entry to the real collection its top-level segment came from — the primitives/size bug", () => {
+    // Reproduces exactly what went wrong live: primitives role backed by
+    // "size" and "primitives", nothing routes to "primitives" without this.
+    const d = diff("size", "mobile", [
+      entry("primitive.font-size.1", "added", "16px"),
+      entry("Black.100", "added", "rgba(0, 0, 0, 0.15)"),
+    ]);
+    const names = {
+      primitives: ["size", "primitives"],
+      global: ["Global"],
+      themes: ["Themes"],
+      semantic: ["Semantic"],
+      sizes: [] as string[],
+    };
+    const sources: CollectionSources = { primitives: { primitive: "size", Black: "primitives" } };
+
+    const payloads = buildApplyPayloads(d, names, sources);
+
+    const sizePayload = payloads.find((p) => p.collectionId === "size")!;
+    const primitivesPayload = payloads.find((p) => p.collectionId === "primitives")!;
+    expect(sizePayload.tokens["primitive.font-size.1"].$value).toBe("16px");
+    expect(sizePayload.tokens["Black.100"]).toBeUndefined();
+    expect(primitivesPayload.tokens["Black.100"].$value).toBe("rgba(0, 0, 0, 0.15)");
+    expect(primitivesPayload.tokens["primitive.font-size.1"]).toBeUndefined();
+  });
+
+  it("routes a removed entry to its recorded target too, not always diff.collectionName", () => {
+    const d = diff("Main Color", "Christmas", [entry("support.old", "removed")]);
+    const names = {
+      primitives: ["Primitives"],
+      global: ["Global"],
+      themes: ["Main Color", "Support Color"],
+      semantic: ["Semantic"],
+      sizes: [] as string[],
+    };
+    const sources: CollectionSources = { themes: { support: "Support Color" } };
+
+    const payloads = buildApplyPayloads(d, names, sources);
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].collectionId).toBe("Support Color");
+    expect(payloads[0].removedPaths).toEqual(["support.old"]);
+  });
+});
+
+describe("buildCleanApplyPayloads", () => {
+  it("with no provenance recorded, sends exactly one payload for the whole collection", () => {
+    const c = col("Primitives", "Value", {
+      "color.brand": { $type: "color", $value: "#0142fe" },
+    });
+
+    const payloads = buildCleanApplyPayloads(c, metadata().figma.collections, {});
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].collectionId).toBe("Primitives");
+    expect(payloads[0].tokens["color.brand"].$value).toBe("#0142fe");
+  });
+
+  it("splits a role's full token set across the real collections its segments belong to", () => {
+    const c = col("size", "mobile", {
+      "primitive.font-size.1": { $type: "dimension", $value: "16px" },
+      "Black.100": { $type: "color", $value: "rgba(0, 0, 0, 0.15)" },
+    });
+    const names = {
+      primitives: ["size", "primitives"],
+      global: ["Global"],
+      themes: ["Themes"],
+      semantic: ["Semantic"],
+      sizes: [] as string[],
+    };
+    const sources: CollectionSources = { primitives: { primitive: "size", Black: "primitives" } };
+
+    const payloads = buildCleanApplyPayloads(c, names, sources);
+
+    expect(payloads.map((p) => p.collectionId).sort()).toEqual(["primitives", "size"]);
   });
 });

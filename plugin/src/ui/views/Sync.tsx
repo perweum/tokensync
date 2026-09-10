@@ -9,17 +9,17 @@ import { fetchTokenFiles, fetchBranches, createBranch, createTokenPR } from "../
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
-import type { ParsedRepository } from "../../shared/token-merger";
+import type { ParsedRepository, Metadata } from "../../shared/token-merger";
 import { figmaToCollections } from "../../shared/figma-to-tokens";
 import type { CollectionDiff } from "../../shared/token-diff";
-import { computePullDiff, computePushDiff, buildFilesFromDiffs } from "../../shared/sync-logic";
-import type {
-  PluginMessage,
-  FigmaVariableCollection,
-  FigmaVariable,
-  TokenTree,
-  TokenValue,
-} from "../../shared/messages";
+import {
+  computePullDiff,
+  computePushDiff,
+  buildFilesFromDiffs,
+  buildApplyPayloads,
+  buildCleanApplyPayloads,
+} from "../../shared/sync-logic";
+import type { PluginMessage, FigmaVariableCollection, FigmaVariable, TokenValue } from "../../shared/messages";
 import type { TypographyStyle } from "../../shared/typography-styles";
 import { PullDiff } from "./PullDiff";
 import { PushDiff } from "./PushDiff";
@@ -101,6 +101,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const pendingGitHubCollections = useRef<ReturnType<typeof parseRepository>["collections"] | null>(
     null,
   );
+  // Kept separately from pendingGitHub (nulled once its collections are
+  // extracted below) — apply needs figma.collections/collectionSources to
+  // route each token to its real Figma collection, which happens well after
+  // that point, when the user actually clicks Apply on the reviewed diff.
+  const pendingGitHubMetadata = useRef<Metadata | null>(null);
   const pendingFiles = useRef<Awaited<ReturnType<typeof fetchTokenFiles>> | null>(null);
   const pendingParsed = useRef<ParsedRepository | null>(null); // push: parsed GitHub repo (metadata + collections)
   const pendingFigmaCollections = useRef<
@@ -318,6 +323,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     // Clean Apply must also skip ignored collections — store the filtered list
     pendingGitHubCollections.current = filteredGithubCollections;
+    pendingGitHubMetadata.current = github.metadata;
     pendingGitHub.current = null;
   }
 
@@ -342,38 +348,6 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     }
 
     return { styles, resolvedFallback };
-  }
-
-  function sendApplyDiff(diff: CollectionDiff) {
-    const changed = diff.entries.filter((e) => e.status === "added" || e.status === "changed");
-
-    const tokensToApply = changed.reduce<Record<string, { $type: string; $value: string }>>(
-      (acc, entry) => {
-        const value = entry.githubRawValue ?? entry.githubValue;
-        if (value) acc[entry.path] = { $type: entry.type, $value: value };
-        return acc;
-      },
-      {},
-    );
-
-    // Resolved hex values — used as fallback when the ref target variable doesn't exist yet
-    const resolvedValues: Record<string, string> = {};
-    for (const entry of changed) {
-      if (entry.githubValue && entry.githubRawValue && entry.githubRawValue !== entry.githubValue) {
-        resolvedValues[entry.path] = entry.githubValue;
-      }
-    }
-
-    const removedPaths = diff.entries.filter((e) => e.status === "removed").map((e) => e.path);
-
-    send({
-      type: "APPLY_TOKENS",
-      tokens: tokensToApply,
-      resolvedValues: Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
-      collectionId: diff.collectionName,
-      modeId: diff.modeName,
-      removedPaths: removedPaths.length > 0 ? removedPaths : undefined,
-    });
   }
 
   /**
@@ -405,17 +379,36 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     );
     if (pending.length === 0) return;
 
+    const names = pendingGitHubMetadata.current?.figma.collections;
+    if (!names) return;
+    const sources = pendingGitHubMetadata.current?.figma.collectionSources ?? {};
+
+    // A role backed by more than one physical Figma collection can now fan
+    // out into more than one APPLY_TOKENS payload — each routed to the real
+    // collection its tokens belong to (see buildApplyPayloads). With no
+    // provenance recorded for a role, every payload still targets
+    // diff.collectionName, identical to the single-message behavior before
+    // this existed.
+    const payloads = pending.flatMap((diff) => buildApplyPayloads(diff, names, sources));
+
     // Typography styles ride along only for the collections actually being applied.
     const relevantCollections = (pendingGitHubCollections.current ?? []).filter((c) =>
       pending.some((d) => d.collectionName === c.collectionName && d.modeName === c.modeName),
     );
     const typographyPayload = syncTypeStyles ? collectTypographyPayload(relevantCollections) : null;
 
-    applyAllRemaining.current = pending.length + (typographyPayload ? 1 : 0);
+    applyAllRemaining.current = payloads.length + (typographyPayload ? 1 : 0);
     applyAllBatchErrors.current = [];
     setApplying(true);
-    for (const diff of pending) {
-      sendApplyDiff(diff);
+    for (const payload of payloads) {
+      send({
+        type: "APPLY_TOKENS",
+        tokens: payload.tokens,
+        resolvedValues: payload.resolvedValues,
+        collectionId: payload.collectionId,
+        modeId: payload.modeId,
+        removedPaths: payload.removedPaths,
+      });
     }
     // Sent last so the plugin's serial apply queue runs it after every
     // collection above — styles must bind after their Variables exist.
@@ -432,31 +425,31 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     const allCollections = pendingGitHubCollections.current;
     if (!allCollections) return;
 
+    const names = pendingGitHubMetadata.current?.figma.collections;
+    if (!names) return;
+    const sources = pendingGitHubMetadata.current?.figma.collectionSources ?? {};
+
     const typographyPayload = syncTypeStyles ? collectTypographyPayload(allCollections) : null;
-    applyAllRemaining.current = allCollections.length + (typographyPayload ? 1 : 0);
+    const payloads = allCollections.flatMap((col) => buildCleanApplyPayloads(col, names, sources));
+    applyAllRemaining.current = payloads.length + (typographyPayload ? 1 : 0);
     applyAllBatchErrors.current = [];
     setApplying(true);
-    // Only send cleanApply=true for the first mode of each collection.
-    // Multi-mode collections (e.g. Semantic with Light + Dark) share variables —
-    // a clean apply on mode 2 would delete variables written by mode 1.
+    // Only send cleanApply=true for the first payload targeting each real
+    // Figma collection — keyed by the resolved collectionId, not the role's
+    // display name, since a role split across collections can now route
+    // more than one payload to distinct real collections that each need
+    // their own first-time wipe, and two different roles/modes can resolve
+    // to the *same* real collection and must not wipe it twice.
     const cleanedCollections = new Set<string>();
-    for (const col of allCollections) {
-      const isFirst = !cleanedCollections.has(col.collectionName);
-      if (isFirst) cleanedCollections.add(col.collectionName);
-      // Build resolved fallback map: path → hex value, for tokens whose raw value is a {ref}
-      const resolvedValues: Record<string, string> = {};
-      for (const [path, token] of Object.entries(col.rawTokens)) {
-        const resolved = col.tokens[path];
-        if (resolved && token.$value !== resolved.$value) {
-          resolvedValues[path] = resolved.$value;
-        }
-      }
+    for (const payload of payloads) {
+      const isFirst = !cleanedCollections.has(payload.collectionId);
+      if (isFirst) cleanedCollections.add(payload.collectionId);
       send({
         type: "APPLY_TOKENS",
-        tokens: col.rawTokens as TokenTree,
-        resolvedValues: Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
-        collectionId: col.collectionName,
-        modeId: col.modeName,
+        tokens: payload.tokens,
+        resolvedValues: payload.resolvedValues,
+        collectionId: payload.collectionId,
+        modeId: payload.modeId,
         cleanApply: isFirst,
       });
     }

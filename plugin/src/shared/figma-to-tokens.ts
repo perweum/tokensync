@@ -10,7 +10,7 @@ import type {
   FigmaVariableValue,
   TokenValue,
 } from "./messages";
-import type { ResolvedCollection, CollectionNames, Metadata } from "./token-merger";
+import type { ResolvedCollection, CollectionNames, CollectionSources, Metadata } from "./token-merger";
 import { fromFigmaVarName, resolveAllReferences } from "./token-format";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -657,6 +657,31 @@ export function collectionKind(name: string, names: CollectionNames): Collection
   if (names.semantic.includes(name)) return "semantic";
   if (names.sizes.includes(name)) return "sizes";
   return "unknown";
+}
+
+/**
+ * Records which real Figma collection each top-level path segment came from,
+ * per role — see CollectionSources' own doc comment (token-merger.ts) for why
+ * this exists. Meant to be called when "Map collections" is saved (it has the
+ * live collections/variables at hand there), not on every push — the whole
+ * point is a stable record of "where segment X currently lives", which a
+ * push has no reason to recompute every time.
+ */
+export function buildCollectionSources(
+  variables: FigmaVariable[],
+  names: CollectionNames,
+): CollectionSources {
+  const sources: CollectionSources = {};
+
+  for (const variable of variables) {
+    const kind = collectionKind(variable.collectionName, names);
+    if (kind === "unknown") continue;
+
+    const bucket = (sources[kind] ??= {});
+    bucket[firstSegment(variable.name)] = variable.collectionName;
+  }
+
+  return sources;
 }
 
 // ---------------------------------------------------------------------------
