@@ -590,3 +590,61 @@ describe("buildCollectionSources", () => {
     expect(sources.themes ?? {}).toEqual({});
   });
 });
+
+describe("figmaToTokenFiles — STRING variable type inference", () => {
+  const names = {
+    primitives: ["Primitives"],
+    global: [] as string[],
+    themes: [] as string[],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+
+  it("classifies a STRING fontWeight variable as fontWeight, not fontFamily", () => {
+    // Real bug found live: "fontWeight/light" also matches /family|font/i
+    // (it contains "font"), so without a "weight" check first, every named
+    // STRING weight ("Light", "Bold", ...) was misclassified as fontFamily.
+    // Named weights are STRING in real usage, not FLOAT — see the
+    // fontWeight/fontStyle decision in DECISIONS.md.
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "fontWeight/light",
+        resolvedType: "STRING",
+        valuesByMode: { m1: "Light" },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+    ];
+
+    const files = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const tree = JSON.parse(files[0].content);
+
+    expect(tree.fontWeight.light.$type).toBe("fontWeight");
+    expect(tree.fontWeight.light.$value).toBe("Light");
+  });
+
+  it("still classifies a genuine fontFamily variable as fontFamily", () => {
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "fontFamily/sans",
+        resolvedType: "STRING",
+        valuesByMode: { m1: "Inter" },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+    ];
+
+    const files = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const tree = JSON.parse(files[0].content);
+
+    expect(tree.fontFamily.sans.$type).toBe("fontFamily");
+  });
+});
