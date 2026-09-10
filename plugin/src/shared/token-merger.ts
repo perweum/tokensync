@@ -282,10 +282,27 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
           ],
         );
 
+  // Resolved-display context for anything downstream of Theme — e.g. a
+  // theme's own type-style choices (fontFamily/fontWeight (primitives) →
+  // Theme (Masterbrand) → type styles), which is how Figma's real graph and
+  // Token Studio's own repo shape both structure it. Substituting the first
+  // theme mirrors exactly what Semantic already did below before this moved
+  // up: resolved output shows one theme's choice for diff/display/CSS
+  // purposes; rawTokens (used for Figma alias creation) never include this.
+  const firstThemeName = findCaseInsensitive(Object.keys(layers.themes), metadata.themes[0] ?? "default");
+  const defaultThemeTree = firstThemeName ? layers.themes[firstThemeName] : {};
+
   // --- Global collection ---
   const globalTree = deepMergeTrees(Object.values(layers.global));
-  const globalWithPrimitivesFlat = flattenTokens(deepMergeTrees([defaultPrimitivesTree, globalTree]));
-  const globalResolved = resolveAllReferences(globalWithPrimitivesFlat);
+  // rawTokens: no theme tree in merge — a ref into a theme-scoped group (e.g.
+  // {font-family.display}) remains a literal string, for Figma alias creation.
+  const globalRawUnresolved = flattenTokens(deepMergeTrees([defaultPrimitivesTree, globalTree]));
+  // resolved: include the default theme so a ref like {font-family.display}
+  // (defined per-theme, not in Primitives) resolves instead of silently
+  // staying as unresolved literal text on every diff/CSS read.
+  const globalResolved = resolveAllReferences(
+    flattenTokens(deepMergeTrees([defaultPrimitivesTree, defaultThemeTree, globalTree])),
+  );
   const globalPaths = Object.keys(flattenTokens(globalTree));
   collections.push({
     // Falls back to a literal "Global" when nothing is mapped to that role
@@ -299,7 +316,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     collectionName: names.global[0] ?? "Global",
     modeName: "Value",
     tokens: filterByPaths(globalResolved, globalPaths),
-    rawTokens: filterByPaths(globalWithPrimitivesFlat, globalPaths),
+    rawTokens: filterByPaths(globalRawUnresolved, globalPaths),
     typographyStyles: extractTypographyStyles(globalTree),
   });
 
@@ -323,9 +340,6 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   // rawTokens keep {light.*} and {dark.*} refs unresolved so the plugin creates
   // Themes→Semantic cross-collection aliases. Severity tokens ref Primitives directly.
   // Resolved tokens substitute the first theme for diff comparison and display.
-  const firstThemeName = findCaseInsensitive(Object.keys(layers.themes), metadata.themes[0] ?? "default");
-  const defaultThemeTree = firstThemeName ? layers.themes[firstThemeName] : {};
-
   for (const scheme of metadata.colorSchemes) {
     const schemeKey = findCaseInsensitive(Object.keys(layers.semantic), scheme);
     if (!schemeKey) continue;

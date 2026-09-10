@@ -513,6 +513,42 @@ describe("parseRepository — theme file reuses Primitives' top-level key", () =
   });
 });
 
+describe("parseRepository — Global resolves refs into a theme-scoped group", () => {
+  // Reproduces a real bug found live: Figma's own structure for type styles
+  // is fontFamily/fontWeight (Primitives) → Theme (e.g. Masterbrand) → type
+  // styles — the theme layer picks a named font/weight per its own brand,
+  // and the type style itself (written to semantic/global/typography.json,
+  // the "Global" role) references that theme-scoped choice, not Primitives
+  // directly. Global's resolution context used to merge only Primitives +
+  // its own tree — never any theme — so a ref like {font-family.display}
+  // (defined only inside a theme file) had nothing to resolve against and
+  // silently stayed as the literal unresolved string on every read.
+  it("resolves a Global token's ref into the default theme's own group", () => {
+    const files = [
+      file("tokens/primitives/fontFamily.json", {
+        fontFamily: { "coop-sans": { $type: "fontFamily", $value: "Coop Sans" } },
+      }),
+      file("tokens/semantic/themes/default.json", {
+        "font-family": {
+          display: { $type: "fontFamily", $value: "{fontFamily.coop-sans}" },
+        },
+      }),
+      file("tokens/semantic/global/typography.json", {
+        typography: {
+          banner: { fontFamily: { $type: "fontFamily", $value: "{font-family.display}" } },
+        },
+      }),
+      file("tokens/semantic/light.json", semanticLight),
+      file("tokens/semantic/dark.json", semanticDark),
+    ];
+    const { collections } = parseRepository(files, tokensPath);
+    const global = collections.find((c) => c.collectionName === "Global")!;
+    expect(global.tokens["typography.banner.fontFamily"].$value).toBe("Coop Sans");
+    // rawTokens must stay unresolved — this is what Figma alias creation reads.
+    expect(global.rawTokens["typography.banner.fontFamily"].$value).toBe("{font-family.display}");
+  });
+});
+
 // ────────────────────────────────────────────────────────────────
 // parseRepository — Global collection name falls back when no role is mapped
 // ────────────────────────────────────────────────────────────────
