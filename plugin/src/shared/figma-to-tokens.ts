@@ -11,7 +11,7 @@ import type {
   TokenValue,
 } from "./messages";
 import type { ResolvedCollection, CollectionNames, CollectionSources, Metadata } from "./token-merger";
-import { fromFigmaVarName, resolveAllReferences, isPureRef } from "./token-format";
+import { fromFigmaVarName, resolveAllReferences, isPureRef, isTokenValue } from "./token-format";
 import type { TypographyStyle } from "./typography-styles";
 
 export interface TokenFile {
@@ -261,6 +261,16 @@ function filterByPaths(
   return Object.fromEntries(Object.entries(flat).filter(([k]) => set.has(k)));
 }
 
+export interface FigmaToTokenFilesResult {
+  files: TokenFile[];
+  /** Dot-paths skipped because a real Figma variable name structurally
+   * collided with another one at the same position (e.g. "surface/brand"
+   * and "surface/brand/default" both existing) — see setNested. Whichever
+   * shape was established first in the written file; the other is listed
+   * here rather than silently corrupting or replacing it. */
+  conflictPaths: string[];
+}
+
 /**
  * Produce token JSON files suitable for committing to GitHub.
  */
@@ -270,8 +280,9 @@ export function figmaToTokenFiles(
   tokensPath: string,
   figmaCollectionNames: CollectionNames,
   typographyStyles: TypographyStyle[] = [],
-): TokenFile[] {
+): FigmaToTokenFilesResult {
   const varById = new Map(variables.map((v) => [v.id, v]));
+  const conflictPaths: string[] = [];
 
   // Same reasoning as figmaToCollections: a role can be backed by several
   // physical collections, and two of them can each contribute a mode with the
@@ -311,22 +322,22 @@ export function figmaToTokenFiles(
   }
 
   const files: TokenFile[] = [];
-  files.push(...buildPrimitiveFiles(primitivesEntries, varById, tokensPath));
-  files.push(...buildGlobalFiles(globalEntries, varById, tokensPath, typographyStyles));
+  files.push(...buildPrimitiveFiles(primitivesEntries, varById, tokensPath, conflictPaths));
+  files.push(...buildGlobalFiles(globalEntries, varById, tokensPath, typographyStyles, conflictPaths));
   for (const { modeName, entries } of themeModeEntries.values()) {
-    const file = buildThemeFile(entries, modeName, varById, tokensPath);
+    const file = buildThemeFile(entries, modeName, varById, tokensPath, conflictPaths);
     if (file) files.push(file);
   }
   for (const { modeName, entries } of semanticModeEntries.values()) {
-    const file = buildSemanticFile(entries, modeName, varById, tokensPath);
+    const file = buildSemanticFile(entries, modeName, varById, tokensPath, conflictPaths);
     if (file) files.push(file);
   }
   for (const { modeName, entries } of sizeModeEntries.values()) {
-    const file = buildSizeFile(entries, modeName, varById, tokensPath);
+    const file = buildSizeFile(entries, modeName, varById, tokensPath, conflictPaths);
     if (file) files.push(file);
   }
 
-  return files;
+  return { files, conflictPaths };
 }
 
 /** A variable paired with the modeId to read its value at — kept together
@@ -412,12 +423,13 @@ function buildPrimitiveFiles(
   entries: VarEntry[],
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
+  conflictPaths: string[],
 ): TokenFile[] {
   // Group by first path segment: color → color.json, geometry → geometry.json
   const groups = groupByFirstSegment(entries);
   return Object.entries(groups).map(([segment, segEntries]) => ({
     repoPath: joinPath(tokensPath, "primitives", `${segment}.json`),
-    content: buildJsonFile(segEntries, varById),
+    content: buildJsonFile(segEntries, varById, conflictPaths),
   }));
 }
 
@@ -426,6 +438,7 @@ function buildGlobalFiles(
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
   typographyStyles: TypographyStyle[],
+  conflictPaths: string[],
 ): TokenFile[] {
   const typoSegments = new Set([
     "text",
@@ -457,17 +470,20 @@ function buildGlobalFiles(
   if (typoEntries.length > 0 || typographyStyles.length > 0)
     files.push({
       repoPath: joinPath(tokensPath, "semantic/global", "typography.json"),
-      content: injectTypographyStyles(buildJsonFile(typoEntries, varById), typographyStyles),
+      content: injectTypographyStyles(
+        buildJsonFile(typoEntries, varById, conflictPaths),
+        typographyStyles,
+      ),
     });
   if (spacingEntries.length > 0)
     files.push({
       repoPath: joinPath(tokensPath, "semantic/global", "spacing.json"),
-      content: buildJsonFile(spacingEntries, varById),
+      content: buildJsonFile(spacingEntries, varById, conflictPaths),
     });
   if (otherEntries.length > 0)
     files.push({
       repoPath: joinPath(tokensPath, "semantic/global", "other.json"),
-      content: buildJsonFile(otherEntries, varById),
+      content: buildJsonFile(otherEntries, varById, conflictPaths),
     });
 
   return files;
@@ -482,12 +498,13 @@ function buildThemeFile(
   modeName: string,
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
+  conflictPaths: string[],
 ): TokenFile | null {
   if (entries.length === 0) return null;
   const themeName = sanitizeFileName(modeName);
   return {
     repoPath: joinPath(tokensPath, "semantic/themes", `${themeName}.json`),
-    content: buildJsonFile(entries, varById),
+    content: buildJsonFile(entries, varById, conflictPaths),
   };
 }
 
@@ -500,13 +517,14 @@ function buildSemanticFile(
   modeName: string,
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
+  conflictPaths: string[],
 ): TokenFile | null {
   if (entries.length === 0) return null;
 
   const scheme = sanitizeFileName(modeName);
   return {
     repoPath: joinPath(tokensPath, "semantic", `${scheme}.json`),
-    content: buildJsonFile(entries, varById),
+    content: buildJsonFile(entries, varById, conflictPaths),
   };
 }
 
@@ -521,12 +539,13 @@ function buildSizeFile(
   modeName: string,
   varById: Map<string, FigmaVariable>,
   tokensPath: string,
+  conflictPaths: string[],
 ): TokenFile | null {
   if (entries.length === 0) return null;
   const sizeName = sanitizeFileName(modeName);
   return {
     repoPath: joinPath(tokensPath, "primitives/sizes", `${sizeName}.json`),
-    content: buildJsonFile(entries, varById),
+    content: buildJsonFile(entries, varById, conflictPaths),
   };
 }
 
@@ -542,7 +561,11 @@ function sanitizeFileName(modeName: string): string {
 // JSON file builder (nested tree from flat variables)
 // ---------------------------------------------------------------------------
 
-function buildJsonFile(entries: VarEntry[], varById: Map<string, FigmaVariable>): string {
+function buildJsonFile(
+  entries: VarEntry[],
+  varById: Map<string, FigmaVariable>,
+  conflictPaths: string[],
+): string {
   const tree: Record<string, unknown> = {};
 
   for (const { variable: v, modeId } of entries) {
@@ -558,7 +581,7 @@ function buildJsonFile(entries: VarEntry[], varById: Map<string, FigmaVariable>)
     if (v.description) {
       entry.$description = v.description;
     }
-    setNested(tree, path.split("."), entry);
+    if (!setNested(tree, path.split("."), entry)) conflictPaths.push(path);
   }
 
   return JSON.stringify(tree, null, 2);
@@ -771,15 +794,43 @@ function joinPath(...parts: string[]): string {
     .join("/");
 }
 
-function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): void {
+/**
+ * Sets `value` at `keys` within `obj` — but refuses to silently corrupt the
+ * tree when two real Figma variable names collide structurally, e.g.
+ * "Light/surface/brand" *and* "Light/surface/brand/default" both existing
+ * at once (Figma allows this; a nested JSON tree cannot represent both a
+ * leaf and a group at the same path). Confirmed live (Vy's Spor system):
+ * depending purely on which variable Figma happened to return last, this
+ * either silently destroyed an entire group's data (the flat one, written
+ * last, overwrote the group with nothing left behind) or produced an
+ * invalid hybrid object that's both a leaf and a group at once (the flat
+ * one written first, then children got merged directly onto it) — neither
+ * outcome was ever visible anywhere.
+ *
+ * Whichever shape is established *first* wins; the later, conflicting
+ * write is skipped entirely rather than corrupting or replacing it. Returns
+ * false when a write was skipped this way, so the caller can collect and
+ * report the conflicting path instead of it disappearing silently.
+ */
+function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): boolean {
   let current = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    if (typeof current[keys[i]] !== "object" || current[keys[i]] === null) {
+    const existing = current[keys[i]];
+    if (existing !== undefined && isTokenValue(existing)) {
+      return false; // a shorter path already claimed this position as a complete leaf
+    }
+    if (typeof existing !== "object" || existing === null) {
       current[keys[i]] = {};
     }
     current = current[keys[i]] as Record<string, unknown>;
   }
-  current[keys[keys.length - 1]] = value;
+  const finalKey = keys[keys.length - 1];
+  const existingFinal = current[finalKey];
+  if (existingFinal !== undefined && typeof existingFinal === "object" && existingFinal !== null && !isTokenValue(existingFinal)) {
+    return false; // a longer path already established this position as a group
+  }
+  current[finalKey] = value;
+  return true;
 }
 
 function getNested(obj: Record<string, unknown>, keys: string[]): unknown {
