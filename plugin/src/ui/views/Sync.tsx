@@ -87,7 +87,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [outputOnlyFiles, setOutputOnlyFiles] = useState<string[]>([]);
   const [lastSync, setLastSync] = useState<LastSync | null>(null);
 
-  // Branch switching — persisted per project; defaults to the configured branch
+  // Branch switching — persisted per project; defaults to the configured branch.
+  // Stored as {repo, branch} rather than a bare branch string, so that editing
+  // a project's repo in Settings (project.id unchanged) correctly invalidates
+  // a branch name cached for the *previous* repo instead of silently resurrecting
+  // it — found live: a project repointed at a new repo still showed the old
+  // repo's branch name on this screen after Settings reported success.
   const branchKey = `tokensync:branch:${project.id}`;
   const [activeBranch, setActiveBranch] = useState(project.branch);
   const [branches, setBranches] = useState<string[]>([]);
@@ -169,7 +174,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   function handleBranchChange(branch: string) {
     setActiveBranch(branch);
-    send({ type: "SAVE_STORAGE", key: branchKey, value: branch });
+    send({
+      type: "SAVE_STORAGE",
+      key: branchKey,
+      value: JSON.stringify({ repo: project.repo, branch }),
+    });
     setStatus({ kind: "idle" });
   }
 
@@ -217,7 +226,18 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           }
         }
         if (msg.type === "STORAGE_LOADED" && msg.key === branchKey) {
-          if (msg.value) setActiveBranch(msg.value);
+          if (msg.value) {
+            try {
+              const stored = JSON.parse(msg.value) as { repo: string; branch: string };
+              // Only trust a cached branch name for the repo it was cached
+              // against — a pre-fix bare-string value (no `repo` field) fails
+              // this parse and falls through, correctly discarding a name
+              // that predates this fix and can't be trusted either.
+              if (stored.repo === project.repo) setActiveBranch(stored.branch);
+            } catch {
+              // pre-fix format or corrupt value — ignore, keep project.branch
+            }
+          }
         }
         if (msg.type === "STORAGE_LOADED" && msg.key === syncTypeStylesKey) {
           if (msg.value !== null) setSyncTypeStyles(msg.value === "true");
