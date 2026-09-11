@@ -87,6 +87,13 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // button doing nothing at all.
   const [createError, setCreateError] = useState<DescribedError | undefined>(undefined);
   const [unrecognizedCollections, setUnrecognizedCollections] = useState<string[]>([]);
+  // A "ghost" alias — Figma's own variable picker shows the right target
+  // name, but the underlying link is dead — silently dropped the whole
+  // field from every synced output with zero trace anywhere. Confirmed
+  // live (Vy's Spor system). Surfaced the same way unrecognizedCollections
+  // already is, since Token Spark can't fix a broken link in Figma's own
+  // data, only report it.
+  const [brokenAliasPaths, setBrokenAliasPaths] = useState<string[]>([]);
   // Push, zero token changes: an enabled platform's output file that's never
   // been generated (e.g. just turned on in Output Formats) — see PushDiff's
   // "output-only" state.
@@ -597,13 +604,18 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       pendingParsed.current = githubParsed;
 
       // Figma side: convert to same ResolvedCollection shape
-      const { collections: figmaCollectionData, unknownCollectionNames } = figmaToCollections(
+      const {
+        collections: figmaCollectionData,
+        unknownCollectionNames,
+        brokenAliasPaths: brokenPaths,
+      } = figmaToCollections(
         figmaCollections,
         figmaVariables,
         githubParsed.metadata,
         figmaTypographyStyles,
       );
       setUnrecognizedCollections(unknownCollectionNames);
+      setBrokenAliasPaths(brokenPaths);
       pendingFigmaCollections.current = figmaCollectionData;
       // Keep raw data for writing complete token files to GitHub (not just diff entries)
       pendingFigmaRaw.current = {
@@ -740,6 +752,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       <PushDiff
         diffs={diffs}
         unrecognizedCollections={unrecognizedCollections}
+        brokenAliasPaths={brokenAliasPaths}
         outputOnlyFiles={outputOnlyFiles}
         onCreatePR={(title, keys) => handleCreatePR(title, keys)}
         onBack={() => {
@@ -747,6 +760,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           setStatus({ kind: "idle" });
           pendingFigmaRaw.current = null;
           setUnrecognizedCollections([]);
+          setBrokenAliasPaths([]);
           setOutputOnlyFiles([]);
           setCreateError(undefined);
         }}

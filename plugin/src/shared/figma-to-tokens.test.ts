@@ -667,6 +667,103 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
   });
 });
 
+describe("figmaToCollections — a \"ghost\" alias (right name, dead target id) is reported, not silently dropped", () => {
+  // Confirmed live (Vy's Spor system): a Theme-collection color variable's
+  // VARIABLE_ALIAS pointed at a target id that no longer resolves to any
+  // real variable — the target was deleted/recreated and the alias's id was
+  // never repointed. Figma's own variable picker still showed the intended
+  // target's name correctly (looked completely normal), but the field was
+  // silently missing from every synced output, with zero trace anywhere,
+  // making it extremely hard to diagnose from the sync side alone.
+  const names = {
+    primitives: ["Foundation"],
+    global: [] as string[],
+    themes: ["Theme"],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+
+  it("reports the path as a broken alias and excludes it from tokens, instead of silently dropping it", () => {
+    const collections: FigmaVariableCollection[] = [
+      { id: "cTheme", name: "Theme", modes: [{ modeId: "mVy", name: "Vy" }], variableIds: ["vSuccess"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "vSuccess",
+        name: "Light/surface/success/default",
+        resolvedType: "COLOR",
+        // "vDeleted" is not in `variables` at all — a dangling target id.
+        valuesByMode: { mVy: { type: "VARIABLE_ALIAS", id: "vDeleted" } },
+        collectionId: "cTheme",
+        collectionName: "Theme",
+      },
+    ];
+
+    const { collections: result, brokenAliasPaths } = figmaToCollections(
+      collections,
+      variables,
+      metadataFor(names),
+    );
+    const theme = result.find((c) => c.collectionName === "Theme")!;
+
+    expect(brokenAliasPaths).toEqual(["Light.surface.success.default"]);
+    expect(theme.tokens["Light.surface.success.default"]).toBeUndefined();
+  });
+
+  it("does not report a variable that simply has no value for this mode", () => {
+    // A variable can legitimately have no value set for a given mode — not
+    // every "no value" case is a broken alias, only a dangling VARIABLE_ALIAS
+    // target specifically.
+    const collections: FigmaVariableCollection[] = [
+      { id: "cTheme", name: "Theme", modes: [{ modeId: "mVy", name: "Vy" }], variableIds: ["vUnset"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "vUnset",
+        name: "Light/surface/unset/default",
+        resolvedType: "COLOR",
+        valuesByMode: {},
+        collectionId: "cTheme",
+        collectionName: "Theme",
+      },
+    ];
+
+    const { brokenAliasPaths } = figmaToCollections(collections, variables, metadataFor(names));
+
+    expect(brokenAliasPaths).toEqual([]);
+  });
+
+  it("does not report a genuinely working alias", () => {
+    const collections: FigmaVariableCollection[] = [
+      { id: "cFoundation", name: "Foundation", modes: [{ modeId: "mF", name: "Value" }], variableIds: ["vPrimitive"] },
+      { id: "cTheme", name: "Theme", modes: [{ modeId: "mVy", name: "Vy" }], variableIds: ["vCore"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "vPrimitive",
+        name: "color/green/100",
+        resolvedType: "COLOR",
+        valuesByMode: { mF: { r: 0.8, g: 0.95, b: 0.9 } },
+        collectionId: "cFoundation",
+        collectionName: "Foundation",
+      },
+      {
+        id: "vCore",
+        name: "Light/surface/core/active",
+        resolvedType: "COLOR",
+        valuesByMode: { mVy: { type: "VARIABLE_ALIAS", id: "vPrimitive" } },
+        collectionId: "cTheme",
+        collectionName: "Theme",
+      },
+    ];
+    const namesWithPrimitives = { ...names, primitives: ["Foundation"] };
+
+    const { brokenAliasPaths } = figmaToCollections(collections, variables, metadataFor(namesWithPrimitives));
+
+    expect(brokenAliasPaths).toEqual([]);
+  });
+});
+
 describe("buildCollectionSources", () => {
   const names = {
     primitives: ["size", "primitives"],
