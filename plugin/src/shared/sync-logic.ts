@@ -236,6 +236,16 @@ export function computePushDiff(
  * regardless of selection — they represent the whole design system, not a
  * partial sync.
  */
+export interface BuildFilesFromDiffsResult {
+  files: Array<{ path: string; content: string }>;
+  /** Dot-paths skipped because two real Figma variable names structurally
+   * collide (see figma-to-tokens.ts's setNested) — e.g. "surface/brand" and
+   * "surface/brand/default" both existing. A caller should treat this as a
+   * reason not to proceed with the write, not just a warning: the collision
+   * means the written files are missing real data by construction. */
+  conflictPaths: string[];
+}
+
 export function buildFilesFromDiffs(
   selectedKeys: Set<string>,
   figmaRaw: {
@@ -246,27 +256,28 @@ export function buildFilesFromDiffs(
   metadata: Metadata,
   tokensPath: string,
   allFigmaCollections: ResolvedCollection[] | null,
-): Array<{ path: string; content: string }> {
+): BuildFilesFromDiffsResult {
   const names = metadata.figma.collections;
   const selectedList = Array.from(selectedKeys);
   const filteredCollections = figmaRaw.collections
     .map((col) => ({ ...col, modes: col.modes.filter((mode) => isModeSelected(col, mode, names, selectedList)) }))
     .filter((col) => col.modes.length > 0);
 
-  const tokenFiles = figmaToTokenFiles(
+  const { files: tokenFileList, conflictPaths } = figmaToTokenFiles(
     filteredCollections,
     figmaRaw.variables,
     tokensPath,
     metadata.figma.collections,
     figmaRaw.typographyStyles ?? [],
-  ).map((f) => ({ path: f.repoPath, content: f.content }));
+  );
+  const tokenFiles = tokenFileList.map((f) => ({ path: f.repoPath, content: f.content }));
 
   if (allFigmaCollections) {
     const platformFiles = runTransformers(allFigmaCollections, metadata, tokensPath);
-    return [...tokenFiles, ...platformFiles];
+    return { files: [...tokenFiles, ...platformFiles], conflictPaths };
   }
 
-  return tokenFiles;
+  return { files: tokenFiles, conflictPaths };
 }
 
 /**

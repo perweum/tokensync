@@ -502,7 +502,7 @@ describe("figmaToTokenFiles & figmaToCollections descriptions", () => {
     expect(primCol.tokens["color.brand.500"].$description).toBe("Primary brand color seed");
 
     // 2. Check figmaToTokenFiles
-    const files = figmaToTokenFiles(
+    const { files } = figmaToTokenFiles(
       figmaCollections,
       figmaVariables,
       "tokens/",

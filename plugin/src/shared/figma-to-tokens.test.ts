@@ -185,7 +185,7 @@ describe("figmaToCollections — multiple physical collections mapped to one rol
   });
 
   it("writes one merged file instead of the second collection silently overwriting the first at the same path", () => {
-    const files = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names);
     const christmasFiles = files.filter(
       (f) => f.repoPath === "tokens/semantic/themes/christmas.json",
     );
@@ -261,7 +261,7 @@ describe("figmaToCollections/figmaToTokenFiles — Size axis on Primitives", () 
   });
 
   it("writes one primitives/sizes/{mode}.json per size mode, distinct from the flat primitives files", () => {
-    const files = figmaToTokenFiles(figmaCollections, variables, "tokens/", names);
+    const { files } = figmaToTokenFiles(figmaCollections, variables, "tokens/", names);
     const mobileFile = files.find((f) => f.repoPath === "tokens/primitives/sizes/mobile.json");
     const desktopFile = files.find((f) => f.repoPath === "tokens/primitives/sizes/desktop.json");
     expect(mobileFile?.content).toContain('"$value": "11px"');
@@ -374,7 +374,7 @@ describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.js
       },
     ];
 
-    const files = figmaToTokenFiles(collections, variables, "tokens/", names, typographyStyles);
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names, typographyStyles);
     const typoFile = files.find((f) => f.repoPath === "tokens/semantic/global/typography.json")!;
     const tree = JSON.parse(typoFile.content);
 
@@ -402,7 +402,7 @@ describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.js
       },
     ];
 
-    const files = figmaToTokenFiles(collections, variables, "tokens/", names, typographyStyles);
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names, typographyStyles);
     const typoFile = files.find((f) => f.repoPath === "tokens/semantic/global/typography.json")!;
     const tree = JSON.parse(typoFile.content);
 
@@ -426,7 +426,7 @@ describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.js
       },
     ];
 
-    const files = figmaToTokenFiles(collections, variables, "tokens/", names, []);
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names, []);
     expect(files.some((f) => f.repoPath === "tokens/semantic/global/typography.json")).toBe(false);
   });
 
@@ -460,7 +460,7 @@ describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.js
       { path: "text.banner", fields: { fontSize: { $type: "dimension", $value: "48px" } } },
     ];
 
-    const files = figmaToTokenFiles(
+    const { files } = figmaToTokenFiles(
       collections,
       variables,
       "tokens/",
@@ -764,6 +764,108 @@ describe("figmaToCollections — a \"ghost\" alias (right name, dead target id) 
   });
 });
 
+describe("figmaToTokenFiles — a variable name structurally collides with another (a leaf and a group at the same path)", () => {
+  // Confirmed live (Vy's Spor system): "Light/surface/brand" (a real, standalone
+  // variable) coexisted with "Light/surface/brand/default" / "/active" / "/hover"
+  // (a real group) — both legal Figma variable names, but a nested JSON tree
+  // cannot represent both at once. Depending purely on which variable Figma
+  // happened to return last, this either silently destroyed the entire group
+  // (the flat one written last wins, group data gone) or produced an invalid
+  // hybrid object that's both a leaf and a group (the flat one written first,
+  // then children merged directly onto it) — neither was visible anywhere.
+  const names = {
+    primitives: [] as string[],
+    global: [] as string[],
+    themes: ["Theme"],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+
+  function makeCollisionVars(order: "flat-first" | "group-first"): FigmaVariable[] {
+    const flat: FigmaVariable = {
+      id: "vFlat",
+      name: "Light/surface/brand",
+      resolvedType: "COLOR",
+      valuesByMode: { m1: { r: 0, g: 0.5, b: 0 } },
+      collectionId: "cTheme",
+      collectionName: "Theme",
+    };
+    const groupVars: FigmaVariable[] = [
+      {
+        id: "vDefault",
+        name: "Light/surface/brand/default",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 0.1, g: 0.6, b: 0.1 } },
+        collectionId: "cTheme",
+        collectionName: "Theme",
+      },
+      {
+        id: "vActive",
+        name: "Light/surface/brand/active",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 0.2, g: 0.7, b: 0.2 } },
+        collectionId: "cTheme",
+        collectionName: "Theme",
+      },
+    ];
+    return order === "flat-first" ? [flat, ...groupVars] : [...groupVars, flat];
+  }
+
+  const collections: FigmaVariableCollection[] = [
+    { id: "cTheme", name: "Theme", modes: [{ modeId: "m1", name: "Vy" }], variableIds: [] },
+  ];
+
+  it("never produces an invalid hybrid object, regardless of which variable Figma returns first", () => {
+    for (const order of ["flat-first", "group-first"] as const) {
+      const { files } = figmaToTokenFiles(collections, makeCollisionVars(order), "tokens/", names);
+      const themeFile = files.find((f) => f.repoPath === "tokens/semantic/themes/vy.json")!;
+      const brand = JSON.parse(themeFile.content).Light.surface.brand;
+
+      // Never both at once: either a clean leaf ($value, no children) or a
+      // clean group (children, no $value of its own) — never a corrupted mix.
+      const isLeaf = "$value" in brand;
+      const isGroup = "default" in brand || "active" in brand;
+      expect(isLeaf && isGroup).toBe(false);
+    }
+  });
+
+  it("reports the losing path in conflictPaths instead of silently dropping it", () => {
+    const { conflictPaths } = figmaToTokenFiles(
+      collections,
+      makeCollisionVars("group-first"),
+      "tokens/",
+      names,
+    );
+    expect(conflictPaths.length).toBeGreaterThan(0);
+    expect(conflictPaths).toContain("Light.surface.brand");
+  });
+
+  it("does not report a conflict for ordinary, non-colliding variable names", () => {
+    const variables: FigmaVariable[] = [
+      {
+        id: "vCore",
+        name: "Light/surface/core/active",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 0.1, g: 0.1, b: 0.1 } },
+        collectionId: "cTheme",
+        collectionName: "Theme",
+      },
+      {
+        id: "vAccent",
+        name: "Light/surface/accent/default",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 0.2, g: 0.2, b: 0.2 } },
+        collectionId: "cTheme",
+        collectionName: "Theme",
+      },
+    ];
+
+    const { conflictPaths } = figmaToTokenFiles(collections, variables, "tokens/", names);
+
+    expect(conflictPaths).toEqual([]);
+  });
+});
+
 describe("buildCollectionSources", () => {
   const names = {
     primitives: ["size", "primitives"],
@@ -860,7 +962,7 @@ describe("figmaToTokenFiles — STRING variable type inference", () => {
       },
     ];
 
-    const files = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names);
     const tree = JSON.parse(files[0].content);
 
     expect(tree.fontWeight.light.$type).toBe("fontWeight");
@@ -882,7 +984,7 @@ describe("figmaToTokenFiles — STRING variable type inference", () => {
       },
     ];
 
-    const files = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names);
     const tree = JSON.parse(files[0].content);
 
     expect(tree.fontFamily.sans.$type).toBe("fontFamily");
@@ -920,7 +1022,7 @@ describe("figmaToTokenFiles — FLOAT variable type inference", () => {
       },
     ];
 
-    const files = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names);
     const tree = JSON.parse(files[0].content);
 
     expect(tree.dimension["0"].$type).toBe("dimension");

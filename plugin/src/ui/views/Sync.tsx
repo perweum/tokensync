@@ -687,13 +687,28 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       if (!raw || !parsed) {
         throw new Error("handleCreatePR called without a pending push diff");
       }
-      const changedFiles = buildFilesFromDiffs(
+      const { files: changedFiles, conflictPaths } = buildFilesFromDiffs(
         selectedKeys,
         raw,
         parsed.metadata,
         project.tokensPath,
         pendingFigmaCollections.current,
       );
+
+      // A real Figma variable name structurally collides with another one
+      // at the same position (e.g. "surface/brand" and "surface/brand/default"
+      // both existing) — confirmed live (Vy's Spor system) to silently corrupt
+      // or destroy data depending purely on Figma's own variable return order.
+      // Refuse to write known-incomplete files rather than let a bad commit
+      // through; the fix is in Figma (rename/delete the colliding variable),
+      // not something Token Spark can safely guess at.
+      if (conflictPaths.length > 0) {
+        throw new Error(
+          `${conflictPaths.length} variable name${conflictPaths.length !== 1 ? "s" : ""} ` +
+            `structurally conflict in Figma and can't be written safely: ${conflictPaths.join(", ")}. ` +
+            `Rename or delete the colliding variable in Figma, then push again.`,
+        );
+      }
 
       const result = await createTokenPR(
         {

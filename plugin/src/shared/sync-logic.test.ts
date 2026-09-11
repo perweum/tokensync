@@ -492,7 +492,7 @@ describe("buildFilesFromDiffs", () => {
   it("only writes the selected modes — an unselected mode is dropped entirely", () => {
     const selectedKeys = new Set(["Primitives/Value", "Semantic/Light"]);
 
-    const files = buildFilesFromDiffs(
+    const { files } = buildFilesFromDiffs(
       selectedKeys,
       { collections: figmaCollections, variables },
       metadata(),
@@ -508,7 +508,7 @@ describe("buildFilesFromDiffs", () => {
   it("returns no platform output when allFigmaCollections is null", () => {
     const selectedKeys = new Set(["Primitives/Value", "Semantic/Light", "Semantic/Dark"]);
 
-    const files = buildFilesFromDiffs(
+    const { files } = buildFilesFromDiffs(
       selectedKeys,
       { collections: figmaCollections, variables },
       metadata({ platforms: { css: { enabled: true } } }),
@@ -527,7 +527,7 @@ describe("buildFilesFromDiffs", () => {
       col("Semantic", "Light", { "background.default": { $type: "color", $value: "#ffffff" } }),
     ];
 
-    const files = buildFilesFromDiffs(
+    const { files } = buildFilesFromDiffs(
       selectedKeys,
       { collections: figmaCollections, variables },
       metadata({ platforms: { css: { enabled: true, output: "dist/tokens.css" } } }),
@@ -548,7 +548,7 @@ describe("buildFilesFromDiffs", () => {
     ];
     const selectedKeys = new Set(["Global/Value"]);
 
-    const files = buildFilesFromDiffs(
+    const { files } = buildFilesFromDiffs(
       selectedKeys,
       {
         collections: globalCollections,
@@ -608,7 +608,7 @@ describe("buildFilesFromDiffs", () => {
     // entry for the whole role, named figma.collections.primitives[0].
     const selectedKeys = new Set(["size/mobile"]);
 
-    const files = buildFilesFromDiffs(
+    const { files } = buildFilesFromDiffs(
       selectedKeys,
       { collections: realCollections, variables },
       metadata({
@@ -664,7 +664,7 @@ describe("buildFilesFromDiffs", () => {
     // figma.collections.themes[0] — "Main Color/Christmas" here.
     const selectedKeys = new Set(["Main Color/Christmas"]);
 
-    const files = buildFilesFromDiffs(
+    const { files } = buildFilesFromDiffs(
       selectedKeys,
       { collections: realCollections, variables },
       metadata({
@@ -739,7 +739,7 @@ describe("buildFilesFromDiffs", () => {
     // "size/mobile".
     const selectedKeys = new Set(["primitives/mobile"]);
 
-    const files = buildFilesFromDiffs(
+    const { files } = buildFilesFromDiffs(
       selectedKeys,
       { collections: realCollections, variables },
       metadata({ figma: { fileKey: "abc", collections: names } }),
