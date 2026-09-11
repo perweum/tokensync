@@ -76,6 +76,37 @@ describe("buildFigmaFlatMaps — number formatting only appends \"px\" for genui
   });
 });
 
+describe("buildFigmaFlatMaps — color alpha formatting matches figma-to-tokens.ts's push side", () => {
+  // Reproduces a real bug found live: this file's own rgbaToHex quantized
+  // alpha through an 8-bit byte (Math.round(a * 255)) before re-deriving a
+  // float for comparison, while figma-to-tokens.ts's rawToTokenValue (push
+  // side) keeps alpha as a direct decimal (a.toFixed(2)). The two agree for
+  // almost every alpha value, but not 0.025: toFixed(2) rounds it to "0.03"
+  // (matching what push had already written to GitHub) while the byte
+  // round-trip produces 6/255 ≈ 0.0235 → "0.02" — a permanent false
+  // "changed" diff on every single pull, for that one alpha value only.
+  const collections: FigmaVariableCollection[] = [
+    { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+  ];
+
+  it('formats alpha 0.025 as "0.03", same as the push-side rounding', () => {
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "color/black-25",
+        resolvedType: "COLOR",
+        valuesByMode: { m1: { r: 0, g: 0, b: 0, a: 0.025 } },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+    ];
+
+    const [map] = buildFigmaFlatMaps(collections, variables);
+    expect(map.values["color.black-25"]).toBe("rgba(0, 0, 0, 0.03)");
+    expect(map.rawValues["color.black-25"]).toBe("rgba(0, 0, 0, 0.03)");
+  });
+});
+
 describe("buildFigmaFlatMaps — rawValues stop at one hop, unlike the fully-resolved values", () => {
   // Supports raw-based diffing (see token-diff.ts): editing one primitive
   // shouldn't make every alias that references it look individually
