@@ -407,6 +407,73 @@ describe("generateCSS — Size axis on Primitives", () => {
   });
 });
 
+describe("generateCSS — Global tokens (e.g. typography) get var(--*) too, not just semantic", () => {
+  // Reproduces a real bug found live: switching brand or viewport in a real
+  // preview correctly re-colored everything but never changed a single
+  // typeface, size, or weight. Root cause: :root's Global entries were spread
+  // straight through formatCSSValue — the plain, literal-only path — while
+  // semantic entries alone went through resolveSemanticValue's var(--*)
+  // conversion. An *existing* test named "a typography-like token..." above
+  // only ever exercised the semantic role, which already worked — the real
+  // typography role (Global) had its own, separate, broken code path that
+  // nothing here actually covered.
+  const sizeMetadata: Metadata = {
+    ...metadata,
+    sizes: ["mobile", "desktop"],
+    sizeBreakpoints: { desktop: 768 },
+  };
+
+  it("a Global field referencing a size-varying primitive gets var(--*), not the size baked in", () => {
+    const collections = [
+      col(names.primitives, "Mobile", { "primitive.font-size.11": { $type: "dimension", $value: "48px" } }),
+      col(names.primitives, "Desktop", { "primitive.font-size.11": { $type: "dimension", $value: "60px" } }),
+      col(
+        names.global,
+        "Value",
+        { "typography.banner.fontSize": { $type: "dimension", $value: "48px" } },
+        { "typography.banner.fontSize": { $type: "dimension", $value: "{primitive.font-size.11}" } },
+      ),
+    ];
+
+    const css = generateCSS(collections, sizeMetadata);
+
+    expect(css).toContain("--typography-banner-fontSize: var(--primitive-font-size-11);");
+    // Never baked in as a literal anywhere, and never given its own [data-size]
+    // override — the var() indirection alone is enough, since its target
+    // already has one.
+    expect(css).not.toContain("--typography-banner-fontSize: 48px");
+    expect(css).not.toMatch(/\[data-size="desktop"\][^}]*typography-banner-fontSize/s);
+  });
+
+  it("a Global field referencing a theme-scoped choice gets var(--*), not the default theme's value baked in", () => {
+    const collections = [
+      col(names.themes, "Masterbrand", { "font-family.display": { $type: "fontFamily", $value: "Coop Sans" } }),
+      col(names.themes, "Christmas", { "font-family.display": { $type: "fontFamily", $value: "Extra Round" } }),
+      col(
+        names.global,
+        "Value",
+        { "typography.banner.fontFamily": { $type: "fontFamily", $value: "Coop Sans" } },
+        { "typography.banner.fontFamily": { $type: "fontFamily", $value: "{font-family.display}" } },
+      ),
+    ];
+
+    const css = generateCSS(collections, metadata);
+
+    expect(css).toContain("--typography-banner-fontFamily: var(--font-family-display);");
+    expect(css).not.toContain("--typography-banner-fontFamily: Coop Sans");
+  });
+
+  it("a Global field with a plain literal (no ref) still resolves the same way it always did", () => {
+    const collections = [
+      col(names.global, "Value", { "typography.banner.textCase": { $type: "string", $value: "title" } }),
+    ];
+
+    const css = generateCSS(collections, metadata);
+
+    expect(css).toContain("--typography-banner-textCase: title;");
+  });
+});
+
 describe("generateCSS — default theme is chosen by metadata.themes, not array order", () => {
   // Every other test in this file names the default theme "Default", which
   // happens to case-insensitively match `metadata.themes`'s own default

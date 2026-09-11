@@ -101,17 +101,38 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
     dark: darkOnly,
   } = splitSharedSemanticTokens(lightCol, darkCol, referenceableCSSVars);
 
-  // :root — the default primitives mode, global, the default theme's complete
-  // vars, and any semantic value that's identical across every color scheme
-  // (see splitSharedSemanticTokens — those come back as already-final CSS
-  // value strings, not TokenValue, so they're appended rather than merged
-  // into the formatCSSValue path below).
+  // Global: emit var(--*) for any ref whose target is a real CSS var — e.g. a
+  // typography field referencing a theme-scoped font choice ({font-family.display})
+  // or a size-varying primitive ({primitive.font-size.11}) — a resolved literal
+  // for everything else. Same mechanism semantic tokens already use (below);
+  // without it, a typography field's *resolved* value was baked in from
+  // whichever theme/size happened to be "default" at generation time, with no
+  // way to ever reflect a different theme or size — found live: switching
+  // brand or viewport correctly re-colored everything but never changed a
+  // single typeface, size, or weight.
+  const globalExtra: Record<string, string> = {};
+  if (global) {
+    for (const [path, token] of Object.entries(global.tokens)) {
+      if (token.$type === "boolean") continue;
+      const rawValue = global.rawTokens[path]?.$value;
+      const themeAware = resolveSemanticValue(token.$value, rawValue, referenceableCSSVars);
+      globalExtra[path] = themeAware.startsWith("var(")
+        ? themeAware
+        : formatCSSValue(token.$type, themeAware);
+    }
+  }
+
+  // :root — the default primitives mode, the default theme's complete vars,
+  // Global (as var()-aware entries, see globalExtra above), and any semantic
+  // value that's identical across every color scheme (see
+  // splitSharedSemanticTokens — those come back as already-final CSS value
+  // strings too, not TokenValue, so they're appended rather than merged into
+  // the formatCSSValue path below).
   const rootTokens: Record<string, TokenValue> = {
     ...defaultPrimitives?.tokens,
-    ...global?.tokens,
     ...defaultTheme?.tokens,
   };
-  const rootBlock = cssBlockWithExtra(":root", rootTokens, sharedSemantic);
+  const rootBlock = cssBlockWithExtra(":root", rootTokens, { ...globalExtra, ...sharedSemantic });
   if (rootBlock) {
     blocks.push(rootBlock);
   }
