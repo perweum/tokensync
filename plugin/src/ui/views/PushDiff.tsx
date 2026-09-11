@@ -21,6 +21,11 @@ interface Props {
   diffs: CollectionDiff[];
   /** Figma collection names that matched none of the configured layers — never included in the PR. */
   unrecognizedCollections?: string[];
+  /** Dot-paths whose Figma variable is a "ghost" alias — the picker shows the
+   * right target name, but the underlying link is dead — so the field was
+   * silently missing from the diff entirely rather than shown as broken.
+   * Token Spark can't fix a dead link in Figma's own data, only report it. */
+  brokenAliasPaths?: string[];
   /** Paths runTransformers would write that don't exist in the repo yet —
    * an enabled platform (Output Formats) whose file was never generated,
    * found even though there's zero token-level change to review. */
@@ -38,6 +43,7 @@ interface Props {
 export function PushDiff({
   diffs,
   unrecognizedCollections = [],
+  brokenAliasPaths = [],
   outputOnlyFiles = [],
   onCreatePR,
   onBack,
@@ -85,6 +91,18 @@ export function PushDiff({
             Skipped {unrecognizedCollections.length}{" "}
             {unrecognizedCollections.length === 1 ? "collection" : "collections"} not in{" "}
             <code>figma.collections</code>: <strong>{unrecognizedCollections.join(", ")}</strong>
+          </StatusBanner>
+        </div>
+      )}
+
+      {brokenAliasPaths.length > 0 && (
+        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
+          <StatusBanner
+            tone="warning"
+            title="Figma shows the right variable name for these, but the underlying link is dead — re-link them to a real value in Figma to fix."
+          >
+            {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped —
+            broken variable alias: <strong>{brokenAliasPaths.join(", ")}</strong>
           </StatusBanner>
         </div>
       )}

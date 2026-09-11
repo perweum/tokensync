@@ -27,6 +27,10 @@ export interface FigmaToCollectionsResult {
   collections: ResolvedCollection[];
   /** Figma collection names that matched none of the four configured layers — excluded above, never silently written. */
   unknownCollectionNames: string[];
+  /** Dot-paths whose Figma variable is a "ghost" alias — the picker shows the
+   * right target name, but the underlying link is dead — so the field was
+   * dropped entirely rather than written with a value. See isBrokenAlias. */
+  brokenAliasPaths: string[];
 }
 
 /**
@@ -79,6 +83,7 @@ export function figmaToCollections(
   const themeModes = new Map<string, { modeName: string; raw: Record<string, TokenValue> }>();
   const semanticModes = new Map<string, { modeName: string; raw: Record<string, TokenValue> }>();
   const sizeModes = new Map<string, { modeName: string; raw: Record<string, TokenValue> }>();
+  const brokenAliasPaths: string[] = [];
 
   for (const collection of collections) {
     const kind = collectionKind(collection.name, figmaCollectionNames);
@@ -90,7 +95,8 @@ export function figmaToCollections(
     const collVars = variables.filter((v) => v.collectionId === collection.id);
 
     for (const mode of collection.modes) {
-      const raw = buildFlatTokens(collVars, mode.modeId, varById);
+      const { tokens: raw, brokenAliasPaths: broken } = buildFlatTokens(collVars, mode.modeId, varById);
+      brokenAliasPaths.push(...broken);
       if (kind === "primitives") {
         primitivesRaw = { ...primitivesRaw, ...raw };
         primitivesModeName ??= mode.name; // real Figma mode name — see Code Invariant in DECISIONS.md
@@ -225,7 +231,7 @@ export function figmaToCollections(
     });
   }
 
-  return { collections: result, unknownCollectionNames };
+  return { collections: result, unknownCollectionNames, brokenAliasPaths };
 }
 
 /** Merge a mode's raw tokens into an existing entry with the same (lowercased)
@@ -354,8 +360,9 @@ function buildFlatTokens(
   vars: FigmaVariable[],
   modeId: string,
   varById: Map<string, FigmaVariable>,
-): Record<string, TokenValue> {
+): { tokens: Record<string, TokenValue>; brokenAliasPaths: string[] } {
   const result: Record<string, TokenValue> = {};
+  const brokenAliasPaths: string[] = [];
 
   for (const v of vars) {
     const raw = v.valuesByMode[modeId];
@@ -364,7 +371,10 @@ function buildFlatTokens(
     const path = fromFigmaVarName(v.name);
     const $type = inferType(v.name, v.resolvedType);
     const $value = rawToTokenValue(raw, $type, varById);
-    if ($value === null) continue;
+    if ($value === null) {
+      if (isBrokenAlias(raw, varById)) brokenAliasPaths.push(path);
+      continue;
+    }
 
     result[path] = {
       $type,
@@ -373,7 +383,25 @@ function buildFlatTokens(
     };
   }
 
-  return result;
+  return { tokens: result, brokenAliasPaths };
+}
+
+/**
+ * True when `raw` is a VARIABLE_ALIAS whose target id doesn't resolve to any
+ * variable Figma actually returned — a "ghost" alias, confirmed live (Vy's
+ * Spor system): Figma's own variable picker still shows the intended
+ * target's name correctly, but the internal link is dead (the target was
+ * deleted/recreated and the alias's id was never repointed). rawToTokenValue
+ * already returns null for this — correct, since Token Spark has no way to
+ * know what the intended value should be — but nothing distinguished it from
+ * any other "no value" reason, so the whole field was silently dropped from
+ * every generated output with zero trace, making a data-integrity issue
+ * inside Figma itself extremely hard to diagnose from the sync side.
+ */
+function isBrokenAlias(raw: FigmaVariableValue, varById: Map<string, FigmaVariable>): boolean {
+  return (
+    typeof raw === "object" && raw !== null && "type" in raw && raw.type === "VARIABLE_ALIAS" && !varById.has(raw.id)
+  );
 }
 
 // ---------------------------------------------------------------------------
