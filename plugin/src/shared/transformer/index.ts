@@ -7,6 +7,7 @@
  */
 
 import type { ResolvedCollection, Metadata, PlatformConfig } from "../token-merger";
+import { findGlobalCollection, selectDefaultPrimitives } from "../token-merger";
 import { generateCSS } from "./css";
 import { generateJS, generateSchemeJS } from "./js";
 import { generateDart, generateSchemeDart } from "./dart";
@@ -28,8 +29,8 @@ export function runTransformers(
   if (!platforms) return files;
 
   const names = metadata.figma.collections;
-  const primitives = collections.find((c) => names.primitives.includes(c.collectionName));
-  const global = collections.find((c) => names.global.includes(c.collectionName));
+  const primitives = selectDefaultPrimitives(collections, metadata);
+  const global = findGlobalCollection(collections, names);
   const semantic = collections.filter((c) => names.semantic.includes(c.collectionName));
 
   if (platforms.css?.enabled) {

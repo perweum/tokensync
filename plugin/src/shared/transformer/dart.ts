@@ -12,6 +12,7 @@
  */
 
 import type { ResolvedCollection, Metadata } from "../token-merger";
+import { findGlobalCollection, selectDefaultPrimitives } from "../token-merger";
 import type { TokenValue } from "../messages";
 import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
 
@@ -40,8 +41,8 @@ export function generateDart(collections: ResolvedCollection[], metadata: Metada
   const blocks: string[] = [dartHeader()];
 
   const names = metadata.figma.collections;
-  const primitives = collections.find((c) => names.primitives.includes(c.collectionName));
-  const global = collections.find((c) => names.global.includes(c.collectionName));
+  const primitives = selectDefaultPrimitives(collections, metadata);
+  const global = findGlobalCollection(collections, names);
   const themes = collections.filter((c) => names.themes.includes(c.collectionName));
   const semantic = collections.filter((c) => names.semantic.includes(c.collectionName));
 

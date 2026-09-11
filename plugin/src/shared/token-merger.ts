@@ -543,3 +543,65 @@ function findCaseInsensitive(candidates: string[], target: string): string | und
   const lower = target.toLowerCase();
   return candidates.find((c) => c.toLowerCase() === lower);
 }
+
+// ---------------------------------------------------------------------------
+// Collection lookup by role — for output generators (transformers) only.
+//
+// Deliberately separate from collectionKind()/sync-logic.ts's own role
+// matching, which the working push/pull/diff/apply pipeline already relies
+// on and is out of scope here — these helpers are purely additive, used only
+// to locate a collection for rendering CSS/JS/Dart/Swift output.
+// ---------------------------------------------------------------------------
+
+/** Matches the same fallback parseRepository/figmaToCollections already use
+ * inline when nothing is mapped to a role (e.g. `names.global[0] ?? "Global"`)
+ * — a role with an empty `names.role` list still gets a real collection
+ * under this literal name. */
+const ROLE_FALLBACK_NAME: Record<"primitives" | "global", string> = {
+  primitives: "Primitives",
+  global: "Global",
+};
+
+/** All collections backing a single-or-multi-mode role (primitives or
+ * global), whether or not anything is explicitly mapped to it. Found live:
+ * every output generator located these by checking `names.role.includes(...)`
+ * directly — correct when the role IS mapped, but always false when nothing
+ * is (a real, common config for a project whose only typography source is
+ * Text Styles, or a project with no dedicated global-tokens collection at
+ * all), silently dropping that collection's data from every generated file. */
+function findRoleCollections(
+  collections: ResolvedCollection[],
+  role: "primitives" | "global",
+  names: CollectionNames,
+): ResolvedCollection[] {
+  const configured = names[role];
+  if (configured.length > 0) return collections.filter((c) => configured.includes(c.collectionName));
+  return collections.filter((c) => c.collectionName === ROLE_FALLBACK_NAME[role]);
+}
+
+/** The single Global collection, present or not. Global is always exactly
+ * one mode ("Value"), unlike Primitives — see selectDefaultPrimitives. */
+export function findGlobalCollection(
+  collections: ResolvedCollection[],
+  names: CollectionNames,
+): ResolvedCollection | undefined {
+  return findRoleCollections(collections, "global", names)[0];
+}
+
+/** Picks the default-mode Primitives collection — mirrors exactly how
+ * css.ts's own defaultPrimitives selection already works: config order
+ * (metadata.sizes) decides which mode is "base" when Primitives is
+ * genuinely multi-mode (a Size axis is configured); falls back to whichever
+ * mode is found first when sizes isn't configured to match, or Primitives
+ * has exactly one mode (the common case with no Size axis at all). */
+export function selectDefaultPrimitives(
+  collections: ResolvedCollection[],
+  metadata: Metadata,
+): ResolvedCollection | undefined {
+  const primitivesCols = findRoleCollections(collections, "primitives", metadata.figma.collections);
+  return (
+    metadata.sizes
+      .map((name) => primitivesCols.find((c) => c.modeName.toLowerCase() === name.toLowerCase()))
+      .find((c): c is ResolvedCollection => c !== undefined) ?? primitivesCols[0]
+  );
+}

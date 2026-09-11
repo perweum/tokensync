@@ -42,6 +42,7 @@
  */
 
 import type { ResolvedCollection, Metadata } from "../token-merger";
+import { findGlobalCollection } from "../token-merger";
 import type { TokenValue } from "../messages";
 import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
 
@@ -50,7 +51,7 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
 
   const names = metadata.figma.collections;
   const primitivesCols = collections.filter((c) => names.primitives.includes(c.collectionName));
-  const global = collections.find((c) => names.global.includes(c.collectionName));
+  const global = findGlobalCollection(collections, names);
   const themeCols = collections.filter((c) => names.themes.includes(c.collectionName));
   const semanticCols = collections.filter((c) => names.semantic.includes(c.collectionName));
 

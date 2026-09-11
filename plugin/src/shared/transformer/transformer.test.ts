@@ -164,6 +164,61 @@ describe("runTransformers", () => {
     expect(tokensJS.content).toContain("default: {");
   });
 
+  it("includes Global/typography data in every platform's output when nothing is mapped to the Global role", () => {
+    // Reproduces a real bug found live: css.ts/js.ts/dart.ts/swift.ts all
+    // located Global via `names.global.includes(collectionName)` — always
+    // false when figma.collections.global is empty (the real, documented
+    // config for a project whose only typography source is Text Styles).
+    // parseRepository/figmaToCollections still build a real Global
+    // collection under a fallback name ("Global") in that case — every
+    // transformer just never checked for it, so 27 real Text Styles never
+    // reached any generated output file, confirmed against the real,
+    // already-committed dist/tokens.css (zero "typography"/"banner" matches).
+    const meta = {
+      version: "1.0.0",
+      themes: ["default"],
+      colorSchemes: ["light", "dark"],
+      sizes: [],
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: ["Primitives"],
+          global: [] as string[],
+          themes: ["Themes"],
+          semantic: ["Semantic"],
+          sizes: [] as string[],
+        },
+      },
+      platforms: {
+        css: { enabled: true },
+        js: { enabled: true },
+        dart: { enabled: true },
+        swift: { enabled: true },
+      },
+    };
+    const typography = {
+      typography: {
+        banner: {
+          $type: "typography",
+          fontSize: { $type: "dimension", $value: "48px" },
+          textCase: { $type: "string", $value: "uppercase" },
+        },
+      },
+    };
+
+    const files = [
+      ...makeFiles(),
+      file("tokens/metadata.json", meta),
+      file("tokens/semantic/global/typography.json", typography),
+    ];
+    const { collections, metadata } = parseRepository(files, tokensPath);
+    const output = runTransformers(collections, metadata, tokensPath);
+
+    for (const f of output) {
+      expect(/banner/i.test(f.content)).toBe(true);
+    }
+  });
+
   it("defaults combined output sibling to the tokens folder for all platforms", () => {
     const meta = {
       version: "1.0.0",
@@ -314,6 +369,7 @@ describe("runTransformers", () => {
       version: "1.0.0",
       themes: ["default"],
       colorSchemes: ["light"],
+      sizes: [],
       figma: {
         fileKey: "abc123",
         collections: {
