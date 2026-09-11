@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseRepository } from "./token-merger";
-import type { GitHubFile } from "./messages";
+import { parseRepository, findGlobalCollection, selectDefaultPrimitives } from "./token-merger";
+import type { GitHubFile, TokenValue } from "./messages";
+import type { ResolvedCollection, Metadata } from "./token-merger";
 
 // ────────────────────────────────────────────────────────────────
 // Helpers
@@ -592,5 +593,97 @@ describe("parseRepository — Global collection falls back to a real name when n
 
     expect(collections.some((c) => c.collectionName === "Global")).toBe(true);
     expect(collections.some((c) => c.collectionName === undefined)).toBe(false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// findGlobalCollection / selectDefaultPrimitives — output-generator-only
+// helpers, additive and separate from collectionKind()/sync-logic.ts
+// ────────────────────────────────────────────────────────────────
+
+function baseNames() {
+  return {
+    primitives: ["Primitives"],
+    global: [] as string[],
+    themes: ["Themes"],
+    semantic: ["Semantic"],
+    sizes: ["Size"],
+  };
+}
+
+function resolvedCol(collectionName: string, modeName: string): ResolvedCollection {
+  const tokens: Record<string, TokenValue> = { "a.b": { $type: "color", $value: "#fff" } };
+  return { collectionName, modeName, tokens, rawTokens: tokens, typographyStyles: [] };
+}
+
+function testMetadata(sizes: string[], collections: ReturnType<typeof baseNames>): Metadata {
+  return {
+    version: "1.0.0",
+    themes: ["default"],
+    colorSchemes: ["light", "dark"],
+    sizes,
+    figma: { fileKey: "abc", collections },
+  };
+}
+
+describe("findGlobalCollection", () => {
+  // Reproduces a real bug found live: every transformer (css.ts/js.ts/
+  // dart.ts/swift.ts) located Global via `names.global.includes(name)` —
+  // always false when nothing is mapped to the role (this project's real,
+  // documented config for a Text-Style-only typography source), even
+  // though parseRepository/figmaToCollections still build a real Global
+  // collection under a fallback name. The real committed dist/tokens.css
+  // confirmed this: zero typography output despite 27 real Text Styles
+  // being correctly synced.
+  it("finds the fallback-named Global collection when nothing is mapped to that role", () => {
+    const collections = [resolvedCol("Global", "Value"), resolvedCol("Themes", "Masterbrand")];
+    const found = findGlobalCollection(collections, baseNames());
+    expect(found?.collectionName).toBe("Global");
+  });
+
+  it("still finds Global normally when a real collection is mapped to the role", () => {
+    const names = { ...baseNames(), global: ["Spacing"] };
+    const collections = [resolvedCol("Spacing", "Value"), resolvedCol("Themes", "Masterbrand")];
+    const found = findGlobalCollection(collections, names);
+    expect(found?.collectionName).toBe("Spacing");
+  });
+
+  it("returns undefined when there's genuinely no Global data at all", () => {
+    const collections = [resolvedCol("Themes", "Masterbrand")];
+    expect(findGlobalCollection(collections, baseNames())).toBeUndefined();
+  });
+});
+
+describe("selectDefaultPrimitives", () => {
+  // Reproduces a real bug found live: js.ts/dart.ts/swift.ts picked
+  // Primitives via a plain .find() — whichever mode is first in array
+  // order — not the deliberately configured default (metadata.sizes[0]),
+  // unlike css.ts (already fixed for this during the Size axis work).
+  // parseRepository always happens to order primitives collections by
+  // metadata.sizes already, which masks this — the real exposure is
+  // figmaToCollections' push-time data, whose mode order instead follows
+  // whatever order Figma itself returns modes in. Constructing the
+  // collections array out of config order directly (Desktop before
+  // Mobile) reproduces that live scenario.
+  it("picks the configured default mode even when it's not first in the collections array", () => {
+    const collections = [resolvedCol("Primitives", "Desktop"), resolvedCol("Primitives", "Mobile")];
+    const metadata = testMetadata(["mobile", "desktop"], baseNames());
+    const result = selectDefaultPrimitives(collections, metadata);
+    expect(result?.modeName).toBe("Mobile");
+  });
+
+  it("falls back to the first mode found when metadata.sizes doesn't match any real mode", () => {
+    const collections = [resolvedCol("Primitives", "Desktop"), resolvedCol("Primitives", "Mobile")];
+    const metadata = testMetadata(["tablet"], baseNames());
+    const result = selectDefaultPrimitives(collections, metadata);
+    expect(result?.modeName).toBe("Desktop");
+  });
+
+  it("finds the fallback-named Primitives collection when nothing is mapped to that role", () => {
+    const names = { ...baseNames(), primitives: [] as string[] };
+    const collections = [resolvedCol("Primitives", "Value")];
+    const metadata = testMetadata([], names);
+    const result = selectDefaultPrimitives(collections, metadata);
+    expect(result?.collectionName).toBe("Primitives");
   });
 });
