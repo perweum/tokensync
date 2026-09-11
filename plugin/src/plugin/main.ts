@@ -17,6 +17,10 @@ figma.showUI(__html__, {
   width: 480,
   height: 640,
   title: "Token Sync",
+  // Injects Figma's own --figma-color-* CSS variables and a figma-light/
+  // figma-dark class on <html>, updating live if the user switches theme —
+  // see src/ui/theme.ts for how those variables are consumed.
+  themeColors: true,
 });
 
 // ---------------------------------------------------------------------------

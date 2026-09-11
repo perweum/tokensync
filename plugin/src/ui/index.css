@@ -18,8 +18,8 @@ body {
     -apple-system,
     sans-serif;
   font-size: 13px;
-  color: #1a1a1a;
-  background: #fff;
+  color: var(--figma-color-text, #1a1a1a);
+  background: var(--figma-color-bg, #fff);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -32,7 +32,8 @@ body {
   }
 }
 
-/* Button variants — kept in sync with theme.ts color tokens by hand.
+/* Button variants — kept in sync with theme.ts color tokens by hand (same
+   var(--figma-color-*, fallback) pairs — see theme.ts's module doc for why).
    Button.tsx deliberately sets no color/background/border-color inline:
    an inline style always wins over an external stylesheet rule for the
    same property regardless of specificity, so :hover/:active here would
@@ -44,31 +45,31 @@ body {
     border-color 100ms ease;
 }
 .ts-btn--primary {
-  background: #1a52d8;
+  background: var(--figma-color-bg-brand, #1a52d8);
   color: #ffffff;
   border-color: transparent;
 }
 .ts-btn--primary:not(:disabled):hover {
-  background: #1547bd;
+  background: var(--figma-color-bg-brand-hover, #1547bd);
 }
 .ts-btn--primary:not(:disabled):active {
-  background: #123a99;
+  background: var(--figma-color-bg-brand-pressed, #123a99);
 }
 .ts-btn--secondary {
-  background: #f0f0f0;
-  color: #1a1a1a;
+  background: var(--figma-color-bg-tertiary, #f0f0f0);
+  color: var(--figma-color-text, #1a1a1a);
   border-color: transparent;
 }
 .ts-btn--secondary:not(:disabled):hover {
-  background: #e4e4e4;
+  background: var(--figma-color-bg-tertiary-hover, #e4e4e4);
 }
 .ts-btn--secondary:not(:disabled):active {
-  background: #d8d8d8;
+  background: var(--figma-color-bg-tertiary-pressed, #d8d8d8);
 }
 .ts-btn--danger {
   background: none;
-  color: #c00000;
-  border-color: #f5c6c6;
+  color: var(--figma-color-text-danger, #c00000);
+  border-color: var(--figma-color-border-danger-strong, #f5c6c6);
 }
 .ts-btn--danger:not(:disabled):hover {
   background: #fff0f0;
@@ -77,50 +78,50 @@ body {
   background: #ffe1e1;
 }
 .ts-btn--dangerFilled {
-  background: #c00000;
+  background: var(--figma-color-bg-danger, #c00000);
   color: #ffffff;
   border-color: transparent;
 }
 .ts-btn--dangerFilled:not(:disabled):hover {
-  background: #a30000;
+  background: var(--figma-color-bg-danger-hover, #a30000);
 }
 .ts-btn--dangerFilled:not(:disabled):active {
-  background: #8a0000;
+  background: var(--figma-color-bg-danger-pressed, #8a0000);
 }
 .ts-btn--ghost {
   background: none;
-  color: #555555;
+  color: var(--figma-color-text-secondary, #555555);
   border-color: transparent;
 }
 .ts-btn--ghost:not(:disabled):hover {
-  background: #f0f0f0;
-  color: #1a1a1a;
+  background: var(--figma-color-bg-tertiary, #f0f0f0);
+  color: var(--figma-color-text, #1a1a1a);
 }
 .ts-btn--ghost:not(:disabled):active {
-  background: #e4e4e4;
+  background: var(--figma-color-bg-tertiary-pressed, #e4e4e4);
 }
 .ts-btn:not(:disabled):focus-visible {
-  outline: 2px solid #1a52d8;
+  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
   outline-offset: 1px;
 }
 
 .ts-icon-btn {
-  background: #ffffff;
-  border-color: #dddddd;
-  color: #555555;
+  background: var(--figma-color-bg, #ffffff);
+  border-color: var(--figma-color-border-strong, #dddddd);
+  color: var(--figma-color-text-secondary, #555555);
   transition:
     background 100ms ease,
     border-color 100ms ease;
 }
 .ts-icon-btn:not(:disabled):hover {
-  background: #eeeeee;
-  border-color: #cccccc;
+  background: var(--figma-color-bg-secondary, #eeeeee);
+  border-color: var(--figma-color-border-strong, #cccccc);
 }
 .ts-icon-btn:not(:disabled):active {
-  background: #e0e0e0;
+  background: var(--figma-color-bg-tertiary, #e0e0e0);
 }
 .ts-icon-btn:not(:disabled):focus-visible {
-  outline: 2px solid #1a52d8;
+  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
   outline-offset: 1px;
 }
 
@@ -131,31 +132,31 @@ body {
   background: none;
 }
 .ts-collapsible-row--category {
-  background: #f8f8f8;
+  background: var(--figma-color-bg-secondary, #f8f8f8);
 }
 .ts-collapsible-row:hover {
-  background: #eeeeee;
+  background: var(--figma-color-bg-secondary, #eeeeee);
 }
 .ts-collapsible-trigger:focus-visible {
-  outline: 2px solid #1a52d8;
+  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
   outline-offset: -2px;
 }
 
 .ts-tab {
   background: none;
-  color: #666666;
+  color: var(--figma-color-text-secondary, #666666);
   transition:
     color 100ms ease,
     background 100ms ease;
 }
 .ts-tab:hover {
-  color: #1a1a1a;
+  color: var(--figma-color-text, #1a1a1a);
 }
 .ts-tab--active {
-  color: #1a1a1a;
+  color: var(--figma-color-text, #1a1a1a);
   font-weight: 500;
 }
 .ts-tab:focus-visible {
-  outline: 2px solid #1a52d8;
+  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
   outline-offset: -2px;
 }
