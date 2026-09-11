@@ -74,6 +74,13 @@ export function resolveReference(
   flat: Record<string, TokenValue>,
   chain: readonly string[] = [],
 ): string | null {
+  // A referenced token's own $value can be malformed (not a string) in real,
+  // live data this code doesn't control — found live testing a design system
+  // whose Figma structure this project hadn't seen before: a token somewhere
+  // in the resolution chain had a non-string $value, crashing the whole plugin
+  // UI with an unhandled TypeError and no visible error (see handlePushCollectionsLoaded's
+  // try/catch in Sync.tsx). Same "missing target" fallback as an unresolvable path.
+  if (typeof ref !== "string") return null;
   const match = ref.match(/^\{(.+)\}$/);
   if (match) {
     // Pure reference — look up and recurse

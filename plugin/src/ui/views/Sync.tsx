@@ -348,30 +348,45 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     setStatus({ kind: "loading", message: "Calculating diff…" });
 
-    const figmaMaps = mergeTypographyIntoFigmaMaps(
-      buildFigmaFlatMaps(figmaCollections, figmaVariables),
-      figmaTypographyStyles,
-      github.metadata,
-    );
-    const { diffs: result, filteredGithubCollections } = computePullDiff(
-      github.collections,
-      github.metadata,
-      figmaMaps,
-    );
+    // Real, live Figma/GitHub data this code doesn't control can be malformed
+    // in a way no test fixture anticipated (found live testing an unfamiliar
+    // design system's Figma structure — a malformed $value crashed this whole
+    // synchronous block with an uncaught TypeError). Every other GitHub call
+    // in this file reports failure via setStatus; this one didn't, so an
+    // exception here left "Calculating diff…" spinning forever with no
+    // visible error at all.
+    try {
+      const figmaMaps = mergeTypographyIntoFigmaMaps(
+        buildFigmaFlatMaps(figmaCollections, figmaVariables),
+        figmaTypographyStyles,
+        github.metadata,
+      );
+      const { diffs: result, filteredGithubCollections } = computePullDiff(
+        github.collections,
+        github.metadata,
+        figmaMaps,
+      );
 
-    const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
+      const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
 
-    if (totalChanges === 0) {
-      setStatus({ kind: "success", message: "Figma is already up to date with GitHub" });
-    } else {
-      setStatus({ kind: "idle" });
-      setDiffs(result.filter((d) => d.counts.total > 0));
-      setView("pull-diff");
+      if (totalChanges === 0) {
+        setStatus({ kind: "success", message: "Figma is already up to date with GitHub" });
+      } else {
+        setStatus({ kind: "idle" });
+        setDiffs(result.filter((d) => d.counts.total > 0));
+        setView("pull-diff");
+      }
+
+      // Clean Apply must also skip ignored collections — store the filtered list
+      pendingGitHubCollections.current = filteredGithubCollections;
+      pendingGitHubMetadata.current = github.metadata;
+    } catch (err) {
+      setStatus({
+        kind: "error",
+        message: "Something went wrong while calculating the diff.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
-
-    // Clean Apply must also skip ignored collections — store the filtered list
-    pendingGitHubCollections.current = filteredGithubCollections;
-    pendingGitHubMetadata.current = github.metadata;
     pendingGitHub.current = null;
   }
 
@@ -563,68 +578,83 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     setStatus({ kind: "loading", message: "Calculating diff…" });
 
-    // GitHub side: parse existing token files
-    const githubParsed = parseRepository(githubFiles, project.tokensPath);
-    pendingParsed.current = githubParsed;
+    // Real, live Figma/GitHub data this code doesn't control can be malformed
+    // in a way no test fixture anticipated (found live testing an unfamiliar
+    // design system's Figma structure — a malformed $value crashed this whole
+    // synchronous block with an uncaught TypeError). Every other GitHub call
+    // in this file reports failure via setStatus; this one didn't, so an
+    // exception here left "Calculating diff…" spinning forever with no
+    // visible error at all.
+    try {
+      // GitHub side: parse existing token files
+      const githubParsed = parseRepository(githubFiles, project.tokensPath);
+      pendingParsed.current = githubParsed;
 
-    // Figma side: convert to same ResolvedCollection shape
-    const { collections: figmaCollectionData, unknownCollectionNames } = figmaToCollections(
-      figmaCollections,
-      figmaVariables,
-      githubParsed.metadata,
-      figmaTypographyStyles,
-    );
-    setUnrecognizedCollections(unknownCollectionNames);
-    pendingFigmaCollections.current = figmaCollectionData;
-    // Keep raw data for writing complete token files to GitHub (not just diff entries)
-    pendingFigmaRaw.current = {
-      collections: figmaCollections,
-      variables: figmaVariables,
-      typographyStyles: figmaTypographyStyles,
-    };
-
-    // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
-    // GitHub, figmaValue = new state from Figma.
-    const result = computePushDiff(
-      figmaCollectionData,
-      githubParsed.collections,
-      githubParsed.metadata,
-    );
-
-    const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
-    const unknownSuffix = unknownCollectionNames.length
-      ? ` (skipped unrecognized collection${unknownCollectionNames.length > 1 ? "s" : ""}: ${unknownCollectionNames.join(", ")} — check metadata.json figma.collections)`
-      : "";
-
-    if (totalChanges === 0) {
-      // No token changes — but an enabled platform (Output Formats) might
-      // have never had its file generated yet, since that's a config
-      // change with nothing to do with any token's value. Check before
-      // reporting "up to date" so turning on a new format actually does
-      // something on the next push, not just on the next unrelated token edit.
-      const missing = findMissingOutputFiles(
-        figmaCollectionData,
+      // Figma side: convert to same ResolvedCollection shape
+      const { collections: figmaCollectionData, unknownCollectionNames } = figmaToCollections(
+        figmaCollections,
+        figmaVariables,
         githubParsed.metadata,
-        project.tokensPath,
-        pendingRepoPaths.current ?? new Set(),
+        figmaTypographyStyles,
       );
-      if (missing.length > 0) {
-        setOutputOnlyFiles(missing.map((f) => f.path));
-        setStatus({ kind: "idle" });
-        setDiffs([]);
-        setView("push-diff");
+      setUnrecognizedCollections(unknownCollectionNames);
+      pendingFigmaCollections.current = figmaCollectionData;
+      // Keep raw data for writing complete token files to GitHub (not just diff entries)
+      pendingFigmaRaw.current = {
+        collections: figmaCollections,
+        variables: figmaVariables,
+        typographyStyles: figmaTypographyStyles,
+      };
+
+      // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
+      // GitHub, figmaValue = new state from Figma.
+      const result = computePushDiff(
+        figmaCollectionData,
+        githubParsed.collections,
+        githubParsed.metadata,
+      );
+
+      const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
+      const unknownSuffix = unknownCollectionNames.length
+        ? ` (skipped unrecognized collection${unknownCollectionNames.length > 1 ? "s" : ""}: ${unknownCollectionNames.join(", ")} — check metadata.json figma.collections)`
+        : "";
+
+      if (totalChanges === 0) {
+        // No token changes — but an enabled platform (Output Formats) might
+        // have never had its file generated yet, since that's a config
+        // change with nothing to do with any token's value. Check before
+        // reporting "up to date" so turning on a new format actually does
+        // something on the next push, not just on the next unrelated token edit.
+        const missing = findMissingOutputFiles(
+          figmaCollectionData,
+          githubParsed.metadata,
+          project.tokensPath,
+          pendingRepoPaths.current ?? new Set(),
+        );
+        if (missing.length > 0) {
+          setOutputOnlyFiles(missing.map((f) => f.path));
+          setStatus({ kind: "idle" });
+          setDiffs([]);
+          setView("push-diff");
+        } else {
+          setOutputOnlyFiles([]);
+          setStatus({
+            kind: "success",
+            message: `GitHub is already up to date with Figma${unknownSuffix}`,
+          });
+        }
       } else {
         setOutputOnlyFiles([]);
-        setStatus({
-          kind: "success",
-          message: `GitHub is already up to date with Figma${unknownSuffix}`,
-        });
+        setStatus({ kind: "idle" });
+        setDiffs(result.filter((d) => d.counts.total > 0));
+        setView("push-diff");
       }
-    } else {
-      setOutputOnlyFiles([]);
-      setStatus({ kind: "idle" });
-      setDiffs(result.filter((d) => d.counts.total > 0));
-      setView("push-diff");
+    } catch (err) {
+      setStatus({
+        kind: "error",
+        message: "Something went wrong while calculating the diff.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
 
     pendingFiles.current = null;

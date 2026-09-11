@@ -188,6 +188,33 @@ describe("resolveReference — circular references", () => {
   });
 });
 
+describe("resolveReference — malformed $value in real (uncontrolled) data", () => {
+  // A referenced token's own $value can be anything a real Figma file
+  // produces — found live testing a design system this project hadn't seen
+  // before: a token somewhere in a resolution chain had a non-string $value,
+  // and calling .match() on it crashed the whole plugin UI with an uncaught
+  // TypeError and no visible error message at all.
+  it("returns null instead of crashing when the top-level ref itself isn't a string", () => {
+    expect(resolveReference(undefined as unknown as string, {})).toBeNull();
+  });
+
+  it("returns null instead of crashing when a referenced token's $value is undefined", () => {
+    const flat = {
+      "color.a": { $type: "color", $value: "{color.b}" },
+      "color.b": { $type: "color", $value: undefined as unknown as string },
+    };
+    expect(resolveReference("{color.a}", flat)).toBeNull();
+  });
+
+  it("leaves an embedded ref unresolved rather than crashing when its target's $value is malformed", () => {
+    const flat = {
+      "color.a": { $type: "color", $value: null as unknown as string },
+    };
+    const result = resolveReference("0 1px 2px {color.a}", flat);
+    expect(result).toBe("0 1px 2px {color.a}");
+  });
+});
+
 // ────────────────────────────────────────────────────────────────
 // resolveAllReferences
 // ────────────────────────────────────────────────────────────────
