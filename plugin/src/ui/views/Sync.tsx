@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Project } from "../App";
-import { fetchTokenFiles, fetchBranches, createBranch, createTokenPR } from "../hooks/useGitHub";
+import { fetchTokenFiles, fetchRepoPaths, fetchBranches, createBranch, createTokenPR } from "../hooks/useGitHub";
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
@@ -16,6 +16,7 @@ import {
   computePullDiff,
   computePushDiff,
   buildFilesFromDiffs,
+  findMissingOutputFiles,
   buildApplyPayloads,
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
@@ -64,6 +65,10 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [diffs, setDiffs] = useState<CollectionDiff[]>([]);
   const [diffError, setDiffError] = useState<DescribedError | undefined>(undefined);
   const [unrecognizedCollections, setUnrecognizedCollections] = useState<string[]>([]);
+  // Push, zero token changes: an enabled platform's output file that's never
+  // been generated (e.g. just turned on in Output Formats) — see PushDiff's
+  // "output-only" state.
+  const [outputOnlyFiles, setOutputOnlyFiles] = useState<string[]>([]);
   const [lastSync, setLastSync] = useState<LastSync | null>(null);
 
   // Branch switching — persisted per project; defaults to the configured branch
@@ -117,6 +122,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     variables: FigmaVariable[];
     typographyStyles: TypographyStyle[];
   } | null>(null); // push: raw Figma data for file generation
+  const pendingRepoPaths = useRef<Set<string> | null>(null); // push: every real blob path in the repo, for detecting an enabled platform's never-generated output file
 
   const send = useSendMessage();
 
@@ -490,14 +496,19 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     try {
       setStatus({ kind: "loading", message: "Fetching current tokens from GitHub…" });
 
-      const files = await fetchTokenFiles({
+      const githubConfig = {
         pat: project.pat,
         repo: project.repo,
         branch: activeBranch,
         tokensPath: project.tokensPath,
-      });
+      };
+      const [files, repoPaths] = await Promise.all([
+        fetchTokenFiles(githubConfig),
+        fetchRepoPaths(githubConfig),
+      ]);
 
       pendingFiles.current = files;
+      pendingRepoPaths.current = repoPaths;
       setStatus({ kind: "loading", message: "Reading Figma variables…" });
       pendingAction.current = "push";
       send({ type: "GET_COLLECTIONS" });
@@ -546,11 +557,31 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       : "";
 
     if (totalChanges === 0) {
-      setStatus({
-        kind: "success",
-        message: `GitHub is already up to date with Figma${unknownSuffix}`,
-      });
+      // No token changes — but an enabled platform (Output Formats) might
+      // have never had its file generated yet, since that's a config
+      // change with nothing to do with any token's value. Check before
+      // reporting "up to date" so turning on a new format actually does
+      // something on the next push, not just on the next unrelated token edit.
+      const missing = findMissingOutputFiles(
+        figmaCollectionData,
+        githubParsed.metadata,
+        project.tokensPath,
+        pendingRepoPaths.current ?? new Set(),
+      );
+      if (missing.length > 0) {
+        setOutputOnlyFiles(missing.map((f) => f.path));
+        setStatus({ kind: "idle" });
+        setDiffs([]);
+        setView("push-diff");
+      } else {
+        setOutputOnlyFiles([]);
+        setStatus({
+          kind: "success",
+          message: `GitHub is already up to date with Figma${unknownSuffix}`,
+        });
+      }
     } else {
+      setOutputOnlyFiles([]);
       setStatus({ kind: "idle" });
       setDiffs(result.filter((d) => d.counts.total > 0));
       setView("push-diff");
@@ -628,12 +659,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       <PushDiff
         diffs={diffs}
         unrecognizedCollections={unrecognizedCollections}
+        outputOnlyFiles={outputOnlyFiles}
         onCreatePR={(title, keys) => handleCreatePR(title, keys)}
         onBack={() => {
           setView("main");
           setStatus({ kind: "idle" });
           pendingFigmaRaw.current = null;
           setUnrecognizedCollections([]);
+          setOutputOnlyFiles([]);
         }}
         creating={creating}
       />

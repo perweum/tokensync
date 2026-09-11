@@ -15,6 +15,7 @@ import type { CollectionDiff } from "./token-diff";
 import { figmaToTokenFiles, collectionKind, flattenTypographyStyles } from "./figma-to-tokens";
 import type { CollectionKind } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
+import type { TransformedFile } from "./transformer";
 import type { TypographyStyle } from "./typography-styles";
 
 /** A flat resolved value map for one collection/mode from Figma — same shape
@@ -266,6 +267,27 @@ export function buildFilesFromDiffs(
   }
 
   return tokenFiles;
+}
+
+/**
+ * Paths runTransformers would write that don't exist in the repo yet —
+ * found live: enabling a new platform (e.g. Dart, previously off) has
+ * nothing to do with any token's value, so a push with zero token changes
+ * silently reported "already up to date" and never generated its output
+ * file at all. `existingPaths` is every real blob path currently in the
+ * repo (see useGitHub.ts's fetchRepoPaths) — not just the token JSON
+ * fetchTokenFiles reads, since a platform's output normally lives outside
+ * tokensPath entirely (dist/, lib/, ios/, …).
+ */
+export function findMissingOutputFiles(
+  figmaCollections: ResolvedCollection[],
+  metadata: Metadata,
+  tokensPath: string,
+  existingPaths: ReadonlySet<string>,
+): TransformedFile[] {
+  return runTransformers(figmaCollections, metadata, tokensPath).filter(
+    (f) => !existingPaths.has(f.path),
+  );
 }
 
 /** Fallback name for a role with nothing mapped to it (`names.role === []`) —

@@ -4,6 +4,7 @@ import {
   computePullDiff,
   computePushDiff,
   buildFilesFromDiffs,
+  findMissingOutputFiles,
   buildApplyPayloads,
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
@@ -404,6 +405,46 @@ describe("computePushDiff", () => {
     const entry = globalDiff.entries.find((e) => e.path === "text.heading.caption.textCase");
     expect(entry?.status).toBe("added");
     expect(entry?.githubValue).toBe("uppercase");
+  });
+});
+
+describe("findMissingOutputFiles", () => {
+  // Reproduces a real bug found live: enabling a new platform in Output
+  // Formats (e.g. Dart, previously off) has nothing to do with any token's
+  // value, so a push with zero token changes reported "already up to date"
+  // and never generated its output file — the check only ever looked at
+  // token-level diffs, with no idea that metadata.platforms is a second,
+  // independent source of "something changed."
+  const collections = [col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } })];
+
+  it("reports the configured output path as missing when it doesn't exist in the repo yet", () => {
+    const meta = metadata({ platforms: { js: { enabled: true, output: "dist/tokens.js" } } });
+    const missing = findMissingOutputFiles(collections, meta, "tokens/", new Set());
+    expect(missing.map((f) => f.path)).toEqual(["dist/tokens.js"]);
+  });
+
+  it("reports nothing missing once the output path already exists in the repo", () => {
+    const meta = metadata({ platforms: { js: { enabled: true, output: "dist/tokens.js" } } });
+    const missing = findMissingOutputFiles(collections, meta, "tokens/", new Set(["dist/tokens.js"]));
+    expect(missing).toEqual([]);
+  });
+
+  it("reports nothing when no platform is enabled at all", () => {
+    const meta = metadata({});
+    const missing = findMissingOutputFiles(collections, meta, "tokens/", new Set());
+    expect(missing).toEqual([]);
+  });
+
+  it("only reports the specific platforms that are actually missing", () => {
+    const meta = metadata({
+      platforms: {
+        css: { enabled: true, output: "dist/tokens.css" },
+        js: { enabled: true, output: "dist/tokens.js" },
+      },
+    });
+    // css already exists; js was just enabled and never generated
+    const missing = findMissingOutputFiles(collections, meta, "tokens/", new Set(["dist/tokens.css"]));
+    expect(missing.map((f) => f.path)).toEqual(["dist/tokens.js"]);
   });
 });
 
