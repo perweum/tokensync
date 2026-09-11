@@ -5,11 +5,22 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Project } from "../App";
-import { fetchTokenFiles, fetchRepoPaths, fetchBranches, createBranch, createTokenPR } from "../hooks/useGitHub";
+import {
+  fetchTokenFiles,
+  fetchRepoPaths,
+  fetchBranches,
+  createBranch,
+  createTokenPR,
+} from "../hooks/useGitHub";
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
-import type { ParsedRepository, Metadata, CollectionNames, CollectionSources } from "../../shared/token-merger";
+import type {
+  ParsedRepository,
+  Metadata,
+  CollectionNames,
+  CollectionSources,
+} from "../../shared/token-merger";
 import { figmaToCollections } from "../../shared/figma-to-tokens";
 import type { CollectionDiff } from "../../shared/token-diff";
 import {
@@ -21,7 +32,12 @@ import {
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
 } from "../../shared/sync-logic";
-import type { PluginMessage, FigmaVariableCollection, FigmaVariable, TokenValue } from "../../shared/messages";
+import type {
+  PluginMessage,
+  FigmaVariableCollection,
+  FigmaVariable,
+  TokenValue,
+} from "../../shared/messages";
 import type { TypographyStyle } from "../../shared/typography-styles";
 import { PullDiff } from "./PullDiff";
 import { PushDiff } from "./PushDiff";
@@ -71,7 +87,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [outputOnlyFiles, setOutputOnlyFiles] = useState<string[]>([]);
   const [lastSync, setLastSync] = useState<LastSync | null>(null);
 
-  // Branch switching — persisted per project; defaults to the configured branch
+  // Branch switching — persisted per project; defaults to the configured branch.
+  // Stored as {repo, branch} rather than a bare branch string, so that editing
+  // a project's repo in Settings (project.id unchanged) correctly invalidates
+  // a branch name cached for the *previous* repo instead of silently resurrecting
+  // it — found live: a project repointed at a new repo still showed the old
+  // repo's branch name on this screen after Settings reported success.
   const branchKey = `tokensync:branch:${project.id}`;
   const [activeBranch, setActiveBranch] = useState(project.branch);
   const [branches, setBranches] = useState<string[]>([]);
@@ -153,7 +174,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   function handleBranchChange(branch: string) {
     setActiveBranch(branch);
-    send({ type: "SAVE_STORAGE", key: branchKey, value: branch });
+    send({
+      type: "SAVE_STORAGE",
+      key: branchKey,
+      value: JSON.stringify({ repo: project.repo, branch }),
+    });
     setStatus({ kind: "idle" });
   }
 
@@ -201,7 +226,18 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           }
         }
         if (msg.type === "STORAGE_LOADED" && msg.key === branchKey) {
-          if (msg.value) setActiveBranch(msg.value);
+          if (msg.value) {
+            try {
+              const stored = JSON.parse(msg.value) as { repo: string; branch: string };
+              // Only trust a cached branch name for the repo it was cached
+              // against — a pre-fix bare-string value (no `repo` field) fails
+              // this parse and falls through, correctly discarding a name
+              // that predates this fix and can't be trusted either.
+              if (stored.repo === project.repo) setActiveBranch(stored.branch);
+            } catch {
+              // pre-fix format or corrupt value — ignore, keep project.branch
+            }
+          }
         }
         if (msg.type === "STORAGE_LOADED" && msg.key === syncTypeStylesKey) {
           if (msg.value !== null) setSyncTypeStyles(msg.value === "true");
@@ -549,7 +585,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
     // GitHub, figmaValue = new state from Figma.
-    const result = computePushDiff(figmaCollectionData, githubParsed.collections, githubParsed.metadata);
+    const result = computePushDiff(
+      figmaCollectionData,
+      githubParsed.collections,
+      githubParsed.metadata,
+    );
 
     const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
     const unknownSuffix = unknownCollectionNames.length
@@ -720,6 +760,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         {creatingBranch ? (
           <>
             <input
+              className="ts-input"
               style={styles.branchInput}
               value={newBranchName}
               onChange={(e) => {
@@ -964,7 +1005,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "3px 8px",
     borderRadius: 5,
     border: `1px solid ${color.accent.default}`,
-    outline: "none",
     fontFamily: font.mono,
     minWidth: 0,
   },
