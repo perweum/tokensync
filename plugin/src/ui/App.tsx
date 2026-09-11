@@ -149,14 +149,21 @@ export default function App() {
   if (activeProject) {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        {projects.length > 1 && (
-          <ProjectSwitcher
-            projects={projects}
-            activeId={activeId!}
-            onSelect={setActiveId}
-            onAdd={() => setShowSetup(true)}
-          />
-        )}
+        {/* Shown once there's at least one project, not just once there's
+            more than one to switch between — with exactly one configured
+            (the normal starting state), this was the only way to add a
+            second project at all, and it was invisible until a second one
+            somehow already existed. Found live: opening the plugin in a
+            brand-new Figma file with no per-file project scoping (see
+            Project.figmaFileKey) showed the same single existing project
+            with no way to start a fresh one short of overwriting it in
+            Settings. */}
+        <ProjectSwitcher
+          projects={projects}
+          activeId={activeId!}
+          onSelect={setActiveId}
+          onAdd={() => setShowSetup(true)}
+        />
         <Sync
           project={activeProject}
           onEditProject={() => setShowSetup(true)}

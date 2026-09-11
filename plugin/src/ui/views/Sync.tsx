@@ -61,6 +61,7 @@ type Status =
   | ({ kind: "error" } & DescribedError);
 
 interface LastSync {
+  repo: string;
   timestamp: number;
   direction: "pull" | "push";
 }
@@ -228,7 +229,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   }
 
   function saveLastSync(direction: "pull" | "push") {
-    const entry: LastSync = { timestamp: Date.now(), direction };
+    const entry: LastSync = { repo: project.repo, timestamp: Date.now(), direction };
     setLastSync(entry);
     send({ type: "SAVE_STORAGE", key: lastSyncKey, value: JSON.stringify(entry) });
   }
@@ -242,9 +243,17 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       (msg: PluginMessage) => {
         if (msg.type === "STORAGE_LOADED" && msg.key === lastSyncKey) {
           try {
-            setLastSync(msg.value ? (JSON.parse(msg.value) as LastSync) : null);
+            // Same fix as the branch cache below: only trust a cached
+            // "last synced" timestamp for the repo it was cached against — a
+            // pre-fix value (no `repo` field) fails the check and is
+            // discarded, same as it should be, since it can't be trusted
+            // either. Found live: repointing a project at a different repo
+            // still showed "Pulled 3h ago" from the *previous* repo, even
+            // though nothing had ever synced against the new one.
+            const parsed = msg.value ? (JSON.parse(msg.value) as LastSync) : null;
+            setLastSync(parsed && parsed.repo === project.repo ? parsed : null);
           } catch {
-            /* ignore */
+            setLastSync(null);
           }
         }
         if (msg.type === "STORAGE_LOADED" && msg.key === branchKey) {
