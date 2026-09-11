@@ -80,6 +80,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [creating, setCreating] = useState(false);
   const [diffs, setDiffs] = useState<CollectionDiff[]>([]);
   const [diffError, setDiffError] = useState<DescribedError | undefined>(undefined);
+  // Mirrors diffError — handleCreatePR's own failure was previously only
+  // reported via the shared `status` state, which nothing renders while
+  // still on the push-diff view (unlike the main screen). A real failure
+  // (found live: a GitHub error creating the PR) looked exactly like the
+  // button doing nothing at all.
+  const [createError, setCreateError] = useState<DescribedError | undefined>(undefined);
   const [unrecognizedCollections, setUnrecognizedCollections] = useState<string[]>([]);
   // Push, zero token changes: an enabled platform's output file that's never
   // been generated (e.g. just turned on in Output Formats) — see PushDiff's
@@ -662,6 +668,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   async function handleCreatePR(prTitle: string, selectedKeys: Set<string>) {
     setCreating(true);
+    setCreateError(undefined);
     try {
       const raw = pendingFigmaRaw.current;
       const parsed = pendingParsed.current;
@@ -697,7 +704,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       });
     } catch (err) {
       setCreating(false);
-      setStatus({ kind: "error", ...describeGitHubError(err, "create-pr") });
+      // Reported via createError, not setStatus — the push-diff view (still
+      // active here; a failure doesn't navigate away) renders createError
+      // itself, the same way PullDiff already renders diffError. setStatus
+      // alone was invisible here, since nothing on this view ever read it.
+      setCreateError(describeGitHubError(err, "create-pr"));
     }
   }
 
@@ -737,8 +748,10 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           pendingFigmaRaw.current = null;
           setUnrecognizedCollections([]);
           setOutputOnlyFiles([]);
+          setCreateError(undefined);
         }}
         creating={creating}
+        error={createError}
       />
     );
   }

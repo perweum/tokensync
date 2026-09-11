@@ -15,6 +15,7 @@ import { Field, TextInput } from "../components/Field";
 import { ViewHeader } from "../components/ViewHeader";
 import { IconCheck } from "../icons";
 import { color, font, space } from "../theme";
+import type { DescribedError } from "../errors";
 
 interface Props {
   diffs: CollectionDiff[];
@@ -27,6 +28,11 @@ interface Props {
   onCreatePR: (title: string, selectedKeys: Set<string>) => void;
   onBack: () => void;
   creating: boolean;
+  /** A failed PR creation — this view stays open on failure (no navigation
+   * away), so it must render its own error, the same way PullDiff renders
+   * diffError. Without this, a real failure looked identical to the button
+   * doing nothing at all. */
+  error?: DescribedError;
 }
 
 export function PushDiff({
@@ -36,6 +42,7 @@ export function PushDiff({
   onCreatePR,
   onBack,
   creating,
+  error,
 }: Props) {
   const isOutputOnly = diffs.length === 0 && outputOnlyFiles.length > 0;
   const [prTitle, setPrTitle] = useState(
@@ -99,6 +106,11 @@ export function PushDiff({
             ))}
           </ul>
           <div style={s.footer}>
+            {error && (
+              <StatusBanner tone="danger" detail={error.detail}>
+                {error.message}
+              </StatusBanner>
+            )}
             <Field label="Pull request title">
               <TextInput value={prTitle} onChange={(e) => setPrTitle(e.target.value)} />
             </Field>
@@ -179,6 +191,11 @@ export function PushDiff({
           })()}
 
           <div style={s.footer}>
+            {error && (
+              <StatusBanner tone="danger" detail={error.detail}>
+                {error.message}
+              </StatusBanner>
+            )}
             <Field label="Pull request title">
               <TextInput value={prTitle} onChange={(e) => setPrTitle(e.target.value)} />
             </Field>
