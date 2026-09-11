@@ -20,6 +20,10 @@ interface Props {
   diffs: CollectionDiff[];
   /** Figma collection names that matched none of the configured layers — never included in the PR. */
   unrecognizedCollections?: string[];
+  /** Paths runTransformers would write that don't exist in the repo yet —
+   * an enabled platform (Output Formats) whose file was never generated,
+   * found even though there's zero token-level change to review. */
+  outputOnlyFiles?: string[];
   onCreatePR: (title: string, selectedKeys: Set<string>) => void;
   onBack: () => void;
   creating: boolean;
@@ -28,11 +32,15 @@ interface Props {
 export function PushDiff({
   diffs,
   unrecognizedCollections = [],
+  outputOnlyFiles = [],
   onCreatePR,
   onBack,
   creating,
 }: Props) {
-  const [prTitle, setPrTitle] = useState("chore: sync design tokens from Figma");
+  const isOutputOnly = diffs.length === 0 && outputOnlyFiles.length > 0;
+  const [prTitle, setPrTitle] = useState(
+    isOutputOnly ? "chore: generate output files" : "chore: sync design tokens from Figma",
+  );
   const [activeTab, setActiveTab] = useState(0);
 
   // Selective sync — all collections selected by default
@@ -74,7 +82,39 @@ export function PushDiff({
         </div>
       )}
 
-      {!hasChanges ? (
+      {isOutputOnly ? (
+        <>
+          <div style={s.outputOnlyIntro}>
+            <div style={s.emptyText}>No token changes</div>
+            <div style={s.emptySubtext}>
+              {outputOnlyFiles.length} output file{outputOnlyFiles.length !== 1 ? "s" : ""} from Output
+              Formats {outputOnlyFiles.length !== 1 ? "haven't" : "hasn't"} been generated yet:
+            </div>
+          </div>
+          <ul style={s.outputOnlyList}>
+            {outputOnlyFiles.map((path) => (
+              <li key={path} style={s.outputOnlyItem}>
+                <code>{path}</code>
+              </li>
+            ))}
+          </ul>
+          <div style={s.footer}>
+            <Field label="Pull request title">
+              <TextInput value={prTitle} onChange={(e) => setPrTitle(e.target.value)} />
+            </Field>
+            <Button
+              variant="primary"
+              fullWidth
+              disabled={creating}
+              onClick={() =>
+                onCreatePR(prTitle.trim() || "chore: generate output files", new Set())
+              }
+            >
+              {creating ? "Creating PR…" : `Create PR (${outputOnlyFiles.length} file${outputOnlyFiles.length !== 1 ? "s" : ""})`}
+            </Button>
+          </div>
+        </>
+      ) : !hasChanges ? (
         <div style={s.empty}>
           <IconCheck size={26} style={{ color: color.status.success.text }} />
           <div style={s.emptyText}>GitHub is already up to date</div>
@@ -183,7 +223,25 @@ const s: Record<string, React.CSSProperties> = {
     color: color.text.secondary,
   },
   emptyText: { fontWeight: 500, fontSize: font.size.xl, color: color.text.primary },
-  emptySubtext: { fontSize: font.size.md },
+  emptySubtext: { fontSize: font.size.md, color: color.text.secondary },
+  outputOnlyIntro: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: `${space.lg}px ${space.lg}px ${space.sm}px`,
+  },
+  outputOnlyList: {
+    margin: 0,
+    padding: `0 ${space.lg}px ${space.lg}px ${space.lg + space.md}px`,
+    flex: 1,
+    overflowY: "auto",
+  },
+  outputOnlyItem: {
+    fontSize: font.size.sm,
+    fontFamily: font.mono,
+    color: color.text.secondary,
+    padding: `${space.xs}px 0`,
+  },
   tabHint: {
     fontSize: font.size.xs,
     color: color.text.muted,

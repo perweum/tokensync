@@ -111,6 +111,22 @@ export async function fetchTokenFiles(config: GitHubConfig): Promise<GitHubFile[
   return Promise.all(jsonPaths.map((path) => fetchFile(path, config)));
 }
 
+/**
+ * Every real blob path currently in the repo at `config.branch` — not just
+ * the token JSON `fetchTokenFiles` reads. Used to tell whether a configured
+ * platform output file (`dist/tokens.css`, etc. — outside `tokensPath`,
+ * never fetched otherwise) already exists, so a push with zero token
+ * changes can still recognize "an output format was just enabled and its
+ * file has never been generated" instead of reporting nothing to do.
+ */
+export async function fetchRepoPaths(config: GitHubConfig): Promise<Set<string>> {
+  const tree = await apiGet<TreeResponse>(
+    `repos/${config.repo}/git/trees/${encodeURIComponent(config.branch)}?recursive=1`,
+    config.pat,
+  );
+  return new Set(tree.tree.filter((item) => item.type === "blob").map((item) => item.path));
+}
+
 async function fetchFile(path: string, config: GitHubConfig): Promise<GitHubFile> {
   const data = await apiGet<ContentsResponse>(
     `repos/${config.repo}/contents/${path}?ref=${encodeURIComponent(config.branch)}`,
