@@ -102,6 +102,8 @@ Updated whenever something below changes state. For *why* something was built th
 * Priority 1b remainder — canonical-model IR firming, merge-not-replace safety for Clean Apply, Token Studio adapter, three-corpus round-trip test (§4). Push, pull-diff, and apply are all now verified live for Text Styles — see the entry above.
 * Priority 2 remainder — only the manifest plugin ID/icon/Community listing copy, which needs the Figma desktop app, not code (§4). First-run scaffolding and PAT hardening are mostly done. A genuinely empty repo (zero commits) now has a confirmed live failure, not just a theoretical gap (§4).
 * Map Collections structural validation checklist — 6 concrete checks (duplicate primitives modes with no `sizes` role, a collection double-mapped to two roles, scheme-named groups inside a Themes collection, no visible "this is the default theme/size" confirmation, an unrecognized dimension-naming convention, and an info note for `global: []`), all traced to real Coop/Spor incidents — design accepted, not yet built (§4).
+* A general "advisor" surface (recommendations, not just success/error) — direction only, not scoped; the Map Collections checklist above and an unbound-typography-field-shadows-a-primitive nudge are its first two identified cases (§4).
+* Onboarding revisit — deliberately gated until multi-design-system testing (Coop, Spor, whatever's next) is done, so it's designed against real friction rather than one system's experience (§4).
 * Priority 3 — description sync v2 (diffable + applied on pull) (§4).
 * Priority 4 remainder — GitHub API pagination/limits, a genuine per-collection Clean Apply result breakdown, `Sync.tsx` tests (§4). Apply-flow error accounting is fixed.
 * Later/on demand — Enterprise REST provider, `{theme}` output placeholder, rename detection, dogfooding, Effect Styles/shadow (§4).
@@ -546,6 +548,49 @@ contain dimension/number fields?") — matches the project's own stance against
 speculative validation surfaces (see *Transformer Output Shape Stays
 Opt-In/Opt-Out Only*). Add a check here only once it traces to a real incident,
 the same bar every item above already meets.
+
+### A General "Advisor" Surface — Recommendations, Not Just Errors and Successes (direction, not scoped)
+User's own framing (September 2026): the UI already has a place for "this
+succeeded" and "this failed" — there isn't one yet for "this worked, but here's
+something worth reconsidering." Proposed as a third message class alongside
+the existing success/error `StatusBanner` states, surfaced at the natural point
+a user would want it (Map Collections, the push diff, wherever), not as a
+separate report screen nobody opens.
+
+Two concrete cases already identified that this would cover, neither built yet:
+- **Map Collections' own structural checklist above** — every one of its 6
+  items is naturally an advisory ("this looks off, want to fix it?"), not a
+  hard error; this direction is the general mechanism that checklist's items
+  would actually render through, once built.
+- **Typography fields that are literals but shadow a real primitive's
+  value** — discussed directly with the user: a raw, unbound Text Style field
+  (`fontSize: "24px"`, say) permanently opts out of the `[data-theme]`/
+  `[data-size]` `var()` cascade, since there's nothing to override. Auto-binding
+  it was explicitly rejected (naming/grouping/collection is a design decision,
+  not a sync decision — see the Token Studio adapter's "faithful conversion,
+  not improvement" stance) — but *telling* the user "this value matches
+  `primitive.font-size.11` — bind it in Figma for live switching?" costs
+  nothing and leaves the actual action, and its details, to them.
+
+**Not scoped**: where recommendations get computed (a pass in `figma-to-tokens.ts`?
+`sync-logic.ts`?), how many can co-exist without turning into a wall of
+suggestions, whether they're dismissable/rememberable per-project. Deliberately
+left open until there's a second and third real case beyond the two above to
+design the mechanism against — same reasoning as not building the Map
+Collections checklist mechanism from one incident alone.
+
+### Onboarding, Revisited Once Multi-Design-System Testing Is Done (gated, not yet started)
+User's own framing (September 2026): hold off on a deliberate onboarding pass
+until testing against multiple real, structurally different design systems
+(Coop, Vy's Spor, whatever comes next) has run its course — the real friction
+points won't be known until then, and this session's own history backs that
+up: Priority 2's existing "stranger installs it" scope (PAT hardening, manifest/
+icons, first-run scaffolding) didn't anticipate the empty-repo bootstrap gap,
+the structural mapping mistakes now tracked above, or unclear error copy —
+all found only by actually onboarding a second design system, not by
+speculating about a generic "stranger." Revisit Priority 2 and the Map
+Collections checklist together once the current testing phase is done, rather
+than designing onboarding improvements from Coop's experience alone.
 
 ### Priority 3 — Description sync v2
 * **Description-only changes are invisible in diffs.** The diff compares `$type`/`$value` only. Needs: include `$description` in `buildCollectionDiff` plus diff UI rendering.
