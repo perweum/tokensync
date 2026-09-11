@@ -26,6 +26,13 @@ interface Props {
    * silently missing from the diff entirely rather than shown as broken.
    * Token Spark can't fix a dead link in Figma's own data, only report it. */
   brokenAliasPaths?: string[];
+  /** Dot-paths where two real Figma variable names structurally collide
+   * (e.g. "surface/brand" and "surface/brand/default" both existing) — the
+   * file-writing step can't represent both at once and will refuse to write
+   * either if the affected collection is included in this push. Computed
+   * against the full Figma data, so this can show up even for a collection
+   * the user hasn't selected yet. */
+  conflictPaths?: string[];
   /** Paths runTransformers would write that don't exist in the repo yet —
    * an enabled platform (Output Formats) whose file was never generated,
    * found even though there's zero token-level change to review. */
@@ -44,6 +51,7 @@ export function PushDiff({
   diffs,
   unrecognizedCollections = [],
   brokenAliasPaths = [],
+  conflictPaths = [],
   outputOnlyFiles = [],
   onCreatePR,
   onBack,
@@ -103,6 +111,19 @@ export function PushDiff({
           >
             {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped —
             broken variable alias: <strong>{brokenAliasPaths.join(", ")}</strong>
+          </StatusBanner>
+        </div>
+      )}
+
+      {conflictPaths.length > 0 && (
+        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
+          <StatusBanner
+            tone="danger"
+            title="Rename or delete the colliding variable in Figma — the push will be blocked if this stays as-is."
+          >
+            {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} structurally
+            conflict{conflictPaths.length === 1 ? "s" : ""} in Figma:{" "}
+            <strong>{conflictPaths.join(", ")}</strong>
           </StatusBanner>
         </div>
       )}

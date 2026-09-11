@@ -21,7 +21,7 @@ import type {
   CollectionNames,
   CollectionSources,
 } from "../../shared/token-merger";
-import { figmaToCollections } from "../../shared/figma-to-tokens";
+import { figmaToCollections, figmaToTokenFiles } from "../../shared/figma-to-tokens";
 import type { CollectionDiff } from "../../shared/token-diff";
 import {
   computePullDiff,
@@ -94,6 +94,14 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // already is, since Token Spark can't fix a broken link in Figma's own
   // data, only report it.
   const [brokenAliasPaths, setBrokenAliasPaths] = useState<string[]>([]);
+  // Two real Figma variable names structurally collide (e.g. "surface/brand"
+  // and "surface/brand/default" both existing) — figmaToTokenFiles' tree
+  // builder can't represent both at once and would silently corrupt or lose
+  // data if written. Computed here (against the full, unfiltered Figma data,
+  // the same way unrecognizedCollections/brokenAliasPaths already are) so
+  // it's visible on the diff screen itself, not only as the hard stop
+  // handleCreatePR still enforces against whatever's actually selected.
+  const [conflictPaths, setConflictPaths] = useState<string[]>([]);
   // Push, zero token changes: an enabled platform's output file that's never
   // been generated (e.g. just turned on in Output Formats) — see PushDiff's
   // "output-only" state.
@@ -616,6 +624,24 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       );
       setUnrecognizedCollections(unknownCollectionNames);
       setBrokenAliasPaths(brokenPaths);
+
+      // Proactive check against the *full*, unfiltered Figma data — a
+      // structural naming collision can't be seen by figmaToCollections'
+      // flat map (string keys don't nest), only by the tree builder
+      // figmaToTokenFiles actually uses to write files. Surfacing it here,
+      // as soon as the diff loads, means the user doesn't have to select
+      // collections and click Create PR just to discover a Figma-side
+      // naming problem that handleCreatePR would refuse anyway.
+      setConflictPaths(
+        figmaToTokenFiles(
+          figmaCollections,
+          figmaVariables,
+          project.tokensPath,
+          githubParsed.metadata.figma.collections,
+          figmaTypographyStyles,
+        ).conflictPaths,
+      );
+
       pendingFigmaCollections.current = figmaCollectionData;
       // Keep raw data for writing complete token files to GitHub (not just diff entries)
       pendingFigmaRaw.current = {
@@ -768,6 +794,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         diffs={diffs}
         unrecognizedCollections={unrecognizedCollections}
         brokenAliasPaths={brokenAliasPaths}
+        conflictPaths={conflictPaths}
         outputOnlyFiles={outputOnlyFiles}
         onCreatePR={(title, keys) => handleCreatePR(title, keys)}
         onBack={() => {
@@ -776,6 +803,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           pendingFigmaRaw.current = null;
           setUnrecognizedCollections([]);
           setBrokenAliasPaths([]);
+          setConflictPaths([]);
           setOutputOnlyFiles([]);
           setCreateError(undefined);
         }}
