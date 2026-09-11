@@ -45,6 +45,15 @@ function col(
   return { collectionName, modeName, tokens, rawTokens, typographyStyles: [] };
 }
 
+function figmaMap(
+  collectionName: string,
+  modeName: string,
+  values: Record<string, string>,
+  rawValues: Record<string, string> = values,
+): FigmaFlatMap {
+  return { collectionName, modeName, values, rawValues };
+}
+
 function entry(path: string, status: DiffEntry["status"], value = "#fff"): DiffEntry {
   return {
     path,
@@ -53,6 +62,7 @@ function entry(path: string, status: DiffEntry["status"], value = "#fff"): DiffE
     githubValue: status === "removed" ? null : value,
     githubRawValue: status === "removed" ? null : value,
     figmaValue: status === "added" ? null : "#000",
+    figmaRawValue: status === "added" ? null : "#000",
   };
 }
 
@@ -109,7 +119,7 @@ describe("computePullDiff", () => {
     // every token as "added" when the casing doesn't line up.
     const github = [col("Semantic", "Light", { "color.a": { $type: "color", $value: "#fff" } })];
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "Semantic", modeName: "light", values: { "color.a": "#fff" } },
+      figmaMap("Semantic", "light", { "color.a": "#fff" }),
     ];
 
     const { diffs } = computePullDiff(github, metadata(), figmaMaps);
@@ -153,8 +163,8 @@ describe("computePullDiff", () => {
       }),
     ];
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "size", modeName: "mobile", values: { "primitive.font-size.1": "16px" } },
-      { collectionName: "primitives", modeName: "color", values: { "Black.100": "rgba(0, 0, 0, 0.15)" } },
+      figmaMap("size", "mobile", { "primitive.font-size.1": "16px" }),
+      figmaMap("primitives", "color", { "Black.100": "rgba(0, 0, 0, 0.15)" }),
     ];
     const meta = metadata({
       figma: {
@@ -191,11 +201,11 @@ describe("computePullDiff", () => {
       }),
     ];
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "Primitives", modeName: "Value", values: { "Black.100": "rgba(0, 0, 0, 0.15)" } },
-      { collectionName: "Size", modeName: "mobile", values: { "primitive.dimension.1": "4" } },
+      figmaMap("Primitives", "Value", { "Black.100": "rgba(0, 0, 0, 0.15)" }),
+      figmaMap("Size", "mobile", { "primitive.dimension.1": "4" }),
       // Desktop's own value for the same path — must NOT be pulled in when
       // comparing against the "Mobile" entry.
-      { collectionName: "Size", modeName: "desktop", values: { "primitive.dimension.1": "7" } },
+      figmaMap("Size", "desktop", { "primitive.dimension.1": "7" }),
     ];
     const meta = metadata({
       figma: {
@@ -244,9 +254,27 @@ describe("mergeTypographyIntoFigmaMaps", () => {
     expect(global.values["text.heading.caption.textCase"]).toBe("uppercase");
   });
 
+  it("a bound field's rawValues entry keeps the {ref} as-is, for raw-based diffing", () => {
+    const figmaMaps: FigmaFlatMap[] = [
+      figmaMap("Themes", "Masterbrand", { "font-family.display": "Coop Sans" }),
+    ];
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "typography.banner",
+        fields: { fontFamily: { $type: "fontFamily", $value: "{font-family.display}" } },
+      },
+    ];
+
+    const merged = mergeTypographyIntoFigmaMaps(figmaMaps, typographyStyles, meta);
+
+    const global = merged.find((m) => m.collectionName === "Global")!;
+    expect(global.values["typography.banner.fontFamily"]).toBe("Coop Sans"); // resolved
+    expect(global.rawValues["typography.banner.fontFamily"]).toBe("{font-family.display}"); // raw
+  });
+
   it("resolves a bound field's {ref} against the other FigmaFlatMaps' already-resolved values", () => {
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "Themes", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
+      figmaMap("Themes", "Masterbrand", { "font-family.display": "Coop Sans" }),
     ];
     const typographyStyles: TypographyStyle[] = [
       {
@@ -263,12 +291,18 @@ describe("mergeTypographyIntoFigmaMaps", () => {
 
   it("end-to-end: computePullDiff shows no change when GitHub's resolved typography matches Figma's live Text Style", () => {
     const github = [
-      col("Global", "Value", {
-        "typography.banner.fontFamily": { $type: "fontFamily", $value: "Coop Sans" },
-      }),
+      col(
+        "Global",
+        "Value",
+        { "typography.banner.fontFamily": { $type: "fontFamily", $value: "Coop Sans" } },
+        // rawTokens stays the unresolved {ref} — matches what's actually
+        // committed to typography.json (injectTypographyStyles writes the
+        // literal ref, never the resolved value).
+        { "typography.banner.fontFamily": { $type: "fontFamily", $value: "{font-family.display}" } },
+      ),
     ];
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "Themes", modeName: "Masterbrand", values: { "font-family.display": "Coop Sans" } },
+      figmaMap("Themes", "Masterbrand", { "font-family.display": "Coop Sans" }),
     ];
     const typographyStyles: TypographyStyle[] = [
       {
@@ -284,7 +318,7 @@ describe("mergeTypographyIntoFigmaMaps", () => {
   });
 
   it("returns figmaMaps unchanged when there are no typography styles", () => {
-    const figmaMaps: FigmaFlatMap[] = [{ collectionName: "Primitives", modeName: "Value", values: {} }];
+    const figmaMaps: FigmaFlatMap[] = [figmaMap("Primitives", "Value", {})];
     expect(mergeTypographyIntoFigmaMaps(figmaMaps, [], meta)).toBe(figmaMaps);
   });
 
@@ -296,8 +330,8 @@ describe("mergeTypographyIntoFigmaMaps", () => {
     // as "changed" (desktop's value vs. GitHub's correctly mobile-resolved
     // one) even when nothing had actually changed.
     const figmaMaps: FigmaFlatMap[] = [
-      { collectionName: "Size", modeName: "desktop", values: { "primitive.font-size.6": "21px" } },
-      { collectionName: "Size", modeName: "mobile", values: { "primitive.font-size.6": "17px" } },
+      figmaMap("Size", "desktop", { "primitive.font-size.6": "21px" }),
+      figmaMap("Size", "mobile", { "primitive.font-size.6": "17px" }),
     ];
     const typographyStyles: TypographyStyle[] = [
       {

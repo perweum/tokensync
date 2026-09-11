@@ -144,6 +144,53 @@ describe("diffTokens — rawTokens", () => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// diffTokens — raw-based comparison (figmaRawValues)
+// ────────────────────────────────────────────────────────────────
+
+describe("diffTokens — comparison is based on raw values, not resolved ones", () => {
+  // Reproduces a real UX problem found live: editing one primitive
+  // (color.blue.300) made every theme token that referenced it show as
+  // "changed" too — dozens of entries across every brand, for one edit.
+  // Comparing raw (one-hop) values instead of fully-resolved ones means a
+  // token whose own {ref} definition didn't change stays "unchanged," even
+  // though its effective resolved value shifted along with the primitive.
+  it("stays unchanged when both sides reference the same {ref}, even if that ref's resolved value differs", () => {
+    const github = { "theme.border": tok("{color.blue.300}") };
+    const rawTokens = { "theme.border": tok("{color.blue.300}") };
+    // Figma's resolved value has already changed (e.g. blue.300 was edited),
+    // but the token's own definition — the alias itself — never did.
+    const figma = { "theme.border": "#ff00ff" };
+    const figmaRawValues = { "theme.border": "{color.blue.300}" };
+
+    const entries = diffTokens(github, figma, rawTokens, figmaRawValues);
+    expect(entries).toHaveLength(0);
+  });
+
+  it("shows changed, with the raw {ref} strings, when the alias target itself changes", () => {
+    const github = { "theme.border": tok("{color.blue.600}") };
+    const rawTokens = { "theme.border": tok("{color.blue.600}") };
+    const figma = { "theme.border": "#0059b2" }; // resolved color.blue.600
+    const figmaRawValues = { "theme.border": "{color.blue.500}" }; // Figma still points at .500
+
+    const [entry] = diffTokens(github, figma, rawTokens, figmaRawValues);
+    expect(entry.status).toBe("changed");
+    expect(entry.githubRawValue).toBe("{color.blue.600}");
+    expect(entry.figmaRawValue).toBe("{color.blue.500}");
+  });
+
+  it("still shows changed for a genuine literal value edit, with no ref involved", () => {
+    const github = { "color.blue.300": tok("#ff00ff") };
+    const figma = { "color.blue.300": "#57abff" };
+    const figmaRawValues = { "color.blue.300": "#57abff" };
+
+    const [entry] = diffTokens(github, figma, undefined, figmaRawValues);
+    expect(entry.status).toBe("changed");
+    expect(entry.githubRawValue).toBe("#ff00ff");
+    expect(entry.figmaRawValue).toBe("#57abff");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
 // diffTokens — sorting
 // ────────────────────────────────────────────────────────────────
 

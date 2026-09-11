@@ -24,7 +24,10 @@ import type { TypographyStyle } from "./typography-styles";
 export interface FigmaFlatMap {
   collectionName: string;
   modeName: string;
+  /** dot-notation path → fully resolved string value */
   values: Record<string, string>;
+  /** dot-notation path → one-hop value: the literal, or "{target.dot.path}" for an alias */
+  rawValues: Record<string, string>;
 }
 
 /**
@@ -67,7 +70,7 @@ function figmaValuesFor(
   githubCol: ResolvedCollection,
   names: CollectionNames,
   figmaMaps: FigmaFlatMap[],
-): Record<string, string> {
+): { values: Record<string, string>; rawValues: Record<string, string> } {
   const role = collectionKind(githubCol.collectionName, names);
   const matching = figmaMaps.filter((m) => {
     const mKind = collectionKind(m.collectionName, names);
@@ -80,7 +83,10 @@ function figmaValuesFor(
     if (role === "global") return true;
     return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
   });
-  return Object.assign({}, ...matching.map((m) => m.values));
+  return {
+    values: Object.assign({}, ...matching.map((m) => m.values)),
+    rawValues: Object.assign({}, ...matching.map((m) => m.rawValues)),
+  };
 }
 
 /**
@@ -137,14 +143,23 @@ export function mergeTypographyIntoFigmaMaps(
   }
 
   const typographyValues: Record<string, string> = {};
+  const typographyRawValues: Record<string, string> = {};
   for (const [path, token] of Object.entries(flattenTypographyStyles(typographyStyles))) {
     const match = /^\{(.+)\}$/.exec(token.$value);
     typographyValues[path] = match ? (allResolved[match[1]] ?? token.$value) : token.$value;
+    // Already one-hop as-is — getLocalTypographyStyles produces exactly this
+    // shape (a literal, or a "{ref}" into the bound variable's dot-path).
+    typographyRawValues[path] = token.$value;
   }
 
   return [
     ...figmaMaps,
-    { collectionName: names.global[0] ?? "Global", modeName: "Value", values: typographyValues },
+    {
+      collectionName: names.global[0] ?? "Global",
+      modeName: "Value",
+      values: typographyValues,
+      rawValues: typographyRawValues,
+    },
   ];
 }
 
@@ -164,15 +179,17 @@ export function computePullDiff(
     (c) => !isIgnoredCollection(c.collectionName, metadata),
   );
 
-  const diffs = filteredGithubCollections.map((githubCol) =>
-    buildCollectionDiff(
+  const diffs = filteredGithubCollections.map((githubCol) => {
+    const { values, rawValues } = figmaValuesFor(githubCol, names, figmaMaps);
+    return buildCollectionDiff(
       githubCol.collectionName,
       githubCol.modeName,
       githubCol.tokens,
-      figmaValuesFor(githubCol, names, figmaMaps),
+      values,
       githubCol.rawTokens,
-    ),
-  );
+      rawValues,
+    );
+  });
 
   return { diffs, filteredGithubCollections };
 }
@@ -202,6 +219,8 @@ export function computePushDiff(
       figmaCol.modeName,
       figmaCol.tokens,
       Object.fromEntries(Object.entries(githubCol?.tokens ?? {}).map(([k, v]) => [k, v.$value])),
+      figmaCol.rawTokens,
+      Object.fromEntries(Object.entries(githubCol?.rawTokens ?? {}).map(([k, v]) => [k, v.$value])),
     );
   });
 }
