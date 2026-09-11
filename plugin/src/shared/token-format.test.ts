@@ -143,6 +143,51 @@ describe("resolveReference", () => {
   });
 });
 
+describe("resolveReference — circular references", () => {
+  // A circular alias (a -> b -> a) previously recursed unboundedly and
+  // crashed the whole plugin with a stack overflow — no depth guard or
+  // cycle detection at all. Found by comparing against a mature reference
+  // implementation (a real Token Studio -> Dart codegen pipeline), which
+  // explicitly detects this and reports the exact chain.
+  it("returns null instead of recursing forever on a direct cycle (a -> b -> a)", () => {
+    const flat = {
+      "color.a": { $type: "color", $value: "{color.b}" },
+      "color.b": { $type: "color", $value: "{color.a}" },
+    };
+    expect(resolveReference("{color.a}", flat)).toBeNull();
+  });
+
+  it("returns null on a longer cycle (a -> b -> c -> a)", () => {
+    const flat = {
+      "color.a": { $type: "color", $value: "{color.b}" },
+      "color.b": { $type: "color", $value: "{color.c}" },
+      "color.c": { $type: "color", $value: "{color.a}" },
+    };
+    expect(resolveReference("{color.a}", flat)).toBeNull();
+  });
+
+  it("leaves a cyclic embedded ref inside a composite value unresolved rather than crashing", () => {
+    const flat = {
+      "color.a": { $type: "color", $value: "{color.b}" },
+      "color.b": { $type: "color", $value: "{color.a}" },
+    };
+    const result = resolveReference("0 1px 2px {color.a}", flat);
+    expect(result).toBe("0 1px 2px {color.a}");
+  });
+
+  it("does not false-positive on the same token referenced twice in sibling (non-cyclic) chains", () => {
+    // Two independent tokens both aliasing the same shared primitive is
+    // normal and must resolve fine — only an actual loop should be rejected.
+    const flat = {
+      "color.brand.600": { $type: "color", $value: "#1a52d8" },
+      "color.a": { $type: "color", $value: "{color.brand.600}" },
+      "color.b": { $type: "color", $value: "{color.brand.600}" },
+    };
+    expect(resolveReference("{color.a}", flat)).toBe("#1a52d8");
+    expect(resolveReference("{color.b}", flat)).toBe("#1a52d8");
+  });
+});
+
 // ────────────────────────────────────────────────────────────────
 // resolveAllReferences
 // ────────────────────────────────────────────────────────────────

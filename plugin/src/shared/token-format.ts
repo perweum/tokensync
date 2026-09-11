@@ -60,24 +60,43 @@ export function flattenTokens(
  *   Pure ref:     "{color.brand.600}"          → resolves to a single value
  *   Embedded ref: "0 1px 2px {color.black.50}" → each {ref} is substituted inline
  *
- * Returns the resolved string, or null if a pure ref target is missing.
+ * Returns the resolved string, or null if a pure ref target is missing or a
+ * circular reference is detected (a token whose resolution chain loops back
+ * on itself, e.g. a aliases b aliases a — otherwise unbounded recursion,
+ * which previously crashed the whole plugin with an unhelpful stack
+ * overflow instead of a clear, targeted warning).
+ *
+ * `chain` tracks the paths visited so far in the current resolution — not
+ * meant to be passed by external callers, only threaded through recursion.
  */
-export function resolveReference(ref: string, flat: Record<string, TokenValue>): string | null {
+export function resolveReference(
+  ref: string,
+  flat: Record<string, TokenValue>,
+  chain: readonly string[] = [],
+): string | null {
   const match = ref.match(/^\{(.+)\}$/);
   if (match) {
     // Pure reference — look up and recurse
     const path = match[1];
+    if (chain.includes(path)) {
+      console.warn(`[TokenSync] Circular token reference: ${[...chain, path].join(" -> ")}`);
+      return null;
+    }
     const token = flat[path];
     if (!token) return null;
-    return resolveReference(token.$value, flat);
+    return resolveReference(token.$value, flat, [...chain, path]);
   }
 
   // Embedded references inside a composite value (e.g. shadow strings)
   if (ref.includes("{")) {
     return ref.replace(/\{([^}]+)\}/g, (_match, refPath: string) => {
+      if (chain.includes(refPath)) {
+        console.warn(`[TokenSync] Circular token reference: ${[...chain, refPath].join(" -> ")}`);
+        return _match;
+      }
       const token = flat[refPath];
       if (!token) return _match;
-      const resolved = resolveReference(token.$value, flat);
+      const resolved = resolveReference(token.$value, flat, [...chain, refPath]);
       return resolved ?? _match;
     });
   }
