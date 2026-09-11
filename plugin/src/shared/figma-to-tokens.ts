@@ -11,7 +11,7 @@ import type {
   TokenValue,
 } from "./messages";
 import type { ResolvedCollection, CollectionNames, CollectionSources, Metadata } from "./token-merger";
-import { fromFigmaVarName, resolveAllReferences } from "./token-format";
+import { fromFigmaVarName, resolveAllReferences, isPureRef } from "./token-format";
 import type { TypographyStyle } from "./typography-styles";
 
 export interface TokenFile {
@@ -168,9 +168,13 @@ export function figmaToCollections(
   // Real Figma Text Style fields join the flat Global map like any other
   // token — including textCase/textDecoration, which have no Variable
   // representation at all and would otherwise never appear in the diff view.
-  // A bound field's value here already matches what its Variable-derived
-  // entry (if any) produces, see injectTypographyStyles below for why.
-  globalRaw = { ...globalRaw, ...flattenTypographyStyles(typographyStyles) };
+  // Only lets a field win when it's genuinely bound (a {ref}) or there's no
+  // Variable-derived value at that path at all — see shouldTypographyFieldWin.
+  for (const [path, token] of Object.entries(flattenTypographyStyles(typographyStyles))) {
+    if (shouldTypographyFieldWin(globalRaw[path], token)) {
+      globalRaw[path] = token;
+    }
+  }
 
   if (Object.keys(globalRaw).length > 0) {
     const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...defaultThemeRaw, ...globalRaw });
@@ -551,20 +555,36 @@ export function flattenTypographyStyles(styles: TypographyStyle[]): Record<strin
 }
 
 /**
+ * Whether a Text-Style-derived typography field is safe to overlay onto
+ * whatever the Variable-derived tree already has at that path.
+ *
+ * Originally this overwrote unconditionally, on the theory that a bound
+ * field's value here is already exactly what the matching Variable-derived
+ * entry would produce (same underlying bound variable) — true when the
+ * field genuinely *is* bound. It doesn't hold for a field the Text Style
+ * leaves unbound: reading it then falls back to a plain literal (see
+ * getLocalTypographyStyles' readLiteralField), which silently clobbered a
+ * real Variable-derived alias. Confirmed live against Coop's actual file
+ * (tokensync-coop-stresstest PR #35): fontFamily/fontWeight were bound and
+ * round-tripped fine, fontSize wasn't, and a real `{primitive.font-size.11}`
+ * alias baked into a dead `48` — breaking that token's size-axis live
+ * switching, with zero Figma Variable change involved.
+ *
+ * A ref should always win (it's the same or better information); a literal
+ * should only win when there's nothing there yet — a Text Style created by
+ * hand with no matching Variable at all, or a field like textCase/
+ * textDecoration that has no Variable representation to begin with.
+ */
+function shouldTypographyFieldWin(existing: TokenValue | undefined, incoming: TokenValue): boolean {
+  return !existing || isPureRef(incoming.$value);
+}
+
+/**
  * Overlays real Figma Text Styles onto a built typography.json: sets the
  * group-level `$type: "typography"` marker (which has no Variable
- * counterpart — it only exists because a matching Text Style does) and
- * writes every field the Text Style reports directly from that read.
- *
- * Fields are written unconditionally rather than merged with whatever the
- * Variable-derived tree already had at that path, for two reasons: a bound
- * field's value here is already exactly what the matching Variable-derived
- * entry would produce (same underlying bound variable, see
- * getLocalTypographyStyles), so overwriting is a no-op; and textCase/
- * textDecoration have no Variable counterpart at all — Figma doesn't support
- * binding them — so they only ever reach the file through this path. This
- * also covers a Text Style created by hand with no matching Variables yet:
- * the group is created fresh from the style's own fields.
+ * counterpart — it only exists because a matching Text Style does), then
+ * writes each field the Text Style reports only when shouldTypographyFieldWin
+ * allows it — see that function for why this can't be unconditional.
  */
 function injectTypographyStyles(json: string, styles: TypographyStyle[]): string {
   if (styles.length === 0) return json;
@@ -574,7 +594,10 @@ function injectTypographyStyles(json: string, styles: TypographyStyle[]): string
     const keys = style.path.split(".");
     setNested(tree, [...keys, "$type"], "typography");
     for (const [field, token] of Object.entries(style.fields)) {
-      setNested(tree, [...keys, field], token);
+      const existing = getNested(tree, [...keys, field]) as TokenValue | undefined;
+      if (shouldTypographyFieldWin(existing, token)) {
+        setNested(tree, [...keys, field], token);
+      }
     }
   }
   return JSON.stringify(tree, null, 2);
@@ -729,4 +752,13 @@ function setNested(obj: Record<string, unknown>, keys: string[], value: unknown)
     current = current[keys[i]] as Record<string, unknown>;
   }
   current[keys[keys.length - 1]] = value;
+}
+
+function getNested(obj: Record<string, unknown>, keys: string[]): unknown {
+  let current: unknown = obj;
+  for (const key of keys) {
+    if (typeof current !== "object" || current === null) return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
 }
