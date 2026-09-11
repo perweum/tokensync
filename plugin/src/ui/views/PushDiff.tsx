@@ -16,6 +16,16 @@ import { ViewHeader } from "../components/ViewHeader";
 import { IconCheck } from "../icons";
 import { color, font, space } from "../theme";
 import type { DescribedError } from "../errors";
+import { toFigmaVarName } from "../../shared/token-format";
+
+/** Dot-paths are this project's own internal representation — a user
+ * reading a warning has no reason to know that convention, and has to
+ * mentally translate it back to find the actual variable in Figma's own
+ * picker (which always shows "/"). Found live: exactly this friction was
+ * flagged directly after a real conflict warning. */
+function asFigmaNames(paths: string[]): string {
+  return paths.map(toFigmaVarName).join(", ");
+}
 
 interface Props {
   diffs: CollectionDiff[];
@@ -94,11 +104,18 @@ export function PushDiff({
         <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
           <StatusBanner
             tone="warning"
-            title={`Not included in the PR. Use "Map collections" on the main screen to assign it a role, if this is unexpected.`}
+            expandableDetail={
+              <>
+                Not included in this PR: <strong>{unrecognizedCollections.join(", ")}</strong>. Assign{" "}
+                {unrecognizedCollections.length === 1 ? "it" : "them"} to a role on the main screen's
+                "Map collections" if this is unexpected.
+              </>
+            }
           >
-            Skipped {unrecognizedCollections.length}{" "}
-            {unrecognizedCollections.length === 1 ? "collection" : "collections"} not in{" "}
-            <code>figma.collections</code>: <strong>{unrecognizedCollections.join(", ")}</strong>
+            {unrecognizedCollections.length} Figma{" "}
+            {unrecognizedCollections.length === 1 ? "collection isn't" : "collections aren't"} set up
+            in Map Collections yet, so {unrecognizedCollections.length === 1 ? "it's" : "they're"}{" "}
+            skipped.
           </StatusBanner>
         </div>
       )}
@@ -107,10 +124,19 @@ export function PushDiff({
         <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
           <StatusBanner
             tone="warning"
-            title="Figma shows the right variable name for these, but the underlying link is dead — re-link them to a real value in Figma to fix."
+            expandableDetail={
+              <>
+                <strong>{asFigmaNames(brokenAliasPaths)}</strong>
+                {brokenAliasPaths.length === 1 ? " shows" : " show"} the right name in Figma's variable
+                picker, but the link underneath is broken (its target was likely deleted or
+                recreated). Open{" "}
+                {brokenAliasPaths.length === 1 ? "it" : "each one"} in Figma and re-link{" "}
+                {brokenAliasPaths.length === 1 ? "it" : "them"} to a real value, then push again.
+              </>
+            }
           >
-            {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped —
-            broken variable alias: <strong>{brokenAliasPaths.join(", ")}</strong>
+            {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped — Figma
+            shows a broken variable link.
           </StatusBanner>
         </div>
       )}
@@ -119,11 +145,19 @@ export function PushDiff({
         <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
           <StatusBanner
             tone="danger"
-            title="Rename or delete the colliding variable in Figma — the push will be blocked if this stays as-is."
+            expandableDetail={
+              <>
+                <strong>{asFigmaNames(conflictPaths)}</strong> — each one is a real variable name in
+                Figma, and other variables are also nested under that same name (e.g.{" "}
+                <code>{toFigmaVarName(conflictPaths[0])}/default</code>). One name can't be both at
+                once. Rename or delete one of them in Figma, then push again — this will block the
+                push until it's resolved.
+              </>
+            }
           >
-            {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} structurally
-            conflict{conflictPaths.length === 1 ? "s" : ""} in Figma:{" "}
-            <strong>{conflictPaths.join(", ")}</strong>
+            {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} can't sync —{" "}
+            {conflictPaths.length === 1 ? "it conflicts" : "they conflict"} with another variable in
+            Figma.
           </StatusBanner>
         </div>
       )}

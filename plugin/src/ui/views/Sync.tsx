@@ -22,6 +22,7 @@ import type {
   CollectionSources,
 } from "../../shared/token-merger";
 import { figmaToCollections, figmaToTokenFiles } from "../../shared/figma-to-tokens";
+import { toFigmaVarName } from "../../shared/token-format";
 import type { CollectionDiff } from "../../shared/token-diff";
 import {
   computePullDiff,
@@ -729,10 +730,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       // through; the fix is in Figma (rename/delete the colliding variable),
       // not something Token Spark can safely guess at.
       if (conflictPaths.length > 0) {
+        const figmaNames = conflictPaths.map(toFigmaVarName).join(", ");
         throw new Error(
-          `${conflictPaths.length} variable name${conflictPaths.length !== 1 ? "s" : ""} ` +
-            `structurally conflict in Figma and can't be written safely: ${conflictPaths.join(", ")}. ` +
-            `Rename or delete the colliding variable in Figma, then push again.`,
+          `Can't push — ${figmaNames} ${conflictPaths.length === 1 ? "conflicts" : "conflict"} ` +
+            `with another variable in Figma (a variable is named exactly this, and other variables ` +
+            `are also nested under that same name). Rename or delete one of them in Figma, then push again.`,
         );
       }
 
