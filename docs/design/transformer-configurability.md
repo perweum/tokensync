@@ -6,7 +6,7 @@ selection UI and document bring-your-own-build-tool — is now live: the
 **Output formats** screen (`OutputFormats.tsx`) and a new README section
 ("Already have a build step?"). Written in response to the Coop stress test's
 real question — their `web-design-extractor` is already in production; would
-Token Sync's CSS output ever replace it, and how does a team decide?
+Token Spark's CSS output ever replace it, and how does a team decide?
 
 ---
 
@@ -31,10 +31,10 @@ mapping UI just fixed for `figma.collections`.
 ## 2. The real question underneath "would Coop use our extractor"
 
 Coop's `web-design-extractor` emits class selectors (`.christmas`,
-`.size-desktop`) with its own naming; Token Sync's `css.ts` emits attribute
+`.size-desktop`) with its own naming; Token Spark's `css.ts` emits attribute
 selectors (`[data-theme="christmas"]`, `[data-size="desktop"]`) with DTCG
 dash-joined variable names. Different shapes, both valid, neither wrong. Two
-ways Token Sync could close that gap:
+ways Token Spark could close that gap:
 
 - **(A) Make the transformer's output shape configurable** — selector
   strategy, attribute/class name, variable naming scheme, file split, becomes
@@ -42,7 +42,7 @@ ways Token Sync could close that gap:
   already wired into their codebase.
 - **(B) Don't try — stay opt-out only, and make the *token JSON itself* the
   real interop surface**, clean and standard enough that Coop's *own* existing
-  build tool can read it directly, no Token Sync transformer involved at all.
+  build tool can read it directly, no Token Spark transformer involved at all.
 
 ## 3. What the ecosystem actually does — checked, not assumed
 
@@ -53,9 +53,9 @@ Two things confirmed directly against their docs, not memory:
 - **Style Dictionary v4 has genuine, native DTCG support** — `$value`/`$type`/
   `$description` is a first-class input format, not a shim. (The newest
   2025.10 DTCG spec revision isn't fully supported yet — that's in progress
-  for v5 — but the core `$value`/`$type` shape Token Sync already emits is
-  solid v4 ground.) Token Sync's canonical model is already DTCG-native per
-  `canonical-model.md` — this means Token Sync's raw `tokens/**/*.json` is,
+  for v5 — but the core `$value`/`$type` shape Token Spark already emits is
+  solid v4 ground.) Token Spark's canonical model is already DTCG-native per
+  `canonical-model.md` — this means Token Spark's raw `tokens/**/*.json` is,
   in principle, *already* valid Style Dictionary input, no adapter needed.
 - **Even Style Dictionary's own built-in formats don't offer selector-shape
   configuration through options.** `css/variables` hardcodes `:root`. Getting
@@ -84,9 +84,9 @@ off-ramp (`canonical-model.md`) is about the *input* side — reading
 transformer/output side is a separate concern the adapter boundary already
 keeps separate on purpose. What *does* ease migration is (B) — a team stuck
 on Token Studio today almost certainly also has *some* existing build step
-consuming its export; letting that keep working against Token Sync's token
+consuming its export; letting that keep working against Token Spark's token
 JSON removes "does the generated CSS match what I have" as a blocker to
-switching away from Token Studio at all, without Token Sync needing to
+switching away from Token Studio at all, without Token Spark needing to
 reimplement whatever that build step does.
 
 **Is configurability better for a brand-new design system?** No — the
@@ -113,7 +113,7 @@ listing CSS/JS/TS/Dart/Swift with a checkbox each, writing the result to
   cuts against this project's own stated preference for concrete defaults
   over speculative flexibility.
 - **Do invest in the token JSON being a clean, documented, standards-correct
-  interop surface** — verify Token Sync's `$type` vocabulary matches DTCG's
+  interop surface** — verify Token Spark's `$type` vocabulary matches DTCG's
   actual names (`dimension`, not `size` — worth a direct audit, not assumed),
   and write down "already have a build step? Point it at `tokens/`, disable
   `platforms.*`" as a first-class supported path, not a thing a team has to
@@ -124,12 +124,12 @@ listing CSS/JS/TS/Dart/Swift with a checkbox each, writing the result to
 
 This serves both ends at once: strong opinionated defaults for a team
 starting fresh, and a real, low-maintenance off-ramp for a team with existing
-infrastructure like Coop's — without Token Sync trying to become a worse
+infrastructure like Coop's — without Token Spark trying to become a worse
 version of Style Dictionary along the way.
 
 ## 6. Open questions
 
-- **`$type` vocabulary — checked directly against the spec.** Token Sync's
+- **`$type` vocabulary — checked directly against the spec.** Token Spark's
   `color`/`dimension`/`fontFamily`/`fontWeight`/`number` (from
   `figma-to-tokens.ts`'s `inferType`) all match DTCG 2025.10's seven official
   base types exactly — no Style-Dictionary-v3-era naming like `size` in place

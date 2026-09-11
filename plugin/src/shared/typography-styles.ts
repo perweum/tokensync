@@ -3,7 +3,7 @@
  * explicitly marked `"$type": "typography"` whose direct children are individual
  * scalar sub-property tokens (fontFamily, fontWeight, fontSize, …).
  *
- * This is Token Sync's native composite typography shape: unlike DTCG's
+ * This is Token Spark's native composite typography shape: unlike DTCG's
  * single-object `typography` $value, or Token Studio's equivalent, values stay
  * decomposed into ordinary leaf tokens that already round-trip as Figma
  * Variables today (see tokens/semantic/global/typography.json). The group-level

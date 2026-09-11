@@ -93,7 +93,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // a branch name cached for the *previous* repo instead of silently resurrecting
   // it — found live: a project repointed at a new repo still showed the old
   // repo's branch name on this screen after Settings reported success.
-  const branchKey = `tokensync:branch:${project.id}`;
+  const branchKey = `tokenspark:branch:${project.id}`;
   const [activeBranch, setActiveBranch] = useState(project.branch);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
@@ -102,7 +102,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   const [branchCreateError, setBranchCreateError] = useState<string | undefined>(undefined);
   const [branchCreateLoading, setBranchCreateLoading] = useState(false);
 
-  const lastSyncKey = `tokensync:lastSync:${project.id}`;
+  const lastSyncKey = `tokenspark:lastSync:${project.id}`;
 
   // Whether to sync typography ("$type": "typography" marked groups) as Figma
   // Text Styles at all — persisted per project, defaults OFF. Off just skips
@@ -112,7 +112,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // not been verified end-to-end against a real Figma file; only one
   // isolated binding call has been confirmed live. Flip to on once that's
   // done, or once a team has verified it against their own file.
-  const syncTypeStylesKey = `tokensync:syncTypeStyles:${project.id}`;
+  const syncTypeStylesKey = `tokenspark:syncTypeStyles:${project.id}`;
   const [syncTypeStyles, setSyncTypeStyles] = useState(false);
 
   const viewRef = useRef<View>("main");

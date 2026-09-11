@@ -1,5 +1,5 @@
 /**
- * tokensync/v1 format utilities.
+ * tokenspark/v1 format utilities.
  * Shared between the plugin sandbox and the React UI — no Figma or browser APIs here.
  */
 
@@ -86,7 +86,7 @@ export function resolveReference(
     // Pure reference — look up and recurse
     const path = match[1];
     if (chain.includes(path)) {
-      console.warn(`[TokenSync] Circular token reference: ${[...chain, path].join(" -> ")}`);
+      console.warn(`[TokenSpark] Circular token reference: ${[...chain, path].join(" -> ")}`);
       return null;
     }
     const token = flat[path];
@@ -98,7 +98,7 @@ export function resolveReference(
   if (ref.includes("{")) {
     return ref.replace(/\{([^}]+)\}/g, (_match, refPath: string) => {
       if (chain.includes(refPath)) {
-        console.warn(`[TokenSync] Circular token reference: ${[...chain, refPath].join(" -> ")}`);
+        console.warn(`[TokenSpark] Circular token reference: ${[...chain, refPath].join(" -> ")}`);
         return _match;
       }
       const token = flat[refPath];

@@ -27,7 +27,7 @@ import { toFigmaValue } from "./figma-variables";
 // ---------------------------------------------------------------------------
 
 /**
- * Reads every local Text Style and converts it to Token Sync's typography
+ * Reads every local Text Style and converts it to Token Spark's typography
  * style shape. A bound field becomes a {ref} pointing at the bound variable's
  * dot-path; an unbound field becomes its current literal value.
  */
@@ -152,7 +152,7 @@ export async function applyTypographyStyles(
  * ...") and unclear to a non-developer reading the apply-errors banner.
  * Reports a plain, actionable message instead: the font/style combination
  * needs to actually exist in this Figma file (installed locally, or a team
- * library font already used somewhere) before Token Sync can apply it.
+ * library font already used somewhere) before Token Spark can apply it.
  */
 async function loadFontOrThrowClearError(fontName: FontName): Promise<void> {
   try {
@@ -183,15 +183,21 @@ async function applyOneStyle(
   const familyToken = typographyStyle.fields.fontFamily;
   const weightToken = typographyStyle.fields.fontWeight;
 
-  const familyBound = familyToken ? tryBind(style, "fontFamily", familyToken, allVarsByName) : false;
-  const weightBound = weightToken ? tryBind(style, "fontWeight", weightToken, allVarsByName) : false;
+  const familyBound = familyToken
+    ? tryBind(style, "fontFamily", familyToken, allVarsByName)
+    : false;
+  const weightBound = weightToken
+    ? tryBind(style, "fontWeight", weightToken, allVarsByName)
+    : false;
 
-  const family = familyToken && !familyBound
-    ? resolveLiteral(familyToken, `${typographyStyle.path}.fontFamily`, resolvedFallback)
-    : undefined;
-  const weight = weightToken && !weightBound
-    ? resolveLiteral(weightToken, `${typographyStyle.path}.fontWeight`, resolvedFallback)
-    : undefined;
+  const family =
+    familyToken && !familyBound
+      ? resolveLiteral(familyToken, `${typographyStyle.path}.fontFamily`, resolvedFallback)
+      : undefined;
+  const weight =
+    weightToken && !weightBound
+      ? resolveLiteral(weightToken, `${typographyStyle.path}.fontWeight`, resolvedFallback)
+      : undefined;
 
   if ((family !== null && family !== undefined) || (weight !== null && weight !== undefined)) {
     if (!(familyBound && weightBound)) {

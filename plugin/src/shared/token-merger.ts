@@ -159,7 +159,7 @@ function warnOnDuplicateCollectionNames(collections: CollectionNames): void {
       const existingRole = seen.get(name);
       if (existingRole && existingRole !== role) {
         console.warn(
-          `[TokenSync] Figma collection "${name}" is listed under both "${existingRole}" and "${role}" in figma.collections — using "${existingRole}".`,
+          `[TokenSpark] Figma collection "${name}" is listed under both "${existingRole}" and "${role}" in figma.collections — using "${existingRole}".`,
         );
       } else {
         seen.set(name, role);
@@ -289,7 +289,10 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   // theme mirrors exactly what Semantic already did below before this moved
   // up: resolved output shows one theme's choice for diff/display/CSS
   // purposes; rawTokens (used for Figma alias creation) never include this.
-  const firstThemeName = findCaseInsensitive(Object.keys(layers.themes), metadata.themes[0] ?? "default");
+  const firstThemeName = findCaseInsensitive(
+    Object.keys(layers.themes),
+    metadata.themes[0] ?? "default",
+  );
   const defaultThemeTree = firstThemeName ? layers.themes[firstThemeName] : {};
 
   // --- Global collection ---
@@ -353,7 +356,9 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
 
     // resolved: include default theme so {light.background.brand} → {color.blue.25} → #hex
     const resolvedFlat = resolveAllReferences(
-      flattenTokens(deepMergeTrees([defaultPrimitivesTree, defaultThemeTree, globalTree, schemeTree])),
+      flattenTokens(
+        deepMergeTrees([defaultPrimitivesTree, defaultThemeTree, globalTree, schemeTree]),
+      ),
     );
 
     collections.push({
@@ -396,7 +401,7 @@ function buildLayers(files: Map<string, string>): Layers {
     try {
       tree = JSON.parse(content) as TokenTree;
     } catch {
-      console.warn(`[TokenSync] Failed to parse ${path}`);
+      console.warn(`[TokenSpark] Failed to parse ${path}`);
       continue;
     }
 
@@ -575,7 +580,8 @@ function findRoleCollections(
   names: CollectionNames,
 ): ResolvedCollection[] {
   const configured = names[role];
-  if (configured.length > 0) return collections.filter((c) => configured.includes(c.collectionName));
+  if (configured.length > 0)
+    return collections.filter((c) => configured.includes(c.collectionName));
   return collections.filter((c) => c.collectionName === ROLE_FALLBACK_NAME[role]);
 }
 

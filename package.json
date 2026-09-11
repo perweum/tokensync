@@ -1,7 +1,7 @@
 {
-  "name": "tokensync",
+  "name": "tokenspark",
   "version": "0.1.0",
-  "description": "Design token sync between Figma and GitHub. Internal alternative to Token Studio.",
   "private": true,
+  "description": "Design token sync between Figma and GitHub. Internal alternative to Token Studio.",
   "type": "module"
 }

@@ -1,6 +1,6 @@
 {
-  "name": "Token Sync",
-  "id": "token-sync-internal",
+  "name": "Token Spark",
+  "id": "token-spark-internal",
   "api": "1.0.0",
   "main": "dist/plugin/main.js",
   "ui": "dist/index.html",

@@ -1,7 +1,7 @@
 /**
  * Collection mapping view.
  *
- * Lets the user assign every real Figma collection to a Token Sync role
+ * Lets the user assign every real Figma collection to a Token Spark role
  * (primitives/global/themes/semantic/sizes) or Ignore, instead of hand-editing
  * `figma.collections` in metadata.json. Several physical Figma collections can
  * map to the same role — Figma allows exactly one mode-axis per collection, so
@@ -244,7 +244,7 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
       </div>
 
       <p style={s.subtext}>
-        Assign each Figma collection to a Token Sync role, or Ignore. Several collections can share
+        Assign each Figma collection to a Token Spark role, or Ignore. Several collections can share
         a role — useful when Figma's one-mode-axis-per-collection limit has split one logical role
         (e.g. Themes) across more than one physical collection.
       </p>
@@ -325,8 +325,8 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
                       <div style={s.breakpointHint}>
                         Mode order comes from Figma — <strong>{sizeModeNames[0]}</strong> is the
                         base, written straight into <code>:root</code>. Give each other mode a
-                        viewport width to switch at automatically; leave it blank to only allow
-                        the explicit <code>[data-size]</code> override.
+                        viewport width to switch at automatically; leave it blank to only allow the
+                        explicit <code>[data-size]</code> override.
                       </div>
                       {sizeModeNames.slice(1).map((modeName) => (
                         <div key={modeName} style={s.breakpointRow}>

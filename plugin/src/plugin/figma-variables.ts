@@ -139,7 +139,7 @@ export async function applyTokensToCollection(
       }
     }
 
-    console.log(`[TokenSync] Clean apply: cleared variables and extra modes from ${collectionId}`);
+    console.log(`[TokenSpark] Clean apply: cleared variables and extra modes from ${collectionId}`);
   }
 
   // Sort paths numerically (25, 50, 100 … 950)
@@ -147,7 +147,7 @@ export async function applyTokensToCollection(
     .filter((p) => isTokenValue(flat[p]))
     .sort((a, b) => toSortKey(a).localeCompare(toSortKey(b)));
 
-  console.log(`[TokenSync] Applying ${sortedPaths.length} tokens to ${collectionId}/${modeId}`);
+  console.log(`[TokenSpark] Applying ${sortedPaths.length} tokens to ${collectionId}/${modeId}`);
 
   // ── Pass 1: create all missing variables (no values yet) ──────────────────
   for (const path of sortedPaths) {
@@ -236,9 +236,9 @@ export async function applyTokensToCollection(
   }
 
   if (errors.length) {
-    console.warn(`[TokenSync] ${errors.length} error(s) in ${collectionId}:`, errors.slice(0, 5));
+    console.warn(`[TokenSpark] ${errors.length} error(s) in ${collectionId}:`, errors.slice(0, 5));
   }
-  console.log(`[TokenSync] Applied ${count}, removed ${removed} variables in ${collectionId}`);
+  console.log(`[TokenSpark] Applied ${count}, removed ${removed} variables in ${collectionId}`);
 
   return { count, removed, errors };
 }
@@ -308,7 +308,7 @@ export function figmaTypeFromTokenType(
     case "fontWeight":
       // Figma font weight variables hold the font's installed style name verbatim
       // ("SemiBold"), not a numeric OpenType weight — this is a Figma/font constraint,
-      // not a Token Sync choice. See src/shared/font-weight.ts for platform-side
+      // not a Token Spark choice. See src/shared/font-weight.ts for platform-side
       // translation of this string into a numeric weight for CSS/Dart/Swift output.
       return "STRING";
     case "fontFamily":

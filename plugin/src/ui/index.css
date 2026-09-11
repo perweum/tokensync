@@ -70,7 +70,7 @@ select:focus-visible {
     border-color 100ms ease;
 }
 /* Brand violet — plain hex, not a --figma-color-* variable. This one is
-   Token Sync's own identity (see theme.ts's `accent` comment), not something
+   Token Spark's own identity (see theme.ts's `accent` comment), not something
    that should follow Figma's own blue. */
 .ts-btn--primary {
   background: #863bff;

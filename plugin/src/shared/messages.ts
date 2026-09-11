@@ -75,7 +75,7 @@ export type PluginMessage =
       type: "COLLECTIONS_LOADED";
       collections: FigmaVariableCollection[];
       variables: FigmaVariable[];
-      /** Local Text Styles converted to Token Sync's typography style shape — see shared/typography-styles.ts */
+      /** Local Text Styles converted to Token Spark's typography style shape — see shared/typography-styles.ts */
       typographyStyles: TypographyStyle[];
     }
   | {

@@ -1,10 +1,10 @@
-# Token Sync
+# Token Spark
 
 ## Design principles
 
 **The repository is the source of truth. The plugin holds a cache.**
 
-Token Sync must never become required to keep a project working. A team with the
+Token Spark must never become required to keep a project working. A team with the
 repo and no plugin can build, configure and generate. See
 `docs/principles/no-lock-in.md` for what this requires concretely.
 

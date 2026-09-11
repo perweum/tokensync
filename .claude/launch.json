@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "tokensync-dev",
+      "name": "tokenspark-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "plugin", "run", "dev"],
       "port": 5173

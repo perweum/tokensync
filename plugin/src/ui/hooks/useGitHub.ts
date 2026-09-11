@@ -206,9 +206,9 @@ export async function createTokenPR(
     head: newBranch,
     base: config.branch,
     body: [
-      "## Token sync",
+      "## Token spark",
       "",
-      `Updated ${files.length} token file(s) via Token Sync plugin.`,
+      `Updated ${files.length} token file(s) via Token Spark plugin.`,
       "",
       "> Merge to apply changes to the design system token repository.",
     ].join("\n"),
@@ -265,7 +265,6 @@ async function apiPost<T = unknown>(path: string, pat: string, body: unknown): P
   if (!res.ok) throw new GitHubApiError(res.status, "POST", path);
   return res.json() as Promise<T>;
 }
-
 
 function headers(pat: string): Record<string, string> {
   return {

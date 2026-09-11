@@ -22,7 +22,7 @@ Paste the script below directly.
 **Option B — temporary addition to this plugin.** Paste the script into
 `plugin/src/plugin/main.ts` right after `figma.showUI(...)`, run `npm run dev`
 or `npm run build:plugin`, load the plugin in Figma (Plugins → Development →
-Token Sync), and open the console (Plugins → Development → Show/Hide Console)
+Token Spark), and open the console (Plugins → Development → Show/Hide Console)
 to see the `console.log` output. **Revert the paste afterward** — this is a
 throwaway spike, not part of the real implementation.
 

@@ -25,11 +25,36 @@ import type { DescribedError } from "../errors";
 type PlatformKey = keyof Platforms;
 
 const PLATFORMS: Array<{ key: PlatformKey; label: string; hint: string; defaultOutput: string }> = [
-  { key: "css", label: "CSS", hint: "Custom properties with theme/scheme/size selectors", defaultOutput: "dist/tokens.css" },
-  { key: "js", label: "JavaScript", hint: "Plain ES module token constants", defaultOutput: "dist/tokens.js" },
-  { key: "ts", label: "TypeScript", hint: "Same as JS, with `as const` and type exports", defaultOutput: "dist/tokens.ts" },
-  { key: "dart", label: "Dart", hint: "Flutter-ready token classes", defaultOutput: "lib/src/design_tokens.dart" },
-  { key: "swift", label: "Swift", hint: "iOS-ready token structs", defaultOutput: "ios/DesignTokens.swift" },
+  {
+    key: "css",
+    label: "CSS",
+    hint: "Custom properties with theme/scheme/size selectors",
+    defaultOutput: "dist/tokens.css",
+  },
+  {
+    key: "js",
+    label: "JavaScript",
+    hint: "Plain ES module token constants",
+    defaultOutput: "dist/tokens.js",
+  },
+  {
+    key: "ts",
+    label: "TypeScript",
+    hint: "Same as JS, with `as const` and type exports",
+    defaultOutput: "dist/tokens.ts",
+  },
+  {
+    key: "dart",
+    label: "Dart",
+    hint: "Flutter-ready token classes",
+    defaultOutput: "lib/src/design_tokens.dart",
+  },
+  {
+    key: "swift",
+    label: "Swift",
+    hint: "iOS-ready token structs",
+    defaultOutput: "ios/DesignTokens.swift",
+  },
 ];
 
 interface Props {
@@ -79,7 +104,12 @@ export function OutputFormats({ project, activeBranch, onBack, onSaved }: Props)
 
     try {
       const result = await createTokenPR(
-        { pat: project.pat, repo: project.repo, branch: activeBranch, tokensPath: project.tokensPath },
+        {
+          pat: project.pat,
+          repo: project.repo,
+          branch: activeBranch,
+          tokensPath: project.tokensPath,
+        },
         [
           {
             path: joinTokensPath(project.tokensPath, "metadata.json"),
@@ -106,7 +136,7 @@ export function OutputFormats({ project, activeBranch, onBack, onSaved }: Props)
       <p style={s.subtext}>
         Choose which code files get generated on push, alongside the token JSON. Already have a
         build step (Style Dictionary, e.g.)? Leave everything off and point it at the repo's{" "}
-        <code>tokens/</code> folder directly — Token Sync's token JSON is plain DTCG, readable by
+        <code>tokens/</code> folder directly — Token Spark's token JSON is plain DTCG, readable by
         any tool that speaks it.
       </p>
 

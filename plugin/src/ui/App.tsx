@@ -24,8 +24,8 @@ export interface Project {
   figmaFileKey: string;
 }
 
-const PROJECTS_KEY = "tokensync:projects";
-const ACTIVE_KEY = "tokensync:activeProject";
+const PROJECTS_KEY = "tokenspark:projects";
+const ACTIVE_KEY = "tokenspark:activeProject";
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);

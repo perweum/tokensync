@@ -37,10 +37,10 @@ export const color = {
     subtle: fig("bg-secondary", "#f8f8f8"),
     muted: fig("bg-tertiary", "#f0f0f0"),
   },
-  // Deliberately NOT a Figma variable: this is Token Sync's own brand violet,
+  // Deliberately NOT a Figma variable: this is Token Spark's own brand violet,
   // pulled from favicon.svg (the bolt's fill, then its own inner-glow violet
   // one step darker for hover, one step darker again for pressed) — the
-  // point is to look like Token Sync, not to inherit Figma's own blue.
+  // point is to look like Token Spark, not to inherit Figma's own blue.
   accent: {
     default: "#863bff",
     hover: "#7e14ff",

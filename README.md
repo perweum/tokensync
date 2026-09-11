@@ -1,6 +1,6 @@
-# Token Sync
+# Token Spark
 
-Token Sync is a Figma plugin that keeps a design system's tokens in GitHub as
+Token Spark is a Figma plugin that keeps a design system's tokens in GitHub as
 the source of truth, synced with Figma Variables through reviewable Pull
 Requests. It can also compile those tokens into CSS, JavaScript/TypeScript,
 Dart, and Swift — optionally, for teams that don't already have a build step
@@ -11,7 +11,7 @@ of their own.
 ## How it works
 
 ```
-Figma Variables  ←→  Token Sync Plugin  ←→  GitHub (via Pull Request)
+Figma Variables  ←→  Token Spark Plugin  ←→  GitHub (via Pull Request)
                            ↓
                     Platform output (optional)
                     (CSS, JS/TS, Dart, Swift)
@@ -71,7 +71,7 @@ This means:
 
 ### Any naming, any structure
 
-Token Sync has no opinion on how primitives are named or organised — a
+Token Spark has no opinion on how primitives are named or organised — a
 5-step ramp, a 20-step ramp, a hand-picked palette, whatever your team
 already uses for color, spacing, or type. It reads whatever paths exist
 under `primitives/` and reflects them through unchanged; nothing in the
@@ -437,7 +437,7 @@ my-button::part(root) {
 
 ### Syncing from Figma to GitHub
 
-1. Open the Token Sync plugin in Figma
+1. Open the Token Spark plugin in Figma
 2. Select the project to sync
 3. Review the diff — what has changed in Figma since the last sync
 4. Click **Create PR** — the plugin commits the changes and opens a Pull Request
@@ -445,7 +445,7 @@ my-button::part(root) {
 
 ### Syncing from GitHub to Figma
 
-1. Open the Token Sync plugin in Figma
+1. Open the Token Spark plugin in Figma
 2. Select the project
 3. Review the diff — what has changed in GitHub since the last pull
 4. Click **Apply to Figma** — the plugin updates Variables in the current file
@@ -476,9 +476,9 @@ Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns 
 
 ### Already have a build step?
 
-Token Sync's CSS/JS/TS/Dart/Swift generators are a convenience for teams without one — not a requirement. Every platform is off unless explicitly enabled from the **Output Formats** screen; a project with none of them turned on still gets the token JSON, nothing else.
+Token Spark's CSS/JS/TS/Dart/Swift generators are a convenience for teams without one — not a requirement. Every platform is off unless explicitly enabled from the **Output Formats** screen; a project with none of them turned on still gets the token JSON, nothing else.
 
-The token files themselves (`tokens/**/*.json`) are plain [DTCG](https://www.designtokens.org/) — `$value`/`$type`/`$description`, no Token Sync-specific structure a downstream tool needs to understand. If you already run [Style Dictionary](https://styledictionary.com/) (which has native DTCG support as of v4) or any other token build pipeline, point its `source`/`include` glob at `tokens/**/*.json` directly and leave every `platforms.*` entry off — your existing pipeline and its output stay exactly as they are, Token Sync just keeps the source files it reads in sync with Figma.
+The token files themselves (`tokens/**/*.json`) are plain [DTCG](https://www.designtokens.org/) — `$value`/`$type`/`$description`, no Token Spark-specific structure a downstream tool needs to understand. If you already run [Style Dictionary](https://styledictionary.com/) (which has native DTCG support as of v4) or any other token build pipeline, point its `source`/`include` glob at `tokens/**/*.json` directly and leave every `platforms.*` entry off — your existing pipeline and its output stay exactly as they are, Token Spark just keeps the source files it reads in sync with Figma.
 
 This is also the reasonable default for a team migrating from another tool that already has a build step consuming its export: swap what feeds the pipeline, not the pipeline itself.
 
@@ -521,9 +521,9 @@ Pre-computed values make token files readable by any tool without needing a matc
 
 ## Interop & migration
 
-Most teams evaluating Token Sync are moving from something else — most often Token Studio. Reading a Token Studio repo natively (`$themes.json`, `enabled`/`source`, composite typography) so a team can adopt without restructuring by hand first is planned; see `docs/design/canonical-model.md` for the approach and `docs/interop/token-studio.md` for the concrete format contract this project has tested against, from a real large-scale migration.
+Most teams evaluating Token Spark are moving from something else — most often Token Studio. Reading a Token Studio repo natively (`$themes.json`, `enabled`/`source`, composite typography) so a team can adopt without restructuring by hand first is planned; see `docs/design/canonical-model.md` for the approach and `docs/interop/token-studio.md` for the concrete format contract this project has tested against, from a real large-scale migration.
 
-The token files Token Sync produces are plain DTCG JSON — see "Already have a build step?" above for pairing it with an existing pipeline instead of Token Sync's own generators.
+The token files Token Spark produces are plain DTCG JSON — see "Already have a build step?" above for pairing it with an existing pipeline instead of Token Spark's own generators.
 
 ---
 

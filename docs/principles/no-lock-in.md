@@ -1,6 +1,6 @@
 # No lock-in
 
-The design principle behind Token Sync, and what it requires concretely.
+The design principle behind Token Spark, and what it requires concretely.
 
 ---
 

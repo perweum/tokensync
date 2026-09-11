@@ -1,5 +1,5 @@
 /**
- * Token Sync — Figma plugin main thread.
+ * Token Spark — Figma plugin main thread.
  *
  * Runs in the Figma sandbox. Has access to the `figma` global.
  * Communicates with the React UI via postMessage.
@@ -16,7 +16,7 @@ import { getLocalTypographyStyles, applyTypographyStyles } from "./figma-text-st
 figma.showUI(__html__, {
   width: 480,
   height: 640,
-  title: "Token Sync",
+  title: "Token Spark",
   // Injects Figma's own --figma-color-* CSS variables and a figma-light/
   // figma-dark class on <html>, updating live if the user switches theme —
   // see src/ui/theme.ts for how those variables are consumed.

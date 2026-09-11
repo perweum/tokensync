@@ -16,8 +16,8 @@ that work in detail. But all of it is gated behind their plugin: the repository 
 an export target, not the source of truth, and a team cannot step away without the
 project degrading. See `docs/principles/no-lock-in.md` for the full argument.
 
-The naive response is to add a Token Studio reader to Token Sync. That is the wrong
-shape of fix. If Token Sync's core is built around `$themes.json`, `enabled`/`source`,
+The naive response is to add a Token Studio reader to Token Spark. That is the wrong
+shape of fix. If Token Spark's core is built around `$themes.json`, `enabled`/`source`,
 and groups-as-dimensions, it has inherited Token Studio's concepts wholesale — the
 lock-in has just moved to a different logo. **The goal is not "support Token
 Studio." The goal is: own a neutral canonical model, and make Token Studio one
@@ -48,12 +48,12 @@ therefore small: (1) firm up `ResolvedCollection`/`TokenValue` into a documented
 versioned IR; (2) treat today's parser as "the native DTCG adapter," one of
 several; (3) add a Token Studio adapter that produces the *same* `ResolvedCollection[]`.
 The ~800 lines of downstream logic do not move. This is also the natural place for
-the `@tokensync/core` extraction already planned in DECISIONS.md §1 — the adapter
+the `@tokenspark/core` extraction already planned in DECISIONS.md §1 — the adapter
 boundary and the core package boundary are the same boundary.
 
-**The canonical model is DTCG.** Token Sync already uses it natively. Betting the
+**The canonical model is DTCG.** Token Spark already uses it natively. Betting the
 core on the open W3C standard — rather than on any one tool's format — is the
-concrete form of "better for everybody": a Token Sync repo stays readable by any
+concrete form of "better for everybody": a Token Spark repo stays readable by any
 DTCG-aware tool with zero adapter, which is the direct opposite of `$themes.json`'s
 unreadability.
 
@@ -63,7 +63,7 @@ unreadability.
 
 There are two different things "off-ramp" could mean:
 
-- **(A) Import once** — read a Token Studio repo, convert it to Token Sync's
+- **(A) Import once** — read a Token Studio repo, convert it to Token Spark's
   native layout, and the team never opens Token Studio again.
 - **(B) Interoperate continuously** — keep `$themes.json` as the ongoing source
   format and sync against it indefinitely.
@@ -71,15 +71,15 @@ There are two different things "off-ramp" could mean:
 **Decision: lead with (A).** Every failure mode catalogued in
 `docs/interop/token-studio.md` — silent `source`-set loss on import, plugin cache
 overwriting the repo, stale references after a rename — is a failure mode of
-*continuous* sync against a format Token Sync doesn't own. Path (A) only needs a
-one-time, well-tested *reader*; after conversion, the repo is a Token Sync repo
+*continuous* sync against a format Token Spark doesn't own. Path (A) only needs a
+one-time, well-tested *reader*; after conversion, the repo is a Token Spark repo
 like any other, and none of those failure modes have anywhere to live. Path (B)
 would require building a permanent, bidirectional, drift-resistant Token Studio
 sync engine into the core — exactly the kind of format-specific complexity the
 adapter boundary exists to keep out.
 
 (B) can exist later as a thin, optional evaluation bridge if real demand shows up
-for teams that want to trial Token Sync without committing. It is explicitly not
+for teams that want to trial Token Spark without committing. It is explicitly not
 the design center.
 
 ---
@@ -89,7 +89,7 @@ the design center.
 Reading the Token Studio-specific mechanisms in `docs/interop/` as instances of
 general concepts:
 
-| Token Studio calls it | General concept | Token Sync today |
+| Token Studio calls it | General concept | Token Spark today |
 |---|---|---|
 | token sets, folder = set name | layers with a declared export role | 4 fixed layers (primitives/global/themes/semantic) |
 | `enabled` / `source` | per-layer export contract | collection-level `ignoredCollections` (coarser — see below) |
@@ -105,7 +105,7 @@ wrong. The real Coop system has three axes and they are not peers:
 
 - **Composing axes** — brand and colour-mode. Every brand needs both light and
   dark; together they *select* which value a token resolves to. This is what
-  Token Sync's `themes × colorSchemes` already models, and it should stay a small,
+  Token Spark's `themes × colorSchemes` already models, and it should stay a small,
   closed set (realistically ≤3) rather than open-ended.
 - **Modifier axes** — size (and, generically, anything like it: density, a future
   reduced-motion mode). A modifier axis declares which token *categories* it
@@ -162,7 +162,7 @@ not just a transformer:
 
 **Consequence:** README currently lists "Figma Styles export — Not planned." That
 is no longer viable if typography/shadow tokens are to round-trip at all — this
-affects native Token Sync users too, not only Token Studio migrants, because it's
+affects native Token Spark users too, not only Token Studio migrants, because it's
 a Figma platform limitation, not a Token Studio quirk. This needs its own Plugin
 API surface (`figma.getLocalTextStylesAsync`, `figma.createTextStyle`,
 `TextStyle.setBoundVariable`, and the Effect Style equivalents), separate from the
@@ -175,7 +175,7 @@ Composite typography tokens have no Figma Variable representation at all — onl
 Text Style can hold them. `docs/interop/token-studio.md` §"Observed failure modes
 #2" documents exactly this being destroyed: a Token Studio variable import rebuilt
 everything from Figma collections and deleted the plugin-only typography sets,
-because no Figma collection produced them. Token Sync's `handleCleanApplyAll`
+because no Figma collection produced them. Token Spark's `handleCleanApplyAll`
 currently deletes variables and modes wholesale; on a repo with file-only
 composite tokens (which, per §5.2, typography now unavoidably is), that is the
 identical failure. Merge-on-import must be the default; destructive rebuild must
@@ -234,7 +234,7 @@ canonical model and one adapter exist.
 Before writing an adapter, prove the canonical model isn't over-fit to Token
 Studio by testing it against three independently-structured repos:
 
-1. Token Sync's own `tokens/` (native DTCG) — in this repo.
+1. Token Spark's own `tokens/` (native DTCG) — in this repo.
 2. A real Token Studio repo. **Correction (July 2026)**: `@kilden/design-tokens`
    (`~/projects/designsystem/packages/design-tokens`) was previously described
    here as "the 14-brand repo `docs/interop/` was drawn from" — checked directly

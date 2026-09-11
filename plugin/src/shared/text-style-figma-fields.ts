@@ -1,5 +1,5 @@
 /**
- * Translates between Token Sync's typography field vocabulary and Figma's own
+ * Translates between Token Spark's typography field vocabulary and Figma's own
  * — field names Figma actually binds variables to, and the literal enum
  * values Figma expects for textCase/textDecoration (which can never be
  * variable-bound, per the Figma API — see shared/typography-styles.ts).

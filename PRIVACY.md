@@ -1,8 +1,8 @@
-# Token Sync — Privacy Policy
+# Token Spark — Privacy Policy
 
 _Last updated: 2026-09-08_
 
-Token Sync is a Figma plugin that syncs design tokens between Figma Variables
+Token Spark is a Figma plugin that syncs design tokens between Figma Variables
 and a GitHub repository. This document describes, precisely, what data the
 plugin handles, where it goes, and what it does not do.
 
@@ -30,13 +30,13 @@ Figma enforces at the platform level; the plugin cannot reach any other host.
 
 Your GitHub PAT is sent to `api.github.com` as a bearer authorization header,
 exactly the way any Git tooling authenticates to GitHub's API. It is never
-sent anywhere else — not to a Token Sync server, not to Figma, not to any
+sent anywhere else — not to a Token Spark server, not to Figma, not to any
 analytics or logging service.
 
 Beyond that, the plugin reads and writes:
 
 - **In your GitHub repository**: the token JSON files at the path you
-  configure, `metadata.json`, and any files Token Sync's own transformers are
+  configure, `metadata.json`, and any files Token Spark's own transformers are
   configured to generate (CSS/JS/TS/Dart/Swift — see the plugin's Output
   Formats screen; entirely optional and off by default).
 - **In the current Figma file**: Variables, Variable Collections, and (if
@@ -56,7 +56,7 @@ Beyond that, the plugin reads and writes:
 We recommend creating a **fine-grained personal access token** scoped to only
 the repository you're syncing, rather than a broad classic token — see
 `docs/github-token-setup.md` for exact steps. The token is only as powerful
-as the permissions you grant it when creating it; Token Sync never requests
+as the permissions you grant it when creating it; Token Spark never requests
 broader access than the GitHub API calls it makes actually require (reading
 and writing repository contents, and opening Pull Requests).
 

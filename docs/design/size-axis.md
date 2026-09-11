@@ -135,5 +135,5 @@ is the principle already recorded in `DECISIONS.md`.
   `sizes` as a fifth collection role name.
 - No new CSS selector convention beyond `[data-size="…"]`, consistent with the
   existing attribute-based (not class-based) approach — Coop's real class-based
-  output is a stylistic choice of their build tool, not something Token Sync
+  output is a stylistic choice of their build tool, not something Token Spark
   needs to match.
