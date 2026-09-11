@@ -137,7 +137,7 @@ export async function applyTypographyStyles(
       // throwing, so a per-field failure (an unrecognized textCase, e.g.)
       // wouldn't otherwise be reflected in the count at all.
       const errorsBefore = errors.length;
-      applyOneStyle(style, typographyStyle, allVarsByName, resolvedFallback, errors);
+      await applyOneStyle(style, typographyStyle, allVarsByName, resolvedFallback, errors);
       if (errors.length === errorsBefore) count++;
     } catch (err) {
       errors.push(`${figmaName}: ${String(err)}`);
@@ -147,39 +147,78 @@ export async function applyTypographyStyles(
   return { count, errors };
 }
 
-function applyOneStyle(
+/**
+ * figma.loadFontAsync's own rejection is Figma-internal ("Cannot find font
+ * ...") and unclear to a non-developer reading the apply-errors banner.
+ * Reports a plain, actionable message instead: the font/style combination
+ * needs to actually exist in this Figma file (installed locally, or a team
+ * library font already used somewhere) before Token Sync can apply it.
+ */
+async function loadFontOrThrowClearError(fontName: FontName): Promise<void> {
+  try {
+    await figma.loadFontAsync(fontName);
+  } catch {
+    throw new Error(
+      `Font "${fontName.family}" (${fontName.style}) isn't available in this file — ` +
+        `install it, or check the name/style match exactly what Figma expects.`,
+    );
+  }
+}
+
+/**
+ * Figma requires the font a TextStyle currently resolves to be loaded (via
+ * figma.loadFontAsync) before *any* of its text properties can be written —
+ * not just fontName itself. fontFamily/fontWeight are resolved and applied
+ * (bind or literal) up front, before anything else touches the style, so
+ * that whatever font ends up "current" is loaded exactly once before the
+ * remaining fields (fontSize, lineHeight, …) are ever written.
+ */
+async function applyOneStyle(
   style: TextStyle,
   typographyStyle: TypographyStyle,
   allVarsByName: Map<string, Variable>,
   resolvedFallback: Record<string, string>,
   errors: string[],
-): void {
-  // fontFamily and fontWeight combine into one fontName={family,style} property —
-  // resolve both before assigning, and only override whichever half wasn't bound.
-  let family: string | undefined;
-  let weight: string | undefined;
-  let familyBound = false;
-  let weightBound = false;
+): Promise<void> {
+  const familyToken = typographyStyle.fields.fontFamily;
+  const weightToken = typographyStyle.fields.fontWeight;
+
+  const familyBound = familyToken ? tryBind(style, "fontFamily", familyToken, allVarsByName) : false;
+  const weightBound = weightToken ? tryBind(style, "fontWeight", weightToken, allVarsByName) : false;
+
+  const family = familyToken && !familyBound
+    ? resolveLiteral(familyToken, `${typographyStyle.path}.fontFamily`, resolvedFallback)
+    : undefined;
+  const weight = weightToken && !weightBound
+    ? resolveLiteral(weightToken, `${typographyStyle.path}.fontWeight`, resolvedFallback)
+    : undefined;
+
+  if ((family !== null && family !== undefined) || (weight !== null && weight !== undefined)) {
+    if (!(familyBound && weightBound)) {
+      const targetFontName: FontName = {
+        family: familyBound ? style.fontName.family : (family ?? style.fontName.family),
+        style: weightBound ? style.fontName.style : (weight ?? style.fontName.style),
+      };
+      await loadFontOrThrowClearError(targetFontName);
+      style.fontName = targetFontName;
+    }
+  }
+
+  // Whatever style.fontName resolves to now (via bind above or the literal
+  // assignment just made) must be loaded before touching any other field —
+  // fontSize/lineHeight/letterSpacing/etc. all require it, confirmed live
+  // (Cannot write to node with unloaded font "Coop Sans Bold").
+  await loadFontOrThrowClearError(style.fontName);
 
   for (const field of TYPOGRAPHY_FIELDS) {
+    if (field === "fontFamily" || field === "fontWeight") continue;
     const token = typographyStyle.fields[field];
     if (!token) continue;
-
-    const bound = tryBind(style, field, token, allVarsByName);
-    if (field === "fontFamily") familyBound = bound;
-    if (field === "fontWeight") weightBound = bound;
-    if (bound) continue;
 
     const literal = resolveLiteral(token, `${typographyStyle.path}.${field}`, resolvedFallback);
     if (literal === null) continue;
 
     switch (field) {
-      case "fontFamily":
-        family = literal;
-        break;
-      case "fontWeight":
-        weight = literal;
-        break;
       case "fontSize": {
         const n = toFigmaValue(literal, "FLOAT");
         if (typeof n === "number") style.fontSize = n;
@@ -222,13 +261,6 @@ function applyOneStyle(
         break;
       }
     }
-  }
-
-  if ((family !== undefined || weight !== undefined) && !(familyBound && weightBound)) {
-    style.fontName = {
-      family: familyBound ? style.fontName.family : (family ?? style.fontName.family),
-      style: weightBound ? style.fontName.style : (weight ?? style.fontName.style),
-    };
   }
 }
 
