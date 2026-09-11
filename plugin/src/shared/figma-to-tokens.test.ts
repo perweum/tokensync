@@ -429,6 +429,49 @@ describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.js
     const files = figmaToTokenFiles(collections, variables, "tokens/", names, []);
     expect(files.some((f) => f.repoPath === "tokens/semantic/global/typography.json")).toBe(false);
   });
+
+  it("does not overwrite an existing Variable-derived alias in the committed file when the Text Style field reads as an unbound literal", () => {
+    // File-writing counterpart to the figmaToCollections test above — the
+    // committed JSON must keep the real alias too, not just the diff.
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      { id: "c2", name: "Global", modes: [{ modeId: "m2", name: "Value" }], variableIds: ["v2"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "primitive/font-size/11",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 48 },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+      {
+        id: "v2",
+        name: "text/banner/fontSize",
+        resolvedType: "FLOAT",
+        valuesByMode: { m2: { type: "VARIABLE_ALIAS", id: "v1" } },
+        collectionId: "c2",
+        collectionName: "Global",
+      },
+    ];
+    const namesWithPrimitives = { ...names, primitives: ["Primitives"] };
+    const typographyStyles: TypographyStyle[] = [
+      { path: "text.banner", fields: { fontSize: { $type: "dimension", $value: "48px" } } },
+    ];
+
+    const files = figmaToTokenFiles(
+      collections,
+      variables,
+      "tokens/",
+      namesWithPrimitives,
+      typographyStyles,
+    );
+    const typoFile = files.find((f) => f.repoPath === "tokens/semantic/global/typography.json")!;
+    const tree = JSON.parse(typoFile.content);
+
+    expect(tree.text.banner.fontSize.$value).toBe("{primitive.font-size.11}");
+  });
 });
 
 describe("figmaToCollections — real Figma Text Styles are diffable, not just written to file", () => {
@@ -572,6 +615,55 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
 
     expect(collections.some((c) => c.collectionName === "Global")).toBe(true);
     expect(collections.some((c) => c.collectionName === undefined)).toBe(false);
+  });
+
+  it("does not let an unbound Text Style field clobber an existing Variable-derived alias", () => {
+    // Reproduces the exact live bug (tokensync-coop-stresstest PR #35): a
+    // Global-role fontSize Variable is a real alias into a size-varying
+    // primitive, but Figma's Text Style read reported the same field as an
+    // unbound literal with no user-initiated change at all — silently baking
+    // a dead value over a live one in both the diff and the committed file.
+    const collections: FigmaVariableCollection[] = [
+      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      { id: "c2", name: "Global", modes: [{ modeId: "m2", name: "Value" }], variableIds: ["v2"] },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "primitive/font-size/11",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 48 },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+      {
+        id: "v2",
+        name: "typography/banner/fontSize",
+        resolvedType: "FLOAT",
+        valuesByMode: { m2: { type: "VARIABLE_ALIAS", id: "v1" } },
+        collectionId: "c2",
+        collectionName: "Global",
+      },
+    ];
+    const namesWithGlobal = { ...names, primitives: ["Primitives"], global: ["Global"] };
+    const typographyStyles: TypographyStyle[] = [
+      {
+        path: "typography.banner",
+        // What getLocalTypographyStyles reports when Figma's read shows the
+        // field as unbound — a plain literal, same shape as readLiteralField.
+        fields: { fontSize: { $type: "dimension", $value: "48px" } },
+      },
+    ];
+
+    const { collections: result } = figmaToCollections(
+      collections,
+      variables,
+      metadataFor(namesWithGlobal),
+      typographyStyles,
+    );
+    const global = result.find((c) => c.collectionName === "Global")!;
+
+    expect(global.rawTokens["typography.banner.fontSize"].$value).toBe("{primitive.font-size.11}");
   });
 });
 

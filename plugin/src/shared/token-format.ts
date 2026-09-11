@@ -19,6 +19,19 @@ export function isTokenTree(value: unknown): value is TokenTree {
   return !("$value" in value);
 }
 
+/**
+ * True for a value that is *only* a reference (e.g. "{color.brand.600}"),
+ * as opposed to a literal or a composite string with an embedded ref (e.g.
+ * "0 1px 2px {color.black.50}") — same pure-ref pattern resolveReference
+ * below special-cases. Used to decide whether a Text-Style-derived
+ * typography field is safe to overlay onto a Variable-derived one: a real
+ * ref should always win, but an unbound literal must not silently clobber
+ * an existing alias (see injectTypographyStyles in figma-to-tokens.ts).
+ */
+export function isPureRef(value: string): boolean {
+  return typeof value === "string" && /^\{.+\}$/.test(value);
+}
+
 // ---------------------------------------------------------------------------
 // Flatten / unflatten
 // ---------------------------------------------------------------------------
