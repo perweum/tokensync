@@ -5,11 +5,22 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Project } from "../App";
-import { fetchTokenFiles, fetchRepoPaths, fetchBranches, createBranch, createTokenPR } from "../hooks/useGitHub";
+import {
+  fetchTokenFiles,
+  fetchRepoPaths,
+  fetchBranches,
+  createBranch,
+  createTokenPR,
+} from "../hooks/useGitHub";
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
-import type { ParsedRepository, Metadata, CollectionNames, CollectionSources } from "../../shared/token-merger";
+import type {
+  ParsedRepository,
+  Metadata,
+  CollectionNames,
+  CollectionSources,
+} from "../../shared/token-merger";
 import { figmaToCollections } from "../../shared/figma-to-tokens";
 import type { CollectionDiff } from "../../shared/token-diff";
 import {
@@ -21,7 +32,12 @@ import {
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
 } from "../../shared/sync-logic";
-import type { PluginMessage, FigmaVariableCollection, FigmaVariable, TokenValue } from "../../shared/messages";
+import type {
+  PluginMessage,
+  FigmaVariableCollection,
+  FigmaVariable,
+  TokenValue,
+} from "../../shared/messages";
 import type { TypographyStyle } from "../../shared/typography-styles";
 import { PullDiff } from "./PullDiff";
 import { PushDiff } from "./PushDiff";
@@ -549,7 +565,11 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
     // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
     // GitHub, figmaValue = new state from Figma.
-    const result = computePushDiff(figmaCollectionData, githubParsed.collections, githubParsed.metadata);
+    const result = computePushDiff(
+      figmaCollectionData,
+      githubParsed.collections,
+      githubParsed.metadata,
+    );
 
     const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
     const unknownSuffix = unknownCollectionNames.length
@@ -720,6 +740,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         {creatingBranch ? (
           <>
             <input
+              className="ts-input"
               style={styles.branchInput}
               value={newBranchName}
               onChange={(e) => {
@@ -964,7 +985,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "3px 8px",
     borderRadius: 5,
     border: `1px solid ${color.accent.default}`,
-    outline: "none",
     fontFamily: font.mono,
     minWidth: 0,
   },

@@ -24,16 +24,21 @@ export function Field({ label, hint, children }: FieldProps) {
   );
 }
 
-export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
+export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
+      // Deliberately no inline `outline` — .ts-input's :focus-visible rule
+      // in index.css needs to own that property; an inline value (even
+      // "none") always wins over a CSS rule for the same property, focused
+      // or not, so the focus ring would otherwise be dead on arrival (same
+      // reasoning as Button.tsx's hover/active states).
+      className={["ts-input", className].filter(Boolean).join(" ")}
       style={{
         border: `1px solid ${color.border.default}`,
         borderRadius: radius.sm,
         padding: `${space.xs + 2}px ${space.sm + 2}px`,
         fontSize: font.size.md,
-        outline: "none",
         fontFamily: font.family,
         ...props.style,
       }}

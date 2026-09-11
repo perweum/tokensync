@@ -37,13 +37,14 @@ export const color = {
     subtle: fig("bg-secondary", "#f8f8f8"),
     muted: fig("bg-tertiary", "#f0f0f0"),
   },
+  // Deliberately NOT a Figma variable: this is Token Sync's own brand violet,
+  // pulled from favicon.svg (the bolt's fill, then its own inner-glow violet
+  // one step darker for hover, one step darker again for pressed) — the
+  // point is to look like Token Sync, not to inherit Figma's own blue.
   accent: {
-    default: fig("bg-brand", "#1a52d8"),
-    hover: fig("bg-brand-hover", "#1547bd"),
-    active: fig("bg-brand-pressed", "#123a99"),
-    // Brand as text/border/icon color, not a background fill.
-    text: fig("text-brand", "#1a52d8"),
-    border: fig("border-brand", "#1a52d8"),
+    default: "#863bff",
+    hover: "#7e14ff",
+    active: "#6b11d9",
   },
   status: {
     // bg/border fallbacks stay as our own pastel tints deliberately — Figma's
@@ -77,7 +78,10 @@ export const color = {
   // equivalent variables for these (they're specific to this plugin's own
   // domain), so they stay plain hex rather than theme-following.
   role: {
-    primitives: "#7c3aed",
+    // Blue, not violet — violet is now the brand accent (see `accent` above),
+    // so Primitives moved out of its way. Free to use since nothing else in
+    // the UI is blue anymore.
+    primitives: "#2563eb",
     global: "#0d9488",
     themes: "#db2777",
     semantic: "#4f46e5",

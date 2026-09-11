@@ -32,6 +32,31 @@ body {
   }
 }
 
+/* Native form controls — checkboxes/radios pick up the brand violet as
+   their check color via accent-color (one declaration covers both, even
+   though there are no radios yet), and every text-ish input/select gets a
+   consistent violet focus ring. Text inputs need the .ts-input class (see
+   Field.tsx's comment): an inline `outline` would otherwise block this the
+   same way an inline background/color blocks a button's :hover. Native
+   <select>s never set outline inline, so they're targeted directly. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #863bff;
+}
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid #863bff;
+  outline-offset: 2px;
+}
+.ts-input {
+  outline: none;
+}
+.ts-input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #863bff;
+  outline-offset: 1px;
+}
+
 /* Button variants — kept in sync with theme.ts color tokens by hand (same
    var(--figma-color-*, fallback) pairs — see theme.ts's module doc for why).
    Button.tsx deliberately sets no color/background/border-color inline:
@@ -44,16 +69,19 @@ body {
     color 100ms ease,
     border-color 100ms ease;
 }
+/* Brand violet — plain hex, not a --figma-color-* variable. This one is
+   Token Sync's own identity (see theme.ts's `accent` comment), not something
+   that should follow Figma's own blue. */
 .ts-btn--primary {
-  background: var(--figma-color-bg-brand, #1a52d8);
+  background: #863bff;
   color: #ffffff;
   border-color: transparent;
 }
 .ts-btn--primary:not(:disabled):hover {
-  background: var(--figma-color-bg-brand-hover, #1547bd);
+  background: #7e14ff;
 }
 .ts-btn--primary:not(:disabled):active {
-  background: var(--figma-color-bg-brand-pressed, #123a99);
+  background: #6b11d9;
 }
 .ts-btn--secondary {
   background: var(--figma-color-bg-tertiary, #f0f0f0);
@@ -101,7 +129,7 @@ body {
   background: var(--figma-color-bg-tertiary-pressed, #e4e4e4);
 }
 .ts-btn:not(:disabled):focus-visible {
-  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
+  outline: 2px solid #863bff;
   outline-offset: 1px;
 }
 
@@ -121,7 +149,7 @@ body {
   background: var(--figma-color-bg-tertiary, #e0e0e0);
 }
 .ts-icon-btn:not(:disabled):focus-visible {
-  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
+  outline: 2px solid #863bff;
   outline-offset: 1px;
 }
 
@@ -138,7 +166,7 @@ body {
   background: var(--figma-color-bg-secondary, #eeeeee);
 }
 .ts-collapsible-trigger:focus-visible {
-  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
+  outline: 2px solid #863bff;
   outline-offset: -2px;
 }
 
@@ -157,6 +185,6 @@ body {
   font-weight: 500;
 }
 .ts-tab:focus-visible {
-  outline: 2px solid var(--figma-color-border-selected, #1a52d8);
+  outline: 2px solid #863bff;
   outline-offset: -2px;
 }
