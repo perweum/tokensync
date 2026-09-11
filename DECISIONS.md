@@ -96,7 +96,8 @@ Updated whenever something below changes state. For *why* something was built th
 **Not started**
 * Priority 1 — developer-first toolchain: `@tokensync/core` extraction, CLI, CI build (§4).
 * Priority 1b remainder — canonical-model IR firming, merge-not-replace safety for Clean Apply, Token Studio adapter, three-corpus round-trip test (§4). Push, pull-diff, and apply are all now verified live for Text Styles — see the entry above.
-* Priority 2 remainder — only the manifest plugin ID/icon/Community listing copy, which needs the Figma desktop app, not code (§4). First-run scaffolding and PAT hardening are mostly done.
+* Priority 2 remainder — only the manifest plugin ID/icon/Community listing copy, which needs the Figma desktop app, not code (§4). First-run scaffolding and PAT hardening are mostly done. A genuinely empty repo (zero commits) now has a confirmed live failure, not just a theoretical gap (§4).
+* Map Collections structural validation checklist — 6 concrete checks (duplicate primitives modes with no `sizes` role, a collection double-mapped to two roles, scheme-named groups inside a Themes collection, no visible "this is the default theme/size" confirmation, an unrecognized dimension-naming convention, and an info note for `global: []`), all traced to real Coop/Spor incidents — design accepted, not yet built (§4).
 * Priority 3 — description sync v2 (diffable + applied on pull) (§4).
 * Priority 4 remainder — GitHub API pagination/limits, a genuine per-collection Clean Apply result breakdown, `Sync.tsx` tests (§4). Apply-flow error accounting is fixed.
 * Later/on demand — Enterprise REST provider, `{theme}` output placeholder, rename detection, dogfooding, Effect Styles/shadow (§4).
@@ -455,8 +456,72 @@ Deliberately not done yet. If you pick one of these up, update this section, the
 
 ### Priority 2 — Publish blockers (stranger-installs-it experience)
 * ~~Unknown collections are diffed but never written.~~ **Fixed July 2026** — see changelog above.
-* ~~First-run experience: no `metadata.json` → silent empty parse~~ **Narrowed and mostly fixed.** The realistic first-run case — a real Figma library, an empty GitHub repo — is handled by Map Collections, including the `themes`/`colorSchemes` derivation fix above (see §1 *Map Collections Derives…*). What's left is the much rarer case of starting with genuinely nothing on either side (no Figma library, no repo content) — not addressed, and arguably lower priority than originally scoped.
+* ~~First-run experience: no `metadata.json` → silent empty parse~~ **Narrowed and mostly fixed.** The realistic first-run case — a real Figma library, an empty GitHub repo — is handled by Map Collections, including the `themes`/`colorSchemes` derivation fix above (see §1 *Map Collections Derives…*). What's left is the much rarer case of starting with genuinely nothing on either side (no Figma library, no repo content) — **confirmed live, not just theoretical (September 2026, creating `tokensync-spor-stresstest`)**: GitHub's Git Data API returns `409 "Git Repository is empty."` for `git/trees`/`git/ref` lookups on a repo with zero commits — not a transient conflict, so `errors.ts`'s generic 409 copy ("something changed at the same time, try again") is actively wrong here; retrying can never succeed until a first commit exists. Worked around by pushing an initial commit directly via the GitHub API before using the plugin at all — not fixed in the plugin itself. A real fix needs two parts: `fetchTokenFiles`/`fetchRepoPaths` treating this specific 409 as "zero files" rather than an error (safe — a GET can't race a concurrent write, so every 409 from these two endpoints *is* the empty-repo case), and `createTokenPR` special-casing a repo's genuinely first-ever commit (no parent commit to base a tree on, and no base branch to open a PR against — must commit directly to `config.branch`, no PR possible for that one bootstrapping commit). Still arguably lower priority than the checklist below, but no longer purely theoretical.
 * ~~PAT hardening~~ **Mostly done.** PAT field is masked in both `Setup.tsx` and `AddProjectWizard.tsx`; the wizard has a real "test connection" step (`fetchBranches`) that catches a bad token/repo before the user leaves setup — though it only verifies read connectivity, not that write/PR permissions are actually granted (would require a non-destructive write test, not built). Fine-grained single-repo token setup now documented — see `docs/github-token-setup.md`. A privacy policy now exists — see `PRIVACY.md`. Manifest still needs a real plugin id, icons, and Community listing copy — that part is unstarted and needs the Figma desktop app, not something buildable from code alone.
+
+### Map Collections: Structural Validation Checklist (design accepted, not yet built)
+
+Requested directly by the user (September 2026) while testing a second, structurally
+different design system (Vy's Spor) against Token Sync for the first time — a
+project could reach a broken or confusing state entirely through *correct use of
+the mapping UI*, with no signal anything was wrong until a later push/pull/generated
+file surfaced it indirectly. Every item below traces to a real incident, most from
+this session — not a speculative "what could go wrong" list. Scope deliberately
+narrow: warn on confirmed failure shapes, not a general-purpose linter.
+
+1. **A `primitives`-role collection with more than one Figma mode while
+   `figma.collections.sizes` is empty.** Found live on the Spor test (PR #1 → #2):
+   size-varying data (font sizing) was folded into the `foundation` primitives
+   collection as extra modes instead of getting its own `sizes`-role collection —
+   the exact shape the Size axis feature (§1 *Primitives Is a Genuine
+   Multi-Axis Layer…*) was built to replace, and the earlier Coop stress test hit
+   the identical mistake before that feature existed. Warn: "this collection has
+   N modes but no `sizes` role is mapped — did you mean to split size-varying
+   fields into their own collection?"
+2. **The same physical Figma collection assigned to more than one role.**
+   Already detected — `token-merger.ts`'s `parseMetadata` emits a `console.warn`
+   (§1 *Multiple Figma Collections Per Role…*) — but a non-developer user never
+   opens devtools, so today this is silent in practice. Surface the same check as
+   a visible warning in Map Collections' own UI, not just the console.
+3. **A `themes`-role collection whose own top-level token groups are named like
+   color schemes** (`light`/`dark`, case-insensitive) **while a genuine
+   `colorSchemes` axis already exists elsewhere (Semantic).** Found live on the
+   Spor test: the `theme` collection's real Figma modes are the three brands
+   (`vy`/`it`/`cargonet`), but its variables are also grouped under literal
+   top-level `Light`/`Dark` segments — meaning those fields will only ever emit
+   as flat, static per-brand values (`--theme-vy-Light-*`), never gaining the
+   `[data-color-scheme]` `var(--*)` cascade Semantic tokens get. May be exactly
+   what Spor intends; may be a mapping mistake — either way the mapping screen
+   currently gives no signal either way. Warn, don't block.
+4. **No visible confirmation of which theme/size/scheme is "the default."**
+   `metadata.themes[0]`/`sizes[0]`/`colorSchemes[0]` silently becomes `:root` in
+   every generated output (§1 *Default Theme Selection Finished…* and its
+   sibling fixes) — correct today, but invisible in the UI: nothing on the
+   mapping screen tells the user which entry that array order actually picked
+   before they push. Surface it explicitly ("Default theme: vy — this is what
+   `:root` uses") rather than requiring a read of the generated CSS to find out.
+5. **A FLOAT Figma variable whose name matches none of `inferType`'s
+   dimension-detecting keywords** (`dimension|size|spacing|padding|radius|width|
+   height|border|gap`). Found live on Coop (§1 *FLOAT Variables Named
+   "dimension"…*) — a real, shipped naming convention silently produced a
+   unitless `number` instead of `dimension`, losing the CSS `px` suffix. The
+   keyword list is inherently a guess at naming conventions this project hasn't
+   seen yet; flag an unmatched FLOAT variable for confirmation rather than
+   silently picking `number`.
+6. **`figma.collections.global` is `[]`.** Not a mistake — the expected, correct
+   shape for any Token-Studio-style migration where typography lives only in
+   Text Styles (§1 *Every Transformer Silently Dropped Typography…*; Priority 4's
+   now-fixed transformer gap) — but currently silent either way. A reassuring
+   info note ("Typography will be read entirely from Figma Text Styles — expected
+   if this system has no dedicated Global/Typography variable collection") would
+   save a new user from wondering whether something's missing.
+
+**Deliberately left out of this first pass**: content-based heuristics with no
+confirmed failure case yet (e.g. "does a `sizes`-mapped collection actually
+contain dimension/number fields?") — matches the project's own stance against
+speculative validation surfaces (see *Transformer Output Shape Stays
+Opt-In/Opt-Out Only*). Add a check here only once it traces to a real incident,
+the same bar every item above already meets.
 
 ### Priority 3 — Description sync v2
 * **Description-only changes are invisible in diffs.** The diff compares `$type`/`$value` only. Needs: include `$description` in `buildCollectionDiff` plus diff UI rendering.
