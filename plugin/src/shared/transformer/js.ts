@@ -131,7 +131,13 @@ function serialize(obj: unknown, indent: number): string {
   if (entries.length === 0) return "{}";
 
   const lines = entries.map(([k, v]) => {
-    const key = /^\d/.test(k) ? `"${k}"` : k;
+    // Quote unless k is already a valid bare identifier — not just "doesn't
+    // start with a digit". Found live: a Figma variable name like
+    // "spacing/1,5" or "stroke/[md]" produces a dot-path segment containing
+    // "[", "]", or "," — none of which start with a digit, so the old
+    // digit-only check let them through unquoted, producing a JS/TS syntax
+    // error (`stroke[md]: "2"` inside an object literal, not a computed key).
+    const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : JSON.stringify(k);
     return `${pad}${key}: ${serialize(v, indent + 1)}`;
   });
 

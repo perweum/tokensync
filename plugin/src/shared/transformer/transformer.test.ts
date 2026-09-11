@@ -4,6 +4,9 @@ import { parseRepository } from "../token-merger";
 import type { ResolvedCollection, CollectionNames, Metadata } from "../token-merger";
 import type { GitHubFile, FigmaVariable } from "../messages";
 import { figmaToCollections, figmaToTokenFiles } from "../figma-to-tokens";
+import { generateSchemeJS } from "./js";
+import { generateSchemeSwift } from "./swift";
+import { generateSchemeDart } from "./dart";
 
 function metadataFor(collections: CollectionNames): Metadata {
   return {
@@ -649,5 +652,54 @@ describe("fontWeight platform output", () => {
     expect(swift).toContain(": Font.Weight = .semibold");
     expect(swift).toContain(": Font.Weight = .bold");
     expect(swift).not.toContain("SemiBold");
+  });
+});
+
+describe("JS/TS output — object keys that aren't valid bare identifiers", () => {
+  // Reproduces a real bug found live (Vy's Spor system, first real push with
+  // JS/TS output enabled): a Figma variable named e.g. "stroke/[md]" or
+  // "spacing/1,5" produces a dot-path segment containing "[", "]", or ",".
+  // The old check only quoted a key that *started with a digit* — none of
+  // these do — so it was emitted as a bare, invalid object key
+  // (`stroke[md]: "2"`, a syntax error, confirmed by actually executing the
+  // generated file as an ES module).
+  const schemeCol: ResolvedCollection = {
+    collectionName: "Theme",
+    modeName: "Light",
+    tokens: { "stroke.[md]": { $type: "dimension", $value: "2px" } },
+    rawTokens: {},
+    typographyStyles: [],
+  };
+
+  it("quotes a key containing brackets", () => {
+    const js = generateSchemeJS(undefined, undefined, schemeCol, { typescript: false });
+    expect(js).toContain('"[md]": "2px"');
+    expect(js).not.toMatch(/[^"]\[md\]:/);
+  });
+});
+
+describe("Dart/Swift field names — a path segment starting with a digit", () => {
+  // Reproduces a real bug found live on the same push: a Figma size step
+  // literally named "2xl" (alongside xs/sm/md/lg/xl — an ordinary type-scale
+  // name) is the *first* path segment, so the whole generated identifier
+  // started with a digit — invalid in both Dart and Swift, which (unlike
+  // JS/TS) never allow that as the first character even though a digit
+  // mid-identifier (e.g. "colorBrand500") is fine.
+  const schemeCol: ResolvedCollection = {
+    collectionName: "Theme",
+    modeName: "Light",
+    tokens: { "2xl.display.letterSpacing": { $type: "dimension", $value: "0px" } },
+    rawTokens: {},
+    typographyStyles: [],
+  };
+
+  it("prefixes a leading-digit Swift field name with an underscore", () => {
+    const swift = generateSchemeSwift(undefined, undefined, schemeCol);
+    expect(swift).toContain("_2xlDisplayLetterspacing");
+  });
+
+  it("prefixes a leading-digit Dart field name with an underscore", () => {
+    const dart = generateSchemeDart(undefined, undefined, schemeCol);
+    expect(dart).toContain("_2xlDisplayLetterspacing");
   });
 });

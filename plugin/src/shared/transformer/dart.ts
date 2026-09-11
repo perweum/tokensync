@@ -153,7 +153,7 @@ function dartFontWeight(value: string): string {
 
 function toDartFieldName(path: string): string {
   // "color.brand.500" → "colorBrand500"
-  return path
+  const name = path
     .split(".")
     .map((segment, i) =>
       i === 0
@@ -165,6 +165,12 @@ function toDartFieldName(path: string): string {
             .replace(/[^a-zA-Z0-9]/g, ""),
     )
     .join("");
+  // A digit mid-identifier is fine ("colorBrand500"), but Dart (like Swift)
+  // rejects one as the very first character. Found live: a Figma size step
+  // literally named "2xl" (a common type-scale name alongside xs/sm/md/lg/xl)
+  // produced "2xldisplayLetterspacing" — invalid Dart, since the *first*
+  // path segment starts with a digit.
+  return /^\d/.test(name) ? `_${name}` : name;
 }
 
 function dartClassName(modeName: string): string {
