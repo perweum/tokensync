@@ -23,7 +23,7 @@
  */
 
 import type { GitHubFile, TokenTree, TokenValue } from "./messages";
-import { flattenTokens, resolveAllReferences, isTokenValue } from "./token-format";
+import { flattenTokens, resolveAllReferences, isTokenValue, slugifyModeName } from "./token-format";
 import { extractTypographyStyles } from "./typography-styles";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -552,17 +552,6 @@ function stripTokensPath(files: GitHubFile[], tokensPath: string): Map<string, s
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** Same sanitization figma-to-tokens.ts's sanitizeFileName / CollectionMapping.tsx's
- * sanitizeName apply when turning a real Figma mode name into a filename — a
- * space or slash becomes a hyphen. Applying it to *both* sides of a
- * candidates/target comparison (not just lowercasing) is what makes
- * findCaseInsensitive work regardless of which side happens to already be a
- * slug and which still has its real spacing — see findCaseInsensitive's own
- * comment for why this matters. */
-function slugifyModeName(name: string): string {
-  return name.toLowerCase().replace(/[\s/]+/g, "-");
 }
 
 /** Find `target` in `candidates` ignoring case *and* the slug-vs-real-name
