@@ -32,7 +32,9 @@ import {
   buildApplyPayloads,
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
+  findStaleConfiguredModes,
 } from "../../shared/sync-logic";
+import type { StaleConfiguredMode } from "../../shared/sync-logic";
 import type {
   PluginMessage,
   FigmaVariableCollection,
@@ -104,6 +106,13 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // it's visible on the diff screen itself, not only as the hard stop
   // handleCreatePR still enforces against whatever's actually selected.
   const [conflictPaths, setConflictPaths] = useState<string[]>([]);
+  // A theme/colorScheme/size mode renamed in Figma since "Map Collections"
+  // was last saved — metadata.json's configured name (a sanitized slug, or
+  // stale real casing) no longer matches any live Figma mode for that role.
+  // Figma pushes/pulls fine under its own current name; the *other* side's
+  // config silently stops finding it at all, with no error either way.
+  // Computed on both push and pull, same as the checks above.
+  const [staleConfiguredModes, setStaleConfiguredModes] = useState<StaleConfiguredMode[]>([]);
   // Push, zero token changes: an enabled platform's output file that's never
   // been generated (e.g. just turned on in Output Formats) — see PushDiff's
   // "output-only" state.
@@ -398,9 +407,19 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         figmaMaps,
       );
 
+      const staleModes = findStaleConfiguredModes(github.metadata, figmaCollections);
+      setStaleConfiguredModes(staleModes);
+
       const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
 
-      if (totalChanges === 0) {
+      // A stale configured mode name means its whole collection is invisible
+      // to computePullDiff (nothing on the GitHub side to compare against at
+      // all) — that can make totalChanges look like 0 even though a real
+      // collection isn't being synced. Open the diff view anyway so the
+      // warning banner above the (correctly empty) diff list actually has a
+      // chance to render, instead of this looking identical to genuinely
+      // being up to date.
+      if (totalChanges === 0 && staleModes.length === 0) {
         setStatus({ kind: "success", message: "Figma is already up to date with GitHub" });
       } else {
         setStatus({ kind: "idle" });
@@ -652,6 +671,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         ).conflictPaths,
       );
 
+      const staleModes = findStaleConfiguredModes(githubParsed.metadata, figmaCollections);
+      setStaleConfiguredModes(staleModes);
+
       pendingFigmaCollections.current = figmaCollectionData;
       // Keep raw data for writing complete token files to GitHub (not just diff entries)
       pendingFigmaRaw.current = {
@@ -685,7 +707,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           project.tokensPath,
           pendingRepoPaths.current ?? new Set(),
         );
-        if (missing.length > 0) {
+        // A stale configured mode name (see findStaleConfiguredModes) can
+        // make a whole collection invisible to computePushDiff — nothing on
+        // the GitHub side to compare against, so totalChanges looks like 0
+        // even though a real collection isn't being synced. Open the diff
+        // view anyway so the warning banner actually has a chance to render.
+        if (missing.length > 0 || staleModes.length > 0) {
           setOutputOnlyFiles(missing.map((f) => f.path));
           setStatus({ kind: "idle" });
           setDiffs([]);
@@ -785,6 +812,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     return (
       <PullDiff
         diffs={diffs}
+        staleConfiguredModes={staleConfiguredModes}
         onApply={handleApplyAll}
         onCleanApply={handleCleanApplyAll}
         onBack={() => {
@@ -792,6 +820,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           setView("main");
           setStatus({ kind: "idle" });
           pendingGitHubCollections.current = null;
+          setStaleConfiguredModes([]);
         }}
         applying={applying}
         error={diffError}
@@ -806,6 +835,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         unrecognizedCollections={unrecognizedCollections}
         brokenAliasPaths={brokenAliasPaths}
         conflictPaths={conflictPaths}
+        staleConfiguredModes={staleConfiguredModes}
         outputOnlyFiles={outputOnlyFiles}
         onCreatePR={(title, keys) => handleCreatePR(title, keys)}
         onBack={() => {
@@ -815,6 +845,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           setUnrecognizedCollections([]);
           setBrokenAliasPaths([]);
           setConflictPaths([]);
+          setStaleConfiguredModes([]);
           setOutputOnlyFiles([]);
           setCreateError(undefined);
         }}

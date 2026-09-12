@@ -9,6 +9,7 @@ import {
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
   isModeAgnosticRole,
+  findStaleConfiguredModes,
 } from "./sync-logic";
 import type { Metadata, ResolvedCollection, CollectionSources } from "./token-merger";
 import type { TypographyStyle } from "./typography-styles";
@@ -110,6 +111,82 @@ describe("isIgnoredCollection", () => {
     });
     expect(isIgnoredCollection("Support Color", meta)).toBe(true);
     expect(isIgnoredCollection("Main Color", meta)).toBe(true);
+  });
+});
+
+describe("findStaleConfiguredModes", () => {
+  // Reproduces a real bug found live: a Figma mode renamed from its default
+  // ("Mode 1") to something meaningful ("Semantic") pushed fine under its
+  // new real name (Figma is always the source of truth for its own live
+  // data), but metadata.colorSchemes still held the old sanitized slug
+  // ("mode-1") — nothing ever prompts a re-save of Map Collections just
+  // because a mode got renamed. The next pull's file lookup then finds
+  // nothing at all for "mode-1", and the whole semantic collection silently
+  // vanishes with no error or indication anything is wrong.
+  const semanticCollection: FigmaVariableCollection = {
+    id: "cSem",
+    name: "Tokens",
+    modes: [{ modeId: "m1", name: "Semantic" }],
+    variableIds: [],
+  };
+
+  it("flags a configured colorScheme that no longer matches any real Figma mode", () => {
+    const meta = metadata({
+      colorSchemes: ["mode-1"],
+      figma: {
+        fileKey: "abc",
+        collections: {
+          primitives: ["Primitives"],
+          global: [],
+          themes: [],
+          semantic: ["Tokens"],
+          sizes: [],
+        },
+      },
+    });
+
+    const stale = findStaleConfiguredModes(meta, [semanticCollection]);
+    expect(stale).toEqual([{ role: "colorSchemes", name: "mode-1" }]);
+  });
+
+  it("reports nothing once the configured name matches the real Figma mode again", () => {
+    const meta = metadata({
+      colorSchemes: ["Semantic"],
+      figma: {
+        fileKey: "abc",
+        collections: {
+          primitives: ["Primitives"],
+          global: [],
+          themes: [],
+          semantic: ["Tokens"],
+          sizes: [],
+        },
+      },
+    });
+
+    expect(findStaleConfiguredModes(meta, [semanticCollection])).toEqual([]);
+  });
+
+  it("skips a role entirely when nothing is mapped to it at all — a leftover placeholder isn't stale", () => {
+    // metadata.themes defaults to ["default"] even on a project with no
+    // Themes role mapped whatsoever (figma.collections.themes: []) — must
+    // not be flagged just because nothing in Figma could ever match it.
+    const meta = metadata({
+      themes: ["default"],
+      colorSchemes: [], // unmapped too, so only the themes-role behavior is under test
+      figma: {
+        fileKey: "abc",
+        collections: {
+          primitives: ["Primitives"],
+          global: [],
+          themes: [],
+          semantic: [],
+          sizes: [],
+        },
+      },
+    });
+
+    expect(findStaleConfiguredModes(meta, [semanticCollection])).toEqual([]);
   });
 });
 
