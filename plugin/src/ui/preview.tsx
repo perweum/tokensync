@@ -16,7 +16,9 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { Setup } from "./views/Setup";
+import { PushDiff } from "./views/PushDiff";
 import type { Project } from "./App";
+import type { CollectionDiff } from "../shared/token-diff";
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (input, init) => {
@@ -103,8 +105,60 @@ function OnboardingPreview() {
   );
 }
 
+const pushDiffs: CollectionDiff[] = [
+  {
+    collectionName: "Global",
+    modeName: "Value",
+    counts: { added: 0, changed: 1, removed: 0, total: 1 },
+    entries: [
+      {
+        path: "Typography.banner.textCase",
+        type: "typography",
+        status: "changed",
+        githubValue: "original",
+        githubRawValue: "original",
+        figmaValue: "title",
+        figmaRawValue: "title",
+      },
+    ],
+  },
+];
+
+function PushDiffPreview() {
+  return (
+    <div style={{ padding: 24, background: "#f0f0f0", minHeight: "100vh" }}>
+      <h1 style={{ fontFamily: "sans-serif", fontSize: 16, marginBottom: 20 }}>
+        Push diff preview
+      </h1>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        <Frame title="Warnings collapsed (default)">
+          <PushDiff
+            diffs={pushDiffs}
+            unrecognizedCollections={["Icons", "Illustrations", "Spacing"]}
+            onCreatePR={() => {}}
+            onBack={() => {}}
+            creating={false}
+          />
+        </Frame>
+        <Frame title="Danger tone (conflict present)">
+          <PushDiff
+            diffs={pushDiffs}
+            unrecognizedCollections={["Icons"]}
+            brokenAliasPaths={["color.brand.accent"]}
+            conflictPaths={["surface.brand"]}
+            onCreatePR={() => {}}
+            onBack={() => {}}
+            creating={false}
+          />
+        </Frame>
+      </div>
+    </div>
+  );
+}
+
 const pages: Record<string, React.ReactNode> = {
   onboarding: <OnboardingPreview />,
+  push: <PushDiffPreview />,
 };
 
 function Root() {

@@ -47,6 +47,7 @@ export function StatusBanner({
   action,
   title,
   expandableDetail,
+  bare,
 }: {
   tone: StatusTone;
   children: ReactNode;
@@ -63,6 +64,12 @@ export function StatusBanner({
    * guidance or a long list that's too important to hide in a hover-only
    * tooltip, but shouldn't cost permanent vertical space when collapsed. */
   expandableDetail?: ReactNode;
+  /** Drop the container's own border/background/padding — for when several
+   * of these are already grouped inside another tone-colored container
+   * (e.g. an accordion of persistent warnings) and stacking a colored box
+   * inside a colored box would just be visual noise. Icon/text/detail
+   * behavior is unchanged. */
+  bare?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const t = toneStyle[tone];
@@ -75,10 +82,10 @@ export function StatusBanner({
         gap: space.sm,
         fontSize: font.size.md,
         lineHeight: 1.4,
-        padding: `${space.sm + 2}px ${space.md + 2}px`,
-        borderRadius: radius.md,
-        border: `1px solid ${t.border}`,
-        background: t.bg,
+        padding: bare ? 0 : `${space.sm + 2}px ${space.md + 2}px`,
+        borderRadius: bare ? 0 : radius.md,
+        border: bare ? "none" : `1px solid ${t.border}`,
+        background: bare ? "none" : t.bg,
         color: t.text,
       }}
     >

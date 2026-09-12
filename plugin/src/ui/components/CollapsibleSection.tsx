@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { color, font, space } from "../theme";
+import { color, font, listSlot, space } from "../theme";
 import { IconChevron } from "../icons";
 
 export type CollapsibleLevel = "section" | "category";
@@ -7,8 +7,14 @@ export type CollapsibleLevel = "section" | "category";
 /**
  * Expand/collapse row shared by both diff views — collection-level sections
  * in Pull, category groupings in both Pull and Push. `level` controls
- * indent/typography so the two nesting depths stay visually distinct but
- * share one implementation.
+ * typography/background so the two nesting depths stay visually distinct,
+ * but both share the same left padding and the same `listSlot` column
+ * widths for `left`/chevron — a category row has no `left` control, but
+ * still reserves `listSlot.lead` for it, so its chevron (and everything
+ * that follows) lines up with a section row's chevron rather than sitting
+ * further left. Same reasoning connects this to DiffEntryList's entry rows,
+ * one level deeper still: they reuse these exact slot widths so a diff
+ * entry's icon and label land on the same two columns too.
  *
  * The row (not the toggle button) carries the padding/background/hover, and
  * `left`/`right` render as the button's siblings rather than its children —
@@ -37,7 +43,7 @@ export function CollapsibleSection({
 }) {
   const isCategory = level === "category";
   const padding = isCategory
-    ? `${space.xs + 2}px ${space.lg}px ${space.xs + 2}px ${space.xxl + space.sm}px`
+    ? `${space.xs + 2}px ${space.lg}px`
     : `${space.sm + 2}px ${space.lg}px`;
 
   return (
@@ -52,7 +58,7 @@ export function CollapsibleSection({
           borderBottom: isCategory ? `1px solid ${color.border.subtle}` : "none",
         }}
       >
-        {left}
+        <span style={s.leadSlot}>{left}</span>
         <button
           type="button"
           className="ts-collapsible-trigger"
@@ -71,11 +77,13 @@ export function CollapsibleSection({
             textAlign: "left",
           }}
         >
-          <IconChevron
-            expanded={expanded}
-            size={isCategory ? 9 : 10}
-            style={{ color: color.text.muted }}
-          />
+          <span style={s.iconSlot}>
+            <IconChevron
+              expanded={expanded}
+              size={isCategory ? 9 : 10}
+              style={{ color: color.text.muted }}
+            />
+          </span>
           <span
             style={{
               flex: 1,
@@ -98,3 +106,20 @@ export function CollapsibleSection({
     </div>
   );
 }
+
+const s: Record<string, React.CSSProperties> = {
+  leadSlot: {
+    width: listSlot.lead,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  iconSlot: {
+    width: listSlot.icon,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+};

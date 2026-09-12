@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { CollectionDiff } from "../../shared/token-diff";
 import { diffLabel } from "../../shared/token-diff";
 import { Button } from "../components/Button";
@@ -21,8 +22,8 @@ import { DiffOverview } from "../components/DiffOverview";
 import { StatusBanner } from "../components/StatusBanner";
 import { Field, TextInput } from "../components/Field";
 import { ViewHeader } from "../components/ViewHeader";
-import { IconCheck } from "../icons";
-import { color, font, space } from "../theme";
+import { IconCheck, IconChevron } from "../icons";
+import { color, font, radius, space } from "../theme";
 import type { DescribedError } from "../errors";
 import { toFigmaVarName } from "../../shared/token-format";
 import type { StaleConfiguredMode } from "../../shared/sync-logic";
@@ -123,11 +124,16 @@ export function PushDiff({
   const totalChanges = diffs.reduce((n, d) => n + d.counts.total, 0);
   const hasChanges = totalChanges > 0;
 
-  const hasWarnings =
-    unrecognizedCollections.length > 0 ||
-    brokenAliasPaths.length > 0 ||
-    conflictPaths.length > 0 ||
-    staleConfiguredModes.length > 0;
+  const warningCount =
+    (unrecognizedCollections.length > 0 ? 1 : 0) +
+    (brokenAliasPaths.length > 0 ? 1 : 0) +
+    (conflictPaths.length > 0 ? 1 : 0) +
+    (staleConfiguredModes.length > 0 ? 1 : 0);
+  const hasWarnings = warningCount > 0;
+  // Conflicts are the one case that actually blocks the push (see its own
+  // copy below) — surface that by starting the accordion in red instead of
+  // amber, even though the group itself still opens collapsed like any other.
+  const warningsTone = conflictPaths.length > 0 ? "danger" : "warning";
 
   return (
     <div style={s.container}>
@@ -137,81 +143,87 @@ export function PushDiff({
 
       {hasWarnings && (
         <div style={s.warnings}>
-          {unrecognizedCollections.length > 0 && (
-            <StatusBanner
-              tone="warning"
-              expandableDetail={
-                <>
-                  Not included in this PR: <strong>{unrecognizedCollections.join(", ")}</strong>.
-                  Assign {unrecognizedCollections.length === 1 ? "it" : "them"} to a role on the
-                  main screen's "Map collections" if this is unexpected.
-                </>
-              }
-            >
-              {unrecognizedCollections.length} Figma{" "}
-              {unrecognizedCollections.length === 1 ? "collection isn't" : "collections aren't"} set
-              up in Map Collections yet, so{" "}
-              {unrecognizedCollections.length === 1 ? "it's" : "they're"} skipped.
-            </StatusBanner>
-          )}
+          <WarningsAccordion tone={warningsTone} count={warningCount}>
+            {unrecognizedCollections.length > 0 && (
+              <StatusBanner
+                bare
+                tone="warning"
+                expandableDetail={
+                  <>
+                    Not included in this PR: <strong>{unrecognizedCollections.join(", ")}</strong>.
+                    Assign {unrecognizedCollections.length === 1 ? "it" : "them"} to a role on the
+                    main screen's "Map collections" if this is unexpected.
+                  </>
+                }
+              >
+                {unrecognizedCollections.length} Figma{" "}
+                {unrecognizedCollections.length === 1 ? "collection isn't" : "collections aren't"}{" "}
+                set up in Map Collections yet, so{" "}
+                {unrecognizedCollections.length === 1 ? "it's" : "they're"} skipped.
+              </StatusBanner>
+            )}
 
-          {brokenAliasPaths.length > 0 && (
-            <StatusBanner
-              tone="warning"
-              expandableDetail={
-                <>
-                  <strong>{asFigmaNames(brokenAliasPaths)}</strong>
-                  {brokenAliasPaths.length === 1 ? " shows" : " show"} the right name in Figma's
-                  variable picker, but the link underneath is broken (its target was likely deleted
-                  or recreated). Open {brokenAliasPaths.length === 1 ? "it" : "each one"} in Figma
-                  and re-link {brokenAliasPaths.length === 1 ? "it" : "them"} to a real value, then
-                  push again.
-                </>
-              }
-            >
-              {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped —
-              Figma shows a broken variable link.
-            </StatusBanner>
-          )}
+            {brokenAliasPaths.length > 0 && (
+              <StatusBanner
+                bare
+                tone="warning"
+                expandableDetail={
+                  <>
+                    <strong>{asFigmaNames(brokenAliasPaths)}</strong>
+                    {brokenAliasPaths.length === 1 ? " shows" : " show"} the right name in Figma's
+                    variable picker, but the link underneath is broken (its target was likely
+                    deleted or recreated). Open {brokenAliasPaths.length === 1 ? "it" : "each one"}{" "}
+                    in Figma and re-link {brokenAliasPaths.length === 1 ? "it" : "them"} to a real
+                    value, then push again.
+                  </>
+                }
+              >
+                {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped —
+                Figma shows a broken variable link.
+              </StatusBanner>
+            )}
 
-          {conflictPaths.length > 0 && (
-            <StatusBanner
-              tone="danger"
-              expandableDetail={
-                <>
-                  <strong>{asFigmaNames(conflictPaths)}</strong> — each one is a real variable name
-                  in Figma, and other variables are also nested under that same name (e.g.{" "}
-                  <code>{toFigmaVarName(conflictPaths[0])}/default</code>). One name can't be both
-                  at once. Rename or delete one of them in Figma, then push again — this will block
-                  the push until it's resolved.
-                </>
-              }
-            >
-              {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} can't sync
-              — {conflictPaths.length === 1 ? "it conflicts" : "they conflict"} with another
-              variable in Figma.
-            </StatusBanner>
-          )}
+            {conflictPaths.length > 0 && (
+              <StatusBanner
+                bare
+                tone="danger"
+                expandableDetail={
+                  <>
+                    <strong>{asFigmaNames(conflictPaths)}</strong> — each one is a real variable
+                    name in Figma, and other variables are also nested under that same name (e.g.{" "}
+                    <code>{toFigmaVarName(conflictPaths[0])}/default</code>). One name can't be both
+                    at once. Rename or delete one of them in Figma, then push again — this will
+                    block the push until it's resolved.
+                  </>
+                }
+              >
+                {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} can't
+                sync — {conflictPaths.length === 1 ? "it conflicts" : "they conflict"} with another
+                variable in Figma.
+              </StatusBanner>
+            )}
 
-          {staleConfiguredModes.length > 0 && (
-            <StatusBanner
-              tone="warning"
-              expandableDetail={
-                <>
-                  {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in Figma
-                  is currently named this. If you renamed the mode in Figma, this push will still
-                  work under its new real name, but the "Map Collections" screen won't know about
-                  that rename until you open it and save again — do that after this push, or the
-                  next pull may not find this{" "}
-                  {staleConfiguredModes.length === 1 ? "one" : "one of these"} at all.
-                </>
-              }
-            >
-              {staleConfiguredModes.length} configured mode name
-              {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma
-              right now.
-            </StatusBanner>
-          )}
+            {staleConfiguredModes.length > 0 && (
+              <StatusBanner
+                bare
+                tone="warning"
+                expandableDetail={
+                  <>
+                    {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in
+                    Figma is currently named this. If you renamed the mode in Figma, this push will
+                    still work under its new real name, but the "Map Collections" screen won't know
+                    about that rename until you open it and save again — do that after this push, or
+                    the next pull may not find this{" "}
+                    {staleConfiguredModes.length === 1 ? "one" : "one of these"} at all.
+                  </>
+                }
+              >
+                {staleConfiguredModes.length} configured mode name
+                {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma
+                right now.
+              </StatusBanner>
+            )}
+          </WarningsAccordion>
         </div>
       )}
 
@@ -335,6 +347,77 @@ export function PushDiff({
   );
 }
 
+/**
+ * Groups the push's warning/danger banners behind one collapsed-by-default
+ * header. These persist for as long as the underlying condition does (an
+ * unmapped Figma collection, a broken alias link, ...), unlike a one-off
+ * error banner from a failed action — found live: seeing the same detailed
+ * warning box on every visit to this screen made it something to tune out
+ * rather than read, and it also pushed the actual diff list further down
+ * the screen every time. An accordion keeps it out of the way until opened,
+ * while the collapsed header's color still signals there's something here.
+ */
+function WarningsAccordion({
+  tone,
+  count,
+  children,
+}: {
+  tone: "warning" | "danger";
+  count: number;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const t = color.status[tone];
+  return (
+    <div
+      style={{
+        border: `1px solid ${t.border}`,
+        borderRadius: radius.md,
+        background: t.bg,
+        overflow: "hidden",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: space.sm,
+          padding: `${space.sm + 2}px ${space.md + 2}px`,
+          border: "none",
+          background: "none",
+          color: t.text,
+          font: "inherit",
+          fontWeight: 600,
+          fontSize: font.size.md,
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <IconChevron expanded={expanded} size={10} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1 }}>
+          {count} issue{count !== 1 ? "s" : ""} to review before pushing
+        </span>
+      </button>
+      {expanded && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: space.md,
+            padding: `0 ${space.md + 2}px ${space.sm + 2}px`,
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
@@ -346,9 +429,6 @@ const s: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid ${color.border.subtle}`,
   },
   warnings: {
-    display: "flex",
-    flexDirection: "column",
-    gap: space.xs + 2,
     margin: `${space.sm}px ${space.lg}px 0`,
   },
   empty: {

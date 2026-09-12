@@ -11,7 +11,7 @@ import type { DiffEntry, DiffStatus } from "../../shared/token-diff";
 import { groupByCategory } from "../../shared/token-diff";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { IconArrowRight, IconMinus, IconPlus } from "../icons";
-import { color, font, space } from "../theme";
+import { color, font, listSlot, space } from "../theme";
 
 export function DiffEntryList({ entries }: { entries: DiffEntry[] }) {
   const grouped = groupByCategory(entries);
@@ -60,12 +60,26 @@ function DiffRow({ entry }: { entry: DiffEntry }) {
         display: "flex",
         alignItems: "center",
         gap: space.sm,
-        padding: `${space.xs + 2}px ${space.lg}px ${space.xs + 2}px ${space.xxl + space.sm}px`,
+        padding: `${space.xs + 2}px ${space.lg}px`,
         borderBottom: `1px solid ${color.border.subtler}`,
         background: rowBackground(entry.status),
       }}
     >
-      <StatusIcon status={entry.status} />
+      {/* Reserves the same column a section row's checkbox sits in, one
+          level up — see CollapsibleSection's module doc — so StatusIcon
+          below lands in the chevron column instead of further left. */}
+      <span style={{ width: listSlot.lead, flexShrink: 0 }} />
+      <span
+        style={{
+          width: listSlot.icon,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <StatusIcon status={entry.status} />
+      </span>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
         <span

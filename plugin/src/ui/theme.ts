@@ -100,6 +100,17 @@ export const space = {
   xxl: 24,
 } as const;
 
+// Fixed-width columns so the checkbox/chevron/status-icon at every nesting
+// depth of the diff list (section, category, entry) sit on the same two
+// x-positions — reserved even when a given row has nothing to put there —
+// so the label text after them always starts at the same x instead of
+// jumping left/right as you read down past a level change. Read by
+// CollapsibleSection.tsx and DiffEntryList.tsx.
+export const listSlot = {
+  lead: 18, // optional leading control (currently: the include checkbox)
+  icon: 18, // chevron / status icon
+} as const;
+
 export const radius = {
   // inputs, buttons, badges, chips
   sm: 6,
