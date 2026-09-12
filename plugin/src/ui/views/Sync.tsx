@@ -79,6 +79,13 @@ interface Props {
 type PendingAction = "pull" | "push";
 
 export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject }: Props) {
+  // A project can now be saved with no GitHub connection yet — the wizard's
+  // Skip-test/Finish-setup and the flat form's Add/Save no longer require
+  // it (see AddProjectWizard.tsx / Setup.tsx). Nothing below this point
+  // should attempt a GitHub API call, or show controls whose only purpose
+  // is one, while that's true.
+  const isConnected = Boolean(project.pat.trim() && project.repo.trim());
+
   const [view, setView] = useState<View>("main");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [applying, setApplying] = useState(false);
@@ -201,7 +208,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     send({ type: "LOAD_STORAGE", key: lastSyncKey });
     send({ type: "LOAD_STORAGE", key: branchKey });
     send({ type: "LOAD_STORAGE", key: syncTypeStylesKey });
-    refreshBranches();
+    if (isConnected) refreshBranches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
@@ -906,157 +913,170 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         </Button>
       </div>
 
-      <div style={styles.branchRow}>
-        {creatingBranch ? (
-          <>
-            <input
-              className="ts-input"
-              style={styles.branchInput}
-              value={newBranchName}
-              onChange={(e) => {
-                setNewBranchName(e.target.value);
-                setBranchCreateError(undefined);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateBranch();
-                if (e.key === "Escape") {
-                  setCreatingBranch(false);
-                  setNewBranchName("");
-                  setBranchCreateError(undefined);
-                }
-              }}
-              placeholder={`from: ${activeBranch}`}
-              autoFocus
-              disabled={branchCreateLoading}
-            />
-            <Button
-              variant="primary"
-              size="compact"
-              onClick={handleCreateBranch}
-              disabled={branchCreateLoading || !newBranchName.trim()}
-            >
-              {branchCreateLoading ? "…" : "Create"}
-            </Button>
-            <IconButton
-              label="Cancel"
-              onClick={() => {
-                setCreatingBranch(false);
-                setNewBranchName("");
-                setBranchCreateError(undefined);
-              }}
-              disabled={branchCreateLoading}
-            >
-              <IconClose size={11} />
-            </IconButton>
-            {branchCreateError && <span style={styles.branchError}>{branchCreateError}</span>}
-          </>
-        ) : (
-          <>
-            <span style={styles.branchLabel}>Branch</span>
-            {branches.length > 1 ? (
-              <select
-                style={styles.branchSelect}
-                value={activeBranch}
-                onChange={(e) => handleBranchChange(e.target.value)}
-                disabled={status.kind === "loading"}
-              >
-                {branches.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+      {!isConnected ? (
+        <div style={styles.notConnected}>
+          <div style={styles.notConnectedText}>
+            Add a GitHub personal access token and repository to enable Pull and Push.
+          </div>
+          <Button variant="primary" onClick={onEditProject}>
+            Connect GitHub
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div style={styles.branchRow}>
+            {creatingBranch ? (
+              <>
+                <input
+                  className="ts-input"
+                  style={styles.branchInput}
+                  value={newBranchName}
+                  onChange={(e) => {
+                    setNewBranchName(e.target.value);
+                    setBranchCreateError(undefined);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreateBranch();
+                    if (e.key === "Escape") {
+                      setCreatingBranch(false);
+                      setNewBranchName("");
+                      setBranchCreateError(undefined);
+                    }
+                  }}
+                  placeholder={`from: ${activeBranch}`}
+                  autoFocus
+                  disabled={branchCreateLoading}
+                />
+                <Button
+                  variant="primary"
+                  size="compact"
+                  onClick={handleCreateBranch}
+                  disabled={branchCreateLoading || !newBranchName.trim()}
+                >
+                  {branchCreateLoading ? "…" : "Create"}
+                </Button>
+                <IconButton
+                  label="Cancel"
+                  onClick={() => {
+                    setCreatingBranch(false);
+                    setNewBranchName("");
+                    setBranchCreateError(undefined);
+                  }}
+                  disabled={branchCreateLoading}
+                >
+                  <IconClose size={11} />
+                </IconButton>
+                {branchCreateError && <span style={styles.branchError}>{branchCreateError}</span>}
+              </>
             ) : (
-              <span style={styles.branchName}>{activeBranch}</span>
+              <>
+                <span style={styles.branchLabel}>Branch</span>
+                {branches.length > 1 ? (
+                  <select
+                    style={styles.branchSelect}
+                    value={activeBranch}
+                    onChange={(e) => handleBranchChange(e.target.value)}
+                    disabled={status.kind === "loading"}
+                  >
+                    {branches.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span style={styles.branchName}>{activeBranch}</span>
+                )}
+                <IconButton
+                  label="Refresh branch list"
+                  onClick={refreshBranches}
+                  disabled={branchesLoading || status.kind === "loading"}
+                >
+                  <IconRefresh
+                    size={11}
+                    style={branchesLoading ? { animation: "spin 1s linear infinite" } : undefined}
+                  />
+                </IconButton>
+                <IconButton
+                  label={`New branch from ${activeBranch}`}
+                  onClick={() => {
+                    setCreatingBranch(true);
+                    setBranchCreateError(undefined);
+                  }}
+                  disabled={status.kind === "loading"}
+                >
+                  <IconPlus size={11} />
+                </IconButton>
+              </>
             )}
-            <IconButton
-              label="Refresh branch list"
-              onClick={refreshBranches}
-              disabled={branchesLoading || status.kind === "loading"}
-            >
-              <IconRefresh
-                size={11}
-                style={branchesLoading ? { animation: "spin 1s linear infinite" } : undefined}
-              />
-            </IconButton>
-            <IconButton
-              label={`New branch from ${activeBranch}`}
-              onClick={() => {
-                setCreatingBranch(true);
-                setBranchCreateError(undefined);
-              }}
+          </div>
+
+          <label style={styles.syncOptionRow}>
+            <input
+              type="checkbox"
+              checked={syncTypeStyles}
+              onChange={(e) => handleSyncTypeStylesChange(e.target.checked)}
+            />
+            <span>
+              Sync type styles
+              <span style={styles.syncOptionHint}>
+                {" "}
+                — apply typography groups to Figma as Text Styles
+              </span>
+            </span>
+          </label>
+
+          <div style={styles.actions}>
+            <ActionCard
+              title="Pull from GitHub"
+              description="Fetch token changes from GitHub and review before applying to Figma Variables."
+              buttonLabel="Pull"
+              buttonVariant="secondary"
+              onClick={handlePull}
               disabled={status.kind === "loading"}
+            />
+            <ActionCard
+              title="Push to GitHub"
+              description="Export Figma Variables as tokens and open a Pull Request on GitHub."
+              buttonLabel="Push → PR"
+              buttonVariant="primary"
+              onClick={handlePush}
+              disabled={status.kind === "loading"}
+            />
+            <ActionCard
+              title="Map collections"
+              description="Assign each Figma collection to a role (primitives/global/themes/semantic/sizes) or Ignore."
+              buttonLabel="Map"
+              buttonVariant="secondary"
+              onClick={() => setView("collection-mapping")}
+              disabled={status.kind === "loading"}
+            />
+            <ActionCard
+              title="Output formats"
+              description="Choose which code files (CSS/JS/TS/Dart/Swift) get generated on push."
+              buttonLabel="Configure"
+              buttonVariant="secondary"
+              onClick={() => setView("output-formats")}
+              disabled={status.kind === "loading"}
+            />
+          </div>
+
+          {status.kind !== "idle" && (
+            <StatusBanner
+              tone={statusTone(status.kind)}
+              detail={status.kind === "error" ? status.detail : undefined}
+              action={
+                status.kind === "success" && "url" in status && status.url ? (
+                  <a href={status.url} target="_blank" rel="noreferrer" style={styles.prLink}>
+                    View PR <IconArrowRight size={10} />
+                  </a>
+                ) : undefined
+              }
             >
-              <IconPlus size={11} />
-            </IconButton>
-          </>
-        )}
-      </div>
-
-      <label style={styles.syncOptionRow}>
-        <input
-          type="checkbox"
-          checked={syncTypeStyles}
-          onChange={(e) => handleSyncTypeStylesChange(e.target.checked)}
-        />
-        <span>
-          Sync type styles
-          <span style={styles.syncOptionHint}>
-            {" "}
-            — apply typography groups to Figma as Text Styles
-          </span>
-        </span>
-      </label>
-
-      <div style={styles.actions}>
-        <ActionCard
-          title="Pull from GitHub"
-          description="Fetch token changes from GitHub and review before applying to Figma Variables."
-          buttonLabel="Pull"
-          buttonVariant="secondary"
-          onClick={handlePull}
-          disabled={status.kind === "loading"}
-        />
-        <ActionCard
-          title="Push to GitHub"
-          description="Export Figma Variables as tokens and open a Pull Request on GitHub."
-          buttonLabel="Push → PR"
-          buttonVariant="primary"
-          onClick={handlePush}
-          disabled={status.kind === "loading"}
-        />
-        <ActionCard
-          title="Map collections"
-          description="Assign each Figma collection to a role (primitives/global/themes/semantic/sizes) or Ignore."
-          buttonLabel="Map"
-          buttonVariant="secondary"
-          onClick={() => setView("collection-mapping")}
-          disabled={status.kind === "loading"}
-        />
-        <ActionCard
-          title="Output formats"
-          description="Choose which code files (CSS/JS/TS/Dart/Swift) get generated on push."
-          buttonLabel="Configure"
-          buttonVariant="secondary"
-          onClick={() => setView("output-formats")}
-          disabled={status.kind === "loading"}
-        />
-      </div>
-
-      {status.kind !== "idle" && (
-        <StatusBanner
-          tone={statusTone(status.kind)}
-          detail={status.kind === "error" ? status.detail : undefined}
-          action={
-            status.kind === "success" && "url" in status && status.url ? (
-              <a href={status.url} target="_blank" rel="noreferrer" style={styles.prLink}>
-                View PR <IconArrowRight size={10} />
-              </a>
-            ) : undefined
-          }
-        >
-          {status.message}
-        </StatusBanner>
+              {status.message}
+            </StatusBanner>
+          )}
+        </>
       )}
     </div>
   );
@@ -1127,6 +1147,16 @@ const styles: Record<string, React.CSSProperties> = {
   projectName: { fontWeight: 600, fontSize: 15 },
   projectMeta: { fontSize: font.size.sm, color: color.text.muted, marginTop: 2 },
   lastSync: { color: color.text.faint },
+  notConnected: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
+    gap: space.md,
+    padding: `${space.xxl}px ${space.lg}px`,
+    color: color.text.secondary,
+  },
+  notConnectedText: { fontSize: font.size.md, lineHeight: 1.5 },
   branchRow: {
     display: "flex",
     alignItems: "center",

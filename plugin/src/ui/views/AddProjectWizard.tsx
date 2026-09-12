@@ -12,10 +12,11 @@
  * anyone who already knows what they're doing and would rather fill in one
  * screen than click through steps.
  *
- * Step 2 (Connect GitHub) intentionally can't be skipped past by mistake:
- * Continue is disabled until Test Connection succeeds, unless the user
- * explicitly chooses "Skip for now" — a bad token/repo should be caught
- * here, not on the first real Pull/Push after setup.
+ * Step 2 (Connect GitHub) is optional — Continue is disabled until Test
+ * Connection succeeds so a bad token/repo is caught here rather than on
+ * the first real Pull/Push, but "Skip for now" lets you finish setup with
+ * no GitHub connection at all, to add one later from Settings. Sync.tsx
+ * shows a distinct "not connected" state for that project until you do.
  */
 
 import { useState } from "react";
@@ -84,8 +85,11 @@ export function AddProjectWizard({ onSave, onCancel, onSkipToFlatForm }: Props) 
   function handleSave() {
     setReviewError("");
     if (!name.trim()) return setReviewError("Project name is required");
-    if (!pat.trim()) return setReviewError("GitHub Personal Access Token is required");
-    if (!repoValid) return setReviewError("Repository must be in format org/repo-name");
+    // GitHub connection is optional — a project can be saved without one
+    // and connected later from Settings (see Sync.tsx's "not connected"
+    // state). Only validate the format of what was actually typed.
+    if (repo.trim() && !repoValid)
+      return setReviewError("Repository must be in format org/repo-name");
 
     onSave({
       id: generateId(),
@@ -201,10 +205,10 @@ export function AddProjectWizard({ onSave, onCancel, onSkipToFlatForm }: Props) 
               <Button
                 type="button"
                 variant="ghost"
-                disabled={!pat.trim() || !repoValid}
+                disabled={testState.kind === "loading"}
                 onClick={() => setStep(3)}
               >
-                Skip test and continue
+                Skip for now
               </Button>
             )}
           </div>

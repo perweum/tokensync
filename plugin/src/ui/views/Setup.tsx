@@ -115,8 +115,9 @@ function ProjectForm({
     setError("");
 
     if (!name.trim()) return setError("Project name is required");
-    if (!pat.trim()) return setError("GitHub Personal Access Token is required");
-    if (!repo.trim() || !repo.includes("/"))
+    // GitHub connection is optional — see AddProjectWizard.tsx's matching
+    // comment on handleSave. Only validate the format of what was typed.
+    if (repo.trim() && !repo.includes("/"))
       return setError("Repository must be in format org/repo-name");
 
     onSave({
