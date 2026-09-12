@@ -18,6 +18,7 @@ import {
   isTokenValue,
   filterByPaths,
   formatFigmaColor,
+  slugifyModeName,
 } from "./token-format";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -500,7 +501,7 @@ function buildThemeFile(
   conflictPaths: string[],
 ): TokenFile | null {
   if (entries.length === 0) return null;
-  const themeName = sanitizeFileName(modeName);
+  const themeName = slugifyModeName(modeName);
   return {
     repoPath: joinPath(tokensPath, "semantic/themes", `${themeName}.json`),
     content: buildJsonFile(entries, varById, conflictPaths),
@@ -520,7 +521,7 @@ function buildSemanticFile(
 ): TokenFile | null {
   if (entries.length === 0) return null;
 
-  const scheme = sanitizeFileName(modeName);
+  const scheme = slugifyModeName(modeName);
   return {
     repoPath: joinPath(tokensPath, "semantic", `${scheme}.json`),
     content: buildJsonFile(entries, varById, conflictPaths),
@@ -541,19 +542,11 @@ function buildSizeFile(
   conflictPaths: string[],
 ): TokenFile | null {
   if (entries.length === 0) return null;
-  const sizeName = sanitizeFileName(modeName);
+  const sizeName = slugifyModeName(modeName);
   return {
     repoPath: joinPath(tokensPath, "primitives/sizes", `${sizeName}.json`),
     content: buildJsonFile(entries, varById, conflictPaths),
   };
-}
-
-/**
- * Mode name → safe file name: lowercase, spaces and slashes collapsed to "-".
- * A slash in a mode name must not create a subdirectory the parser won't read back.
- */
-function sanitizeFileName(modeName: string): string {
-  return modeName.toLowerCase().replace(/[\s/]+/g, "-");
 }
 
 // ---------------------------------------------------------------------------

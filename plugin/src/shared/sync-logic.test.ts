@@ -8,6 +8,7 @@ import {
   buildApplyPayloads,
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
+  isModeAgnosticRole,
 } from "./sync-logic";
 import type { Metadata, ResolvedCollection, CollectionSources } from "./token-merger";
 import type { TypographyStyle } from "./typography-styles";
@@ -377,6 +378,46 @@ describe("computePushDiff", () => {
     expect(diffs[0].counts.total).toBe(0);
   });
 
+  it("matches Primitives (no Size axis) regardless of mode name — it's an arbitrary Figma default, not real data", () => {
+    // Reproduces a real bug found live: with no Size axis, GitHub's own
+    // parsed Primitives collection always uses a fixed placeholder modeName
+    // ("Value" — parseRepository has no way to know what Figma's real,
+    // arbitrary mode name actually is from a plain color.json). Figma's real
+    // Primitives collection reports whatever it's actually called — often
+    // literally "Mode 1", Figma's own unrenamed default. Requiring an exact
+    // modeName match compared these and never matched, permanently showing
+    // every Primitives token as newly "added" on every single push, even
+    // when nothing had actually changed (confirmed live: the resulting
+    // written file was byte-identical to what was already committed).
+    const figma = [col("Primitives", "Mode 1", { "color.a": { $type: "color", $value: "#fff" } })];
+    const github = [col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } })];
+
+    const diffs = computePushDiff(figma, github, metadata());
+
+    expect(diffs[0].counts.total).toBe(0);
+  });
+
+  it("still matches Primitives by mode name when a real Size axis exists — multiple real modes must not collapse into one", () => {
+    // The relaxation above only applies when there's genuinely one
+    // Primitives entry to begin with — a real Size axis produces one
+    // ResolvedCollection per size mode, each needing its own distinct match.
+    const figma = [
+      col("Primitives", "Mobile", { "font-size.1": { $type: "dimension", $value: "11px" } }),
+      col("Primitives", "Desktop", { "font-size.1": { $type: "dimension", $value: "12px" } }),
+    ];
+    const github = [
+      col("Primitives", "Mobile", { "font-size.1": { $type: "dimension", $value: "11px" } }),
+      col("Primitives", "Desktop", { "font-size.1": { $type: "dimension", $value: "99px" } }),
+    ];
+
+    const diffs = computePushDiff(figma, github, metadata({ sizes: ["mobile", "desktop"] }));
+
+    const mobile = diffs.find((d) => d.modeName === "Mobile")!;
+    const desktop = diffs.find((d) => d.modeName === "Desktop")!;
+    expect(mobile.counts.total).toBe(0);
+    expect(desktop.counts.changed).toBe(1);
+  });
+
   it("excludes ignored Figma collections from the diff", () => {
     const figma = [
       col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } }),
@@ -405,6 +446,57 @@ describe("computePushDiff", () => {
     const entry = globalDiff.entries.find((e) => e.path === "text.heading.caption.textCase");
     expect(entry?.status).toBe("added");
     expect(entry?.githubValue).toBe("uppercase");
+  });
+});
+
+describe("isModeAgnosticRole", () => {
+  // The single, shared definition computePushDiff and figmaValuesFor (pull's
+  // matching) both consult — see its own doc comment for the live bug this
+  // fixed. Direct tests here so a future change to this policy can't
+  // silently pass while breaking one direction's actual behavior.
+  it("Global is always mode-agnostic", () => {
+    expect(isModeAgnosticRole("global")).toBe(true);
+    expect(isModeAgnosticRole("global", true)).toBe(true);
+  });
+
+  it("Primitives is mode-agnostic only without a genuine Size axis", () => {
+    expect(isModeAgnosticRole("primitives")).toBe(true);
+    expect(isModeAgnosticRole("primitives", false)).toBe(true);
+    expect(isModeAgnosticRole("primitives", true)).toBe(false);
+  });
+
+  it("every other role always requires a real mode-name match", () => {
+    expect(isModeAgnosticRole("themes")).toBe(false);
+    expect(isModeAgnosticRole("semantic")).toBe(false);
+    expect(isModeAgnosticRole("sizes")).toBe(false);
+    expect(isModeAgnosticRole("unknown")).toBe(false);
+  });
+});
+
+describe("push and pull agree on a genuinely single-mode system", () => {
+  // The actual drift guard: rather than trusting the two directions to keep
+  // agreeing just because they both now call isModeAgnosticRole, this drives
+  // computePushDiff AND computePullDiff from the *same* real-world data (a
+  // single-mode Primitives collection, Figma's real mode name vs GitHub's
+  // reconstructed placeholder) and asserts both report zero changes. If a
+  // future edit to either direction reintroduces a mismatch, this fails
+  // regardless of which side regressed.
+  const figmaCol = col("Primitives", "Mode 1", {
+    "color.a": { $type: "color", $value: "#fff" },
+  });
+  const githubCol = col("Primitives", "Value", {
+    "color.a": { $type: "color", $value: "#fff" },
+  });
+
+  it("push reports no changes", () => {
+    const diffs = computePushDiff([figmaCol], [githubCol], metadata());
+    expect(diffs[0].counts.total).toBe(0);
+  });
+
+  it("pull reports no changes", () => {
+    const figmaMaps = [figmaMap("Primitives", "Mode 1", { "color.a": "#fff" })];
+    const { diffs } = computePullDiff([githubCol], metadata(), figmaMaps);
+    expect(diffs[0].counts.total).toBe(0);
   });
 });
 

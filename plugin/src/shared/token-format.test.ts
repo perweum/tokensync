@@ -11,6 +11,7 @@ import {
   isPureRef,
   filterByPaths,
   formatFigmaColor,
+  slugifyModeName,
 } from "./token-format";
 import type { TokenTree } from "./messages";
 
@@ -99,6 +100,29 @@ describe("formatFigmaColor", () => {
 
   it("formats a translucent color as rgba with a direct decimal alpha", () => {
     expect(formatFigmaColor(0, 0, 0, 0.025)).toBe("rgba(0, 0, 0, 0.03)");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// slugifyModeName
+// ────────────────────────────────────────────────────────────────
+
+describe("slugifyModeName", () => {
+  // The single shared copy — was independently defined 3 times
+  // (token-merger.ts, figma-to-tokens.ts, CollectionMapping.tsx). All three
+  // must agree exactly, or a file written on push (using one copy) isn't
+  // found again on pull/mapping lookups (using another) — the exact bug
+  // shape behind the "Mode 1" fix.
+  it("lowercases and replaces a space with a hyphen", () => {
+    expect(slugifyModeName("Mode 1")).toBe("mode-1");
+  });
+
+  it("replaces a slash with a hyphen", () => {
+    expect(slugifyModeName("Brand-A/Dark")).toBe("brand-a-dark");
+  });
+
+  it("is a no-op (beyond lowercasing) for a name with no space or slash", () => {
+    expect(slugifyModeName("Vy")).toBe("vy");
   });
 });
 
