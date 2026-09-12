@@ -4,6 +4,11 @@
  * from the small `?` button in Sync's header; also the same two blocks
  * AddProjectWizard shows on its Welcome/Tips steps, kept here as the one
  * place their copy lives so the wizard and this view can't drift apart.
+ *
+ * Left-aligned throughout, matching every other view (Setup, AddProjectWizard's
+ * own step text) — only the small art next to each heading is a fixed-size
+ * decorative element, the same convention AddProjectWizard's Name/Connect/
+ * Defaults steps already use for their own illustrations.
  */
 import { ViewHeader } from "../components/ViewHeader";
 import { WelcomeArt, TipsArt } from "../onboardingArt";
@@ -12,7 +17,9 @@ import { color, font, space } from "../theme";
 export function Help({ onBack }: { onBack: () => void }) {
   return (
     <div style={s.container}>
-      <ViewHeader title="About & tips" onBack={onBack} />
+      <div style={s.header}>
+        <ViewHeader title="About & tips" onBack={onBack} />
+      </div>
       <div style={s.body}>
         <AboutTokenSpark />
         <BestPracticesTips />
@@ -24,7 +31,10 @@ export function Help({ onBack }: { onBack: () => void }) {
 export function AboutTokenSpark() {
   return (
     <div style={s.block}>
-      <WelcomeArt style={s.art} />
+      <div style={s.blockHeading}>
+        <WelcomeArt style={s.art} />
+        <h3 style={s.heading}>What Token Spark does</h3>
+      </div>
       <p style={s.lead}>
         Token Spark keeps design tokens in sync between this Figma file and a GitHub repository — no
         manual copying, no drift between what designers see and what code ships.
@@ -48,8 +58,10 @@ export function AboutTokenSpark() {
 export function BestPracticesTips() {
   return (
     <div style={s.block}>
-      <TipsArt style={s.art} />
-      <p style={s.heading}>Best practices</p>
+      <div style={s.blockHeading}>
+        <TipsArt style={s.art} />
+        <h3 style={s.heading}>Best practices</h3>
+      </div>
       <ul style={s.list}>
         <TipRow>
           Every push opens a Pull Request — nothing reaches your repo's main branch until it's
@@ -79,30 +91,24 @@ function TipRow({ children }: { children: React.ReactNode }) {
 
 const s: Record<string, React.CSSProperties> = {
   container: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
+  header: {
+    padding: `${space.md}px ${space.lg}px`,
+    borderBottom: `1px solid ${color.border.subtle}`,
+    flexShrink: 0,
+  },
   body: {
     flex: 1,
     overflowY: "auto",
-    padding: `${space.md}px ${space.xxl}px ${space.xxl}px`,
+    padding: `${space.lg}px ${space.lg}px ${space.xxl}px`,
     display: "flex",
     flexDirection: "column",
     gap: space.xl,
   },
-  block: { display: "flex", flexDirection: "column", alignItems: "center", gap: space.sm },
-  art: { flexShrink: 0 },
-  lead: {
-    margin: 0,
-    textAlign: "center",
-    fontSize: font.size.md,
-    color: color.text.secondary,
-    lineHeight: 1.5,
-  },
-  heading: {
-    margin: 0,
-    alignSelf: "flex-start",
-    fontWeight: 600,
-    fontSize: font.size.lg,
-    color: color.text.primary,
-  },
+  block: { display: "flex", flexDirection: "column", gap: space.sm },
+  blockHeading: { display: "flex", alignItems: "center", gap: space.sm },
+  art: { width: 32, height: 19, flexShrink: 0 },
+  heading: { margin: 0, fontWeight: 600, fontSize: font.size.lg, color: color.text.primary },
+  lead: { margin: 0, fontSize: font.size.md, color: color.text.secondary, lineHeight: 1.5 },
   list: {
     margin: 0,
     padding: 0,
@@ -110,7 +116,6 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: space.sm + 2,
-    width: "100%",
   },
   item: {
     display: "flex",
