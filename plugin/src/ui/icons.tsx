@@ -1,9 +1,25 @@
 /**
- * Shared icon set. Small inline SVGs instead of ad hoc unicode glyphs
- * (▼ ▶ ✓ ✕ ⟳ + − ~) so every icon has consistent stroke weight/size,
- * scales with font-size via `currentColor`, and carries an accessible label.
+ * Shared icon set — thin wrappers around lucide-react (MIT, tree-shakeable:
+ * only the icons actually imported below end up in the bundle), not
+ * hand-drawn inline SVGs. The previous set was hand-authored path data with
+ * no visual design tool to check it against, which is exactly how the old
+ * `?` icon ended up looking off. Pull any new icon from lucide's own set
+ * (https://lucide.dev/icons) and wrap it here the same way, rather than
+ * hand-drawing a new one.
  */
 
+import {
+  ChevronRight,
+  Check,
+  X,
+  RefreshCw,
+  Plus,
+  Minus,
+  ArrowLeft,
+  ArrowRight,
+  HelpCircle,
+  type LucideIcon,
+} from "lucide-react";
 import type { CSSProperties } from "react";
 
 export interface IconProps {
@@ -12,106 +28,65 @@ export interface IconProps {
   label?: string;
 }
 
-function Svg({ size = 14, style, label, children }: IconProps & { children: React.ReactNode }) {
+/** Every icon below renders through here — fixed stroke width and
+ * `currentColor` (lucide's default) so a newly-wrapped icon automatically
+ * matches the existing set instead of needing its own tuning. */
+function Icon({ icon: Lucide, size = 14, style, label }: IconProps & { icon: LucideIcon }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Lucide
+      size={size}
+      strokeWidth={1.8}
       style={{ flexShrink: 0, display: "block", ...style }}
       role={label ? "img" : "presentation"}
       aria-label={label}
       aria-hidden={label ? undefined : true}
-    >
-      {children}
-    </svg>
+    />
   );
 }
 
 /** Chevron pointing right by default; rotate 90deg via `expanded` to point down. */
 export function IconChevron({ expanded, ...props }: IconProps & { expanded?: boolean }) {
   return (
-    <Svg
+    <Icon
+      icon={ChevronRight}
       {...props}
       style={{
         transition: "transform 120ms ease",
         transform: expanded ? "rotate(90deg)" : "none",
         ...props.style,
       }}
-    >
-      <path d="M6 3.5L11 8l-5 4.5" />
-    </Svg>
+    />
   );
 }
 
 export function IconCheck(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M3.5 8.5l3 3 6-7" />
-    </Svg>
-  );
+  return <Icon icon={Check} {...props} />;
 }
 
 export function IconClose(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M4 4l8 8M12 4l-8 8" />
-    </Svg>
-  );
+  return <Icon icon={X} {...props} />;
 }
 
 export function IconRefresh(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M12.5 8a4.5 4.5 0 1 1-1.5-3.35" />
-      <path d="M12.5 3.5v3h-3" />
-    </Svg>
-  );
+  return <Icon icon={RefreshCw} {...props} />;
 }
 
 export function IconPlus(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M8 3.5v9M3.5 8h9" />
-    </Svg>
-  );
+  return <Icon icon={Plus} {...props} />;
 }
 
 export function IconMinus(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M3.5 8h9" />
-    </Svg>
-  );
+  return <Icon icon={Minus} {...props} />;
 }
 
 export function IconArrowLeft(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M10 3.5L5 8l5 4.5" />
-    </Svg>
-  );
+  return <Icon icon={ArrowLeft} {...props} />;
 }
 
 export function IconArrowRight(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M6 3.5L11 8l-5 4.5" />
-    </Svg>
-  );
+  return <Icon icon={ArrowRight} {...props} />;
 }
 
 export function IconHelp(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <circle cx="8" cy="8" r="5.6" />
-      <path d="M6.3 6.4a1.9 1.9 0 1 1 3 1.6c-.7.45-1.1.9-1.1 1.7" />
-      <circle cx="8.2" cy="11.6" r="0.15" fill="currentColor" stroke="none" />
-    </Svg>
-  );
+  return <Icon icon={HelpCircle} {...props} />;
 }
