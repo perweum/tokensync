@@ -678,6 +678,41 @@ describe("JS/TS output — object keys that aren't valid bare identifiers", () =
   });
 });
 
+describe("JS/TS output — a variable name structurally collides with another (a leaf and a group at the same path)", () => {
+  // js.ts has its own separate flat-map-to-nested-tree builder (flatToNested/
+  // setNested) from figma-to-tokens.ts's, working over plain JS values
+  // instead of TokenValue objects — it never got the same structural-
+  // collision guard figma-to-tokens.ts's setNested gained after a confirmed
+  // live data-corruption bug (see figma-to-tokens.test.ts's identical
+  // "surface/brand" + "surface/brand/default" scenario).
+  //
+  // Unlike figma-to-tokens.ts's version (whose leaves are {$type, $value}
+  // objects, so an unguarded collision can produce an invalid hybrid — both
+  // $value *and* child keys), js.ts's leaves are bare JS primitives, so the
+  // old, unguarded code can't produce a hybrid — it silently lets whichever
+  // path is processed *second* overwrite the first outright. The guard
+  // flips that to "whichever is processed first wins, the second is
+  // skipped" — a clean, deterministic, testable difference either way.
+  const collidingCol: ResolvedCollection = {
+    collectionName: "Theme",
+    modeName: "Light",
+    tokens: {
+      "surface.brand": { $type: "color", $value: "#111111" },
+      "surface.brand.default": { $type: "color", $value: "#222222" },
+    },
+    rawTokens: {},
+    typographyStyles: [],
+  };
+
+  it("the first-processed path wins; the second is skipped, not silently overwriting it", () => {
+    const js = generateSchemeJS(undefined, undefined, collidingCol, { typescript: false });
+    // "surface.brand" (the leaf) is inserted first — it must still be a
+    // plain leaf value, not clobbered into a group by the later, longer path.
+    expect(js).toMatch(/brand:\s*"#111111"/);
+    expect(js).not.toContain("default:");
+  });
+});
+
 describe("Dart/Swift field names — a path segment starting with a digit", () => {
   // Reproduces a real bug found live on the same push: a Figma size step
   // literally named "2xl" (alongside xs/sm/md/lg/xl — an ordinary type-scale

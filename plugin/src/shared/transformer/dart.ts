@@ -15,6 +15,7 @@ import type { ResolvedCollection, Metadata } from "../token-merger";
 import { findGlobalCollection, selectDefaultPrimitives } from "../token-merger";
 import type { TokenValue } from "../messages";
 import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
+import { toFieldName, toModeTypeName, snapFontWeightStep } from "./naming";
 
 export function generateSchemeDart(
   primitivesCol: ResolvedCollection | undefined,
@@ -53,10 +54,10 @@ export function generateDart(collections: ResolvedCollection[], metadata: Metada
     blocks.push(dartClass("DesignTokensGlobal", global.tokens));
   }
   for (const col of themes) {
-    blocks.push(dartClass("DesignTokensTheme" + dartClassName(col.modeName), col.tokens));
+    blocks.push(dartClass("DesignTokensTheme" + toModeTypeName(col.modeName), col.tokens));
   }
   for (const col of semantic) {
-    const className = "DesignTokens" + dartClassName(col.modeName);
+    const className = "DesignTokens" + toModeTypeName(col.modeName);
     blocks.push(dartClass(className, col.tokens));
   }
 
@@ -71,7 +72,7 @@ function dartClass(className: string, tokens: Record<string, TokenValue>): strin
   const lines: string[] = [`class ${className} {`];
 
   for (const [path, token] of Object.entries(tokens)) {
-    const fieldName = toDartFieldName(path);
+    const fieldName = toFieldName(path);
     const dartValue = toDartValue(token);
     if (dartValue === null) continue;
 
@@ -142,47 +143,8 @@ function dartFontWeight(value: string): string {
   if (resolved === null) {
     console.warn(`[TokenSpark] Unrecognized font weight "${value}" — using FontWeight.w400`);
   }
-  const n = resolved ?? DEFAULT_FONT_WEIGHT;
-  const step = Math.min(900, Math.max(100, Math.round(n / 100) * 100));
+  const step = snapFontWeightStep(resolved ?? DEFAULT_FONT_WEIGHT);
   return `FontWeight.w${step}`;
-}
-
-// ---------------------------------------------------------------------------
-// Naming helpers
-// ---------------------------------------------------------------------------
-
-function toDartFieldName(path: string): string {
-  // "color.brand.500" → "colorBrand500"
-  const name = path
-    .split(".")
-    .map((segment, i) =>
-      i === 0
-        ? segment.toLowerCase().replace(/[^a-z0-9]/g, "")
-        : segment.charAt(0).toUpperCase() +
-          segment
-            .slice(1)
-            .toLowerCase()
-            .replace(/[^a-zA-Z0-9]/g, ""),
-    )
-    .join("");
-  // A digit mid-identifier is fine ("colorBrand500"), but Dart (like Swift)
-  // rejects one as the very first character. Found live: a Figma size step
-  // literally named "2xl" (a common type-scale name alongside xs/sm/md/lg/xl)
-  // produced "2xldisplayLetterspacing" — invalid Dart, since the *first*
-  // path segment starts with a digit.
-  return /^\d/.test(name) ? `_${name}` : name;
-}
-
-function dartClassName(modeName: string): string {
-  // "Light" → "Light", "Default/Light" → "Light", "Brand-A/Dark" → "BrandADark"
-  return (
-    modeName
-      .split("/")
-      .map((p) => p.replace(/[^a-zA-Z0-9]+(.)?/g, (_, c: string) => (c ? c.toUpperCase() : "")))
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-      .join("")
-      .replace("Default", "") || "Default"
-  );
 }
 
 function dartHeader(): string {
