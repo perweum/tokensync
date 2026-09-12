@@ -30,7 +30,14 @@ const ACTIVE_KEY = "tokenspark:activeProject";
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [showSetup, setShowSetup] = useState(false);
+  // null = not showing Setup; "edit" prefills the active project's fields;
+  // "add" always shows a blank form, regardless of which project is active.
+  // Used to be a single boolean, with `existing` always derived from
+  // `activeProject` whenever Setup was shown — so clicking "Add" (a brand
+  // new project) opened the *same* form as "Edit", prefilled with whichever
+  // project was already active. Found live: adding a genuinely new project
+  // showed the previous project's repo/token instead of a clean slate.
+  const [setupMode, setSetupMode] = useState<"add" | "edit" | null>(null);
   const [loading, setLoading] = useState(true); // waiting for clientStorage
 
   const send = useSendMessage();
@@ -102,7 +109,7 @@ export default function App() {
       return [...prev, project];
     });
     setActiveId(project.id);
-    setShowSetup(false);
+    setSetupMode(null);
   }
 
   function handleDeleteProject(id: string) {
@@ -136,12 +143,12 @@ export default function App() {
 
   const activeProject = projects.find((p) => p.id === activeId) ?? null;
 
-  if (projects.length === 0 || showSetup) {
+  if (projects.length === 0 || setupMode !== null) {
     return (
       <Setup
         onSave={handleSaveProject}
-        onCancel={projects.length > 0 ? () => setShowSetup(false) : undefined}
-        existing={showSetup ? activeProject : null}
+        onCancel={projects.length > 0 ? () => setSetupMode(null) : undefined}
+        existing={setupMode === "edit" ? activeProject : null}
       />
     );
   }
@@ -162,11 +169,11 @@ export default function App() {
           projects={projects}
           activeId={activeId!}
           onSelect={setActiveId}
-          onAdd={() => setShowSetup(true)}
+          onAdd={() => setSetupMode("add")}
         />
         <Sync
           project={activeProject}
-          onEditProject={() => setShowSetup(true)}
+          onEditProject={() => setSetupMode("edit")}
           onDeleteProject={() => handleDeleteProject(activeProject.id)}
         />
       </div>
