@@ -280,6 +280,101 @@ describe("parseRepository — theme/colorScheme lookup is case-insensitive", () 
   });
 });
 
+describe("parseRepository — a real mode name containing a space", () => {
+  // Reproduces a real bug found live on the single-theme-stresstest system:
+  // Figma's own unrenamed default mode is literally "Mode 1" (with a space).
+  // Writing it to a filename sanitizes spaces to hyphens ("mode-1.json") —
+  // CollectionMapping.tsx used to store that *same sanitized slug* in
+  // metadata.json too, which parseRepository could then only reconstruct as
+  // "Mode-1" (capitalise() only touches the first character; it never turns
+  // a hyphen back into a space). "Mode-1" != Figma's real live "Mode 1", so
+  // every single pull showed the whole collection as newly "added", forever,
+  // no matter how many times it had already been pushed and pulled.
+  //
+  // These tests use metadata.json entries with the *real* name (spaces
+  // intact) — what CollectionMapping.tsx stores after its own fix — proving
+  // parseRepository reconstructs "Mode 1", not "Mode-1".
+  it("reconstructs a semantic mode's real spaced name from its sanitized filename", () => {
+    const meta = { themes: ["original"], colorSchemes: ["Mode 1"] };
+    const files = [
+      file("tokens/primitives/color.json", primitiveColor),
+      file("tokens/semantic/themes/original.json", defaultTheme),
+      file("tokens/semantic/mode-1.json", semanticLight),
+      file("tokens/metadata.json", meta),
+    ];
+
+    const { collections } = parseRepository(files, tokensPath);
+    const semanticCollections = collections.filter((c) => c.collectionName === "Semantic");
+    expect(semanticCollections).toHaveLength(1);
+    expect(semanticCollections[0].modeName).toBe("Mode 1");
+  });
+
+  it("reconstructs a theme mode's real spaced name from its sanitized filename", () => {
+    const meta = { themes: ["Brand A"], colorSchemes: ["light"] };
+    const files = [
+      file("tokens/primitives/color.json", primitiveColor),
+      file("tokens/semantic/themes/brand-a.json", defaultTheme),
+      file("tokens/semantic/light.json", semanticLight),
+      file("tokens/metadata.json", meta),
+    ];
+
+    const { collections } = parseRepository(files, tokensPath);
+    const themeCollections = collections.filter((c) => c.collectionName === "Themes");
+    expect(themeCollections).toHaveLength(1);
+    expect(themeCollections[0].modeName).toBe("Brand A");
+  });
+
+  it("reconstructs a size mode's real spaced name from its sanitized filename", () => {
+    const meta = {
+      version: "1.0.0",
+      sizes: ["Small Screen", "desktop"],
+      sizeBreakpoints: { desktop: 768 },
+      figma: {
+        fileKey: "abc123",
+        collections: {
+          primitives: ["Primitives"],
+          global: ["Global"],
+          themes: ["Themes"],
+          semantic: ["Semantic"],
+          sizes: ["Size"],
+        },
+      },
+    };
+    const files = [
+      ...makeFiles(),
+      file("tokens/metadata.json", meta),
+      file("tokens/primitives/sizes/small-screen.json", {
+        "font-size": { 1: { $type: "dimension", $value: "11px" } },
+      }),
+      file("tokens/primitives/sizes/desktop.json", {
+        "font-size": { 1: { $type: "dimension", $value: "12px" } },
+      }),
+    ];
+
+    const { collections } = parseRepository(files, tokensPath);
+    const primitivesCollections = collections.filter((c) => c.collectionName === "Primitives");
+    const modeNames = primitivesCollections.map((c) => c.modeName);
+    expect(modeNames).toContain("Small Screen");
+  });
+
+  it("still capitalises a legacy lowercase metadata entry that predates this fix", () => {
+    // A metadata.json written before CollectionMapping.tsx's own fix would
+    // still have the old sanitized-slug form ("original", not "Original") —
+    // must keep displaying capitalised, not regress to showing it verbatim.
+    const meta = { themes: ["original"], colorSchemes: ["light"] };
+    const files = [
+      file("tokens/primitives/color.json", primitiveColor),
+      file("tokens/semantic/themes/original.json", defaultTheme),
+      file("tokens/semantic/light.json", semanticLight),
+      file("tokens/metadata.json", meta),
+    ];
+
+    const { collections } = parseRepository(files, tokensPath);
+    const semantic = collections.find((c) => c.collectionName === "Semantic")!;
+    expect(semantic.modeName).toBe("Light");
+  });
+});
+
 // ────────────────────────────────────────────────────────────────
 // parseRepository — Size axis on Primitives
 // ────────────────────────────────────────────────────────────────

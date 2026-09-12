@@ -258,7 +258,14 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
       const fullFlatResolved = resolveAllReferences(fullFlatRaw);
       collections.push({
         collectionName: names.primitives[0],
-        modeName: capitalise(sizeModeName),
+        // Prefer metadata.sizes' own real name (e.g. "Mode 1") over the
+        // filename-derived slug ("mode-1") — capitalising the slug directly
+        // loses any space/slash the real Figma mode name had ("Mode-1", not
+        // "Mode 1"). capitalise() still wraps whichever value wins, so a
+        // legacy metadata entry that predates this fix (a plain lowercase
+        // slug like "vy", from before CollectionMapping started storing the
+        // real name) still displays capitalised, same as before.
+        modeName: capitalise(findCaseInsensitive(metadata.sizes, sizeModeName) ?? sizeModeName),
         tokens: fullFlatResolved,
         rawTokens: fullFlatRaw,
         typographyStyles: extractTypographyStyles(fullTree),
@@ -332,7 +339,11 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     const themePaths = Object.keys(flattenTokens(themeTree));
     collections.push({
       collectionName: names.themes[0],
-      modeName: capitalise(themeName),
+      // Same reasoning as the Size axis above — themeName here is always
+      // the filename-derived slug (this loop iterates layers.themes'
+      // keys directly, not metadata.themes), so recover metadata.themes'
+      // own real name when this theme is listed there, before capitalising.
+      modeName: capitalise(findCaseInsensitive(metadata.themes, themeName) ?? themeName),
       tokens: filterByPaths(fullFlatResolved, themePaths),
       rawTokens: filterByPaths(fullFlatUnresolved, themePaths),
       typographyStyles: extractTypographyStyles(themeTree),
@@ -363,7 +374,11 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
 
     collections.push({
       collectionName: names.semantic[0],
-      modeName: capitalise(schemeKey),
+      // `scheme` is already metadata.colorSchemes' own real name (e.g.
+      // "Mode 1") — no need to reconstruct anything from `schemeKey`,
+      // which is only the filename-derived slug used to find the file.
+      // capitalise() here is the same legacy-display safeguard as above.
+      modeName: capitalise(scheme),
       tokens: filterByPaths(resolvedFlat, schemePaths),
       rawTokens: filterByPaths(rawFlatUnresolved, schemePaths),
       typographyStyles: extractTypographyStyles(schemeTree),
@@ -539,14 +554,35 @@ function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Find `target` in `candidates` ignoring case — metadata.json's themes/
- * colorSchemes/sizes lists are hand-editable (docs/principles/no-lock-in.md:
- * "config is hand-editable"), so a casing slip ("Original" vs the real file
- * "original") shouldn't silently resolve against an empty tree instead of
- * the real one. */
+/** Same sanitization figma-to-tokens.ts's sanitizeFileName / CollectionMapping.tsx's
+ * sanitizeName apply when turning a real Figma mode name into a filename — a
+ * space or slash becomes a hyphen. Applying it to *both* sides of a
+ * candidates/target comparison (not just lowercasing) is what makes
+ * findCaseInsensitive work regardless of which side happens to already be a
+ * slug and which still has its real spacing — see findCaseInsensitive's own
+ * comment for why this matters. */
+function slugifyModeName(name: string): string {
+  return name.toLowerCase().replace(/[\s/]+/g, "-");
+}
+
+/** Find `target` in `candidates` ignoring case *and* the slug-vs-real-name
+ * gap — metadata.json's themes/colorSchemes/sizes lists are hand-editable
+ * (docs/principles/no-lock-in.md: "config is hand-editable"), so a casing
+ * slip ("Original" vs the real file "original") shouldn't silently resolve
+ * against an empty tree instead of the real one. Slugifying both sides (not
+ * just lowercasing) additionally covers a real mode name containing a space
+ * or slash — a file is always named from the *sanitized* mode name (see
+ * sanitizeFileName), so comparing a metadata entry's raw casing directly
+ * against a filename-derived key silently failed for any name with a space:
+ * found live with Figma's own unrenamed default mode, "Mode 1" — the
+ * committed file is "mode-1.json", and "mode 1" !== "mode-1" even
+ * case-insensitively. Every real call site here compares a metadata.json
+ * entry against a filename-derived candidate, so slugifying unconditionally
+ * is safe — for a name already free of spaces/slashes (every real-world case
+ * before this one), slugifying is a no-op beyond lowercasing. */
 function findCaseInsensitive(candidates: string[], target: string): string | undefined {
-  const lower = target.toLowerCase();
-  return candidates.find((c) => c.toLowerCase() === lower);
+  const slug = slugifyModeName(target);
+  return candidates.find((c) => slugifyModeName(c) === slug);
 }
 
 // ---------------------------------------------------------------------------
