@@ -377,6 +377,46 @@ describe("computePushDiff", () => {
     expect(diffs[0].counts.total).toBe(0);
   });
 
+  it("matches Primitives (no Size axis) regardless of mode name — it's an arbitrary Figma default, not real data", () => {
+    // Reproduces a real bug found live: with no Size axis, GitHub's own
+    // parsed Primitives collection always uses a fixed placeholder modeName
+    // ("Value" — parseRepository has no way to know what Figma's real,
+    // arbitrary mode name actually is from a plain color.json). Figma's real
+    // Primitives collection reports whatever it's actually called — often
+    // literally "Mode 1", Figma's own unrenamed default. Requiring an exact
+    // modeName match compared these and never matched, permanently showing
+    // every Primitives token as newly "added" on every single push, even
+    // when nothing had actually changed (confirmed live: the resulting
+    // written file was byte-identical to what was already committed).
+    const figma = [col("Primitives", "Mode 1", { "color.a": { $type: "color", $value: "#fff" } })];
+    const github = [col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } })];
+
+    const diffs = computePushDiff(figma, github, metadata());
+
+    expect(diffs[0].counts.total).toBe(0);
+  });
+
+  it("still matches Primitives by mode name when a real Size axis exists — multiple real modes must not collapse into one", () => {
+    // The relaxation above only applies when there's genuinely one
+    // Primitives entry to begin with — a real Size axis produces one
+    // ResolvedCollection per size mode, each needing its own distinct match.
+    const figma = [
+      col("Primitives", "Mobile", { "font-size.1": { $type: "dimension", $value: "11px" } }),
+      col("Primitives", "Desktop", { "font-size.1": { $type: "dimension", $value: "12px" } }),
+    ];
+    const github = [
+      col("Primitives", "Mobile", { "font-size.1": { $type: "dimension", $value: "11px" } }),
+      col("Primitives", "Desktop", { "font-size.1": { $type: "dimension", $value: "99px" } }),
+    ];
+
+    const diffs = computePushDiff(figma, github, metadata({ sizes: ["mobile", "desktop"] }));
+
+    const mobile = diffs.find((d) => d.modeName === "Mobile")!;
+    const desktop = diffs.find((d) => d.modeName === "Desktop")!;
+    expect(mobile.counts.total).toBe(0);
+    expect(desktop.counts.changed).toBe(1);
+  });
+
   it("excludes ignored Figma collections from the diff", () => {
     const figma = [
       col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } }),

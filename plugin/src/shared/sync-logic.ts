@@ -205,15 +205,36 @@ export function computePushDiff(
   githubCollections: ResolvedCollection[],
   metadata: Metadata,
 ): CollectionDiff[] {
+  const names = metadata.figma.collections;
   const filteredFigmaCollections = figmaCollections.filter(
     (c) => !isIgnoredCollection(c.collectionName, metadata),
   );
 
   return filteredFigmaCollections.map((figmaCol) => {
+    const role = collectionKind(figmaCol.collectionName, names);
+    // Global (always) and Primitives (when there's no Size axis — every
+    // genuine size mode still gets its own real modeName and needs actual
+    // matching, checked here by whether more than one figmaCol shares this
+    // collectionName at all) are inherently single-mode: Figma still
+    // requires *some* mode name, but it's an arbitrary default ("Mode 1")
+    // nothing else in the repo records, and parseRepository has no way to
+    // reconstruct it from a plain color.json — it uses a fixed placeholder
+    // ("Value") instead. Requiring an exact modeName match here compared
+    // Figma's real (if meaningless) mode name against that placeholder and
+    // never matched, permanently showing every one of that collection's
+    // tokens as newly "added" on every single push. figmaValuesFor (this
+    // file's pull-direction equivalent) already has this same relaxation;
+    // computePushDiff never did. Found live on a genuinely single-mode
+    // system (single-theme-stresstest): a push showing 126 "added" changes
+    // that turned out to be zero real changes once actually written.
+    const singleModeRole =
+      role === "global" ||
+      (role === "primitives" &&
+        figmaCollections.filter((c) => c.collectionName === figmaCol.collectionName).length === 1);
     const githubCol = githubCollections.find(
       (c) =>
         c.collectionName === figmaCol.collectionName &&
-        c.modeName.toLowerCase() === figmaCol.modeName.toLowerCase(),
+        (singleModeRole || c.modeName.toLowerCase() === figmaCol.modeName.toLowerCase()),
     );
     return buildCollectionDiff(
       figmaCol.collectionName,
