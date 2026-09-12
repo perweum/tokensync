@@ -23,7 +23,7 @@
  */
 
 import type { GitHubFile, TokenTree, TokenValue } from "./messages";
-import { flattenTokens, resolveAllReferences, isTokenValue } from "./token-format";
+import { flattenTokens, resolveAllReferences, isTokenValue, filterByPaths } from "./token-format";
 import { extractTypographyStyles } from "./typography-styles";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -474,14 +474,6 @@ function isGroup(node: TokenValue | TokenTree | string | undefined): node is Tok
   return typeof node === "object" && node !== null && !isTokenValue(node);
 }
 
-/** Keep only the paths that appear in the allowlist. */
-function filterByPaths(
-  flat: Record<string, TokenValue>,
-  paths: string[],
-): Record<string, TokenValue> {
-  const set = new Set(paths);
-  return Object.fromEntries(Object.entries(flat).filter(([k]) => set.has(k)));
-}
 
 // ---------------------------------------------------------------------------
 // Metadata parsing

@@ -27,9 +27,17 @@ export function isTokenTree(value: unknown): value is TokenTree {
  * typography field is safe to overlay onto a Variable-derived one: a real
  * ref should always win, but an unbound literal must not silently clobber
  * an existing alias (see injectTypographyStyles in figma-to-tokens.ts).
+ *
+ * The single shared copy — figma-variables.ts and figma-text-styles.ts used
+ * to each define their own, and this one's regex had drifted from theirs
+ * (`.+`, greedy — matches straight through a `}`, so "{a}{b}" counted as one
+ * pure ref) while the other two independently agreed on the stricter
+ * `[^}]+` (correctly rejecting it as two concatenated refs, not one).
+ * Consolidated here with the stricter form both plugin-sandbox copies
+ * already used, so there's exactly one definition to keep correct.
  */
 export function isPureRef(value: string): boolean {
-  return typeof value === "string" && /^\{.+\}$/.test(value);
+  return typeof value === "string" && /^\{[^}]+\}$/.test(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +144,49 @@ export function resolveAllReferences(flat: Record<string, TokenValue>): Record<s
       return [path, { ...token, $value: resolved ?? token.$value }];
     }),
   );
+}
+
+/**
+ * Keep only the paths that appear in the allowlist — e.g. restricting a
+ * resolved-against-shared-context flat map back to just the paths one
+ * layer (a theme, a color scheme) actually owns. Was defined identically
+ * in figma-to-tokens.ts (push) and token-merger.ts (pull) — one shared
+ * copy so the two directions can't independently drift on this.
+ */
+export function filterByPaths(
+  flat: Record<string, TokenValue>,
+  paths: string[],
+): Record<string, TokenValue> {
+  const set = new Set(paths);
+  return Object.fromEntries(Object.entries(flat).filter(([k]) => set.has(k)));
+}
+
+// ---------------------------------------------------------------------------
+// Color formatting
+// ---------------------------------------------------------------------------
+
+/**
+ * Formats a Figma RGBA color (each channel 0-1) as a token $value string —
+ * hex for fully opaque, otherwise a decimal `rgba(r, g, b, a)` string with
+ * alpha kept as a direct float, never quantized through an 8-bit byte first.
+ *
+ * The single shared copy of what figma-to-tokens.ts (push) and
+ * useFigmaValues.ts (pull) used to each maintain independently — confirmed
+ * identical by hand after they'd already drifted once: pull's own copy
+ * quantized alpha via `Math.round(a * 255)` before converting back, which
+ * agreed with push's direct `a.toFixed(2)` for almost every value except
+ * 0.025 (rounds to "0.03" one way, "0.02" the other) — a permanent false
+ * "changed" diff on every pull, for that one alpha value, until both sides
+ * were manually re-synced. One shared function means there's nothing left
+ * to keep in sync.
+ */
+export function formatFigmaColor(r: number, g: number, b: number, a: number): string {
+  const hex = (n: number) =>
+    Math.round(n * 255)
+      .toString(16)
+      .padStart(2, "0");
+  if (Math.round(a * 255) === 255) return `#${hex(r)}${hex(g)}${hex(b)}`;
+  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a.toFixed(2)})`;
 }
 
 // ---------------------------------------------------------------------------

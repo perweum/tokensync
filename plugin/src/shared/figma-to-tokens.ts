@@ -11,7 +11,14 @@ import type {
   TokenValue,
 } from "./messages";
 import type { ResolvedCollection, CollectionNames, CollectionSources, Metadata } from "./token-merger";
-import { fromFigmaVarName, resolveAllReferences, isPureRef, isTokenValue } from "./token-format";
+import {
+  fromFigmaVarName,
+  resolveAllReferences,
+  isPureRef,
+  isTokenValue,
+  filterByPaths,
+  formatFigmaColor,
+} from "./token-format";
 import type { TypographyStyle } from "./typography-styles";
 
 export interface TokenFile {
@@ -252,14 +259,6 @@ function mergeIntoMode(
   }
 }
 
-/** Keep only the paths that appear in the allowlist. */
-function filterByPaths(
-  flat: Record<string, TokenValue>,
-  paths: string[],
-): Record<string, TokenValue> {
-  const set = new Set(paths);
-  return Object.fromEntries(Object.entries(flat).filter(([k]) => set.has(k)));
-}
 
 export interface FigmaToTokenFilesResult {
   files: TokenFile[];
@@ -673,13 +672,7 @@ function rawToTokenValue(
   // Color
   if ($type === "color" && typeof raw === "object" && raw !== null && "r" in raw) {
     const c = raw as { r: number; g: number; b: number; a?: number };
-    const a = c.a ?? 1;
-    const hex = (n: number) =>
-      Math.round(n * 255)
-        .toString(16)
-        .padStart(2, "0");
-    if (Math.round(a * 255) === 255) return `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`;
-    return `rgba(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}, ${a.toFixed(2)})`;
+    return formatFigmaColor(c.r, c.g, c.b, c.a ?? 1);
   }
 
   // Boolean
