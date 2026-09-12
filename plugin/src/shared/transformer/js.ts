@@ -107,16 +107,38 @@ function flatToNested(tokens: Record<string, TokenValue>): string {
   return serialize(nested, 0);
 }
 
-function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): void {
+/**
+ * Same structural-collision guard as figma-to-tokens.ts's setNested (see its
+ * own doc comment for the live corruption bug that fixed) — this is a
+ * separate tree builder for JS/TS output specifically, working over plain
+ * JS leaf values (string/number/boolean) rather than {$type, $value}
+ * TokenValue objects, so "is this position already a leaf" is checked by
+ * plain-value-vs-object instead of isTokenValue. In practice this collision
+ * is always caught first by figmaToTokenFiles's own conflictPaths check,
+ * which blocks the whole push before any output (JS/TS included) is
+ * written — this guard exists so this tree builder is correct in its own
+ * right too, not reliant on that upstream gate always being in the loop.
+ */
+function setNested(obj: Record<string, unknown>, keys: string[], value: unknown): boolean {
   let current = obj;
   for (let i = 0; i < keys.length - 1; i++) {
     const k = keys[i];
-    if (typeof current[k] !== "object" || current[k] === null) {
+    const existing = current[k];
+    if (existing !== undefined && (typeof existing !== "object" || existing === null)) {
+      return false; // a shorter path already claimed this position as a leaf
+    }
+    if (typeof existing !== "object" || existing === null) {
       current[k] = {};
     }
     current = current[k] as Record<string, unknown>;
   }
-  current[keys[keys.length - 1]] = value;
+  const finalKey = keys[keys.length - 1];
+  const existingFinal = current[finalKey];
+  if (existingFinal !== undefined && typeof existingFinal === "object" && existingFinal !== null) {
+    return false; // a longer path already established this position as a group
+  }
+  current[finalKey] = value;
+  return true;
 }
 
 function serialize(obj: unknown, indent: number): string {
