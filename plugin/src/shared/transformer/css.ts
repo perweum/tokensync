@@ -45,6 +45,7 @@ import type { ResolvedCollection, Metadata } from "../token-merger";
 import { findGlobalCollection } from "../token-merger";
 import type { TokenValue } from "../messages";
 import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
+import { toCSSVar } from "../token-format";
 
 export function generateCSS(collections: ResolvedCollection[], metadata: Metadata): string {
   const blocks: string[] = [cssHeader()];
@@ -411,10 +412,6 @@ function resolveSemanticValue(
     }
   }
   return resolvedValue;
-}
-
-function toCSSVar(path: string): string {
-  return "--" + path.replace(/\./g, "-");
 }
 
 /**

@@ -8,6 +8,9 @@ import {
   fromFigmaVarName,
   isTokenValue,
   isTokenTree,
+  isPureRef,
+  filterByPaths,
+  formatFigmaColor,
   slugifyModeName,
 } from "./token-format";
 import type { TokenTree } from "./messages";
@@ -38,6 +41,65 @@ describe("isTokenTree", () => {
 
   it("returns false when $value is present", () => {
     expect(isTokenTree({ $value: "#fff", $type: "color" })).toBe(false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// isPureRef
+// ────────────────────────────────────────────────────────────────
+
+describe("isPureRef", () => {
+  // The single shared copy — figma-variables.ts and figma-text-styles.ts
+  // used to each define their own, and this one's regex had drifted from
+  // theirs (greedy `.+`, which matches straight through a `}`). Two
+  // independently-written copies agreeing on the stricter form was the
+  // signal this one was the actual bug.
+  it("is true for a single reference", () => {
+    expect(isPureRef("{color.brand.600}")).toBe(true);
+  });
+
+  it("is false for a literal", () => {
+    expect(isPureRef("16px")).toBe(false);
+  });
+
+  it("is false for a literal with an embedded ref", () => {
+    expect(isPureRef("0 1px 2px {color.black.50}")).toBe(false);
+  });
+
+  it("is false for two concatenated refs — not one pure reference", () => {
+    expect(isPureRef("{a}{b}")).toBe(false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// filterByPaths
+// ────────────────────────────────────────────────────────────────
+
+describe("filterByPaths", () => {
+  it("keeps only the paths in the allowlist", () => {
+    const flat = {
+      "color.a": { $type: "color", $value: "#fff" },
+      "color.b": { $type: "color", $value: "#000" },
+    };
+    expect(Object.keys(filterByPaths(flat, ["color.a"]))).toEqual(["color.a"]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// formatFigmaColor
+// ────────────────────────────────────────────────────────────────
+
+describe("formatFigmaColor", () => {
+  // The exact function whose two independently-hand-synced copies
+  // (figma-to-tokens.ts push side, useFigmaValues.ts pull side) diverged
+  // once already for alpha 0.025 — see figma-to-tokens.ts's DECISIONS.md
+  // entry. One shared function now, so there's nothing left to drift.
+  it("formats a fully opaque color as hex", () => {
+    expect(formatFigmaColor(0, 0, 0, 1)).toBe("#000000");
+  });
+
+  it("formats a translucent color as rgba with a direct decimal alpha", () => {
+    expect(formatFigmaColor(0, 0, 0, 0.025)).toBe("rgba(0, 0, 0, 0.03)");
   });
 });
 

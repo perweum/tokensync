@@ -14,6 +14,7 @@ import {
   resolveAllReferences,
   toFigmaVarName,
   isTokenValue,
+  isPureRef,
 } from "../shared/token-format";
 
 // ---------------------------------------------------------------------------
@@ -246,11 +247,6 @@ export async function applyTokensToCollection(
 /** Pads numeric segments so paths sort numerically: blue.25 < blue.100 */
 function toSortKey(path: string): string {
   return path.replace(/(\d+)/g, (n) => n.padStart(6, "0"));
-}
-
-/** Returns true when $value is exactly a single token reference: "{color.blue.200}" */
-function isPureRef(value: string): boolean {
-  return /^\{[^}]+\}$/.test(value);
 }
 
 /** Returns true when $value contains any {ref} pattern (pure or embedded) */

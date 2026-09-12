@@ -19,7 +19,7 @@ import {
   formatUnitValue,
   unitFromLiteral,
 } from "../shared/text-style-figma-fields";
-import { toFigmaVarName, fromFigmaVarName } from "../shared/token-format";
+import { toFigmaVarName, fromFigmaVarName, isPureRef } from "../shared/token-format";
 import { toFigmaValue } from "./figma-variables";
 
 // ---------------------------------------------------------------------------
@@ -310,10 +310,6 @@ function resolveLiteral(
 ): string | null {
   if (!isPureRef(token.$value)) return token.$value;
   return resolvedFallback[flatPath] ?? null;
-}
-
-function isPureRef(value: string): boolean {
-  return /^\{[^}]+\}$/.test(value);
 }
 
 function extractRef(value: string): string {

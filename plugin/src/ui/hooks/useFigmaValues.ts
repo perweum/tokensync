@@ -10,7 +10,7 @@ import type {
   FigmaVariableCollection,
   FigmaVariableValue,
 } from "../../shared/messages";
-import { fromFigmaVarName } from "../../shared/token-format";
+import { fromFigmaVarName, formatFigmaColor } from "../../shared/token-format";
 import { inferType } from "../../shared/figma-to-tokens";
 
 export interface FigmaFlatMap {
@@ -103,7 +103,8 @@ function resolveValue(
 
   // RGBA color
   if (typeof value === "object" && value !== null && "r" in value) {
-    return rgbaToHex(value as { r: number; g: number; b: number; a: number });
+    const c = value as { r: number; g: number; b: number; a: number };
+    return formatFigmaColor(c.r, c.g, c.b, c.a);
   }
 
   // Number — only a genuine "dimension" gets a "px" suffix, same rule
@@ -150,7 +151,8 @@ function resolveOneHop(
   }
 
   if (typeof value === "object" && value !== null && "r" in value) {
-    return rgbaToHex(value as { r: number; g: number; b: number; a: number });
+    const c = value as { r: number; g: number; b: number; a: number };
+    return formatFigmaColor(c.r, c.g, c.b, c.a);
   }
 
   if (typeof value === "number") {
@@ -165,22 +167,3 @@ function resolveOneHop(
   return null;
 }
 
-/**
- * Formats a Figma RGBA object the same way figma-to-tokens.ts's
- * rawToTokenValue does on the push side — hex for fully opaque, otherwise a
- * decimal `rgba(...)` string with alpha kept as a float (never quantized
- * through an 8-bit byte). The two conversions used to diverge: this one
- * round-tripped alpha through Math.round(a * 255) and back, which agrees with
- * the direct-decimal push side for almost every value but not all — found
- * live for alpha 0.025 specifically, which toFixed(2) rounds to "0.03" (push,
- * matching GitHub) while the byte round-trip produces 6/255 ≈ "0.02" (pull),
- * a permanent false "changed" diff for exactly that one alpha value.
- */
-function rgbaToHex({ r, g, b, a }: { r: number; g: number; b: number; a: number }): string {
-  const hex = (n: number) =>
-    Math.round(n * 255)
-      .toString(16)
-      .padStart(2, "0");
-  if (Math.round(a * 255) === 255) return `#${hex(r)}${hex(g)}${hex(b)}`;
-  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a.toFixed(2)})`;
-}
