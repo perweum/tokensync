@@ -45,11 +45,46 @@ export function isIgnoredCollection(collectionName: string, metadata: Metadata):
 }
 
 /**
+ * Whether `role`'s own Figma mode name carries no real information and must
+ * never be required to match exactly — the single, shared definition of
+ * "mode-agnostic" both push (`computePushDiff`) and pull (`figmaValuesFor`
+ * below) match against, so the two directions can't silently define "the
+ * same collection" differently again.
+ *
+ * Global is *always* mode-agnostic — Figma only ever gives it one mode, an
+ * arbitrary default ("Mode 1", say) nothing in the repo records or could
+ * reconstruct. A *raw, physical* Primitives collection is mode-agnostic the
+ * same way — colour/geometry primitives that don't vary by size always live
+ * in one real Figma mode, never split across several, even on a project
+ * that also has a genuine Size axis (that axis lives in a *separate*
+ * physical "sizes"-role collection instead — see the composite-merge
+ * comment on `figmaValuesFor`). `hasGenuineModes` exists only for the
+ * *composite* Primitives entries `figmaToCollections`/`parseRepository`
+ * build when a Size axis exists — one per real size mode, each with a real,
+ * distinct, comparison-worthy name — which computePushDiff must tell apart
+ * by mode; pass `false` (or omit) anywhere that ambiguity can't arise.
+ *
+ * Found live (`single-theme-stresstest`, a genuinely single-mode system):
+ * `figmaValuesFor` already treated Primitives/Global this way from an
+ * earlier fix; `computePushDiff` was never updated to match, and compared
+ * Figma's real (if meaningless) mode name against GitHub's fixed placeholder
+ * ("Value" — `parseRepository` has no way to reconstruct what a plain
+ * `color.json` file's original Figma mode was actually called) — never
+ * equal, so every token in a single-mode role's collection permanently
+ * showed as newly "added" on every push, even when nothing had changed.
+ */
+export function isModeAgnosticRole(role: CollectionKind, hasGenuineModes = false): boolean {
+  if (role === "global") return true;
+  if (role === "primitives") return !hasGenuineModes;
+  return false;
+}
+
+/**
  * Every real Figma flat value map that belongs to the same merged GitHub
  * entry as `githubCol` — i.e. the Figma-side counterpart of how
  * figmaToCollections already merges multiple physical collections sharing a
  * role. Primitives/global collapse every contributing collection into one
- * flat map regardless of mode (see figmaToCollections); themes/semantic
+ * flat map regardless of mode (see isModeAgnosticRole); themes/semantic
  * match by mode name case-insensitively, same as `isModeSelected`.
  *
  * Matching a single FigmaFlatMap by exact real collection name (the previous
@@ -65,7 +100,9 @@ export function isIgnoredCollection(collectionName: string, metadata: Metadata):
  * (see `isModeSelected`'s doc comment for why). So a `"primitives"` role here
  * can genuinely be the primitives+sizes composite `figmaToCollections`
  * builds: merge in every real `sizes`-role map whose own mode also matches
- * `githubCol.modeName`, alongside the unconditional primitives merge.
+ * `githubCol.modeName`, alongside the unconditional primitives merge (a raw
+ * "primitives"-kind map is always mode-agnostic in its own right — see
+ * isModeAgnosticRole — so it's included regardless of githubCol's own mode).
  */
 function figmaValuesFor(
   githubCol: ResolvedCollection,
@@ -76,12 +113,12 @@ function figmaValuesFor(
   const matching = figmaMaps.filter((m) => {
     const mKind = collectionKind(m.collectionName, names);
     if (role === "primitives") {
-      if (mKind === "primitives") return true;
+      if (mKind === "primitives") return isModeAgnosticRole("primitives");
       if (mKind === "sizes") return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
       return false;
     }
     if (mKind !== role) return false;
-    if (role === "global") return true;
+    if (isModeAgnosticRole(role)) return true;
     return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
   });
   return {
@@ -212,29 +249,18 @@ export function computePushDiff(
 
   return filteredFigmaCollections.map((figmaCol) => {
     const role = collectionKind(figmaCol.collectionName, names);
-    // Global (always) and Primitives (when there's no Size axis — every
-    // genuine size mode still gets its own real modeName and needs actual
-    // matching, checked here by whether more than one figmaCol shares this
-    // collectionName at all) are inherently single-mode: Figma still
-    // requires *some* mode name, but it's an arbitrary default ("Mode 1")
-    // nothing else in the repo records, and parseRepository has no way to
-    // reconstruct it from a plain color.json — it uses a fixed placeholder
-    // ("Value") instead. Requiring an exact modeName match here compared
-    // Figma's real (if meaningless) mode name against that placeholder and
-    // never matched, permanently showing every one of that collection's
-    // tokens as newly "added" on every single push. figmaValuesFor (this
-    // file's pull-direction equivalent) already has this same relaxation;
-    // computePushDiff never did. Found live on a genuinely single-mode
-    // system (single-theme-stresstest): a push showing 126 "added" changes
-    // that turned out to be zero real changes once actually written.
-    const singleModeRole =
-      role === "global" ||
-      (role === "primitives" &&
-        figmaCollections.filter((c) => c.collectionName === figmaCol.collectionName).length === 1);
+    // Every figmaCol sharing this collectionName — >1 means a genuine Size
+    // axis (one composite entry per real size mode), which isModeAgnosticRole
+    // needs to know before it can tell whether Primitives' mode name here is
+    // real or an arbitrary Figma default. See isModeAgnosticRole's own
+    // comment for why this exists and the live symptom it fixed.
+    const hasGenuineModes =
+      figmaCollections.filter((c) => c.collectionName === figmaCol.collectionName).length > 1;
+    const modeAgnostic = isModeAgnosticRole(role, hasGenuineModes);
     const githubCol = githubCollections.find(
       (c) =>
         c.collectionName === figmaCol.collectionName &&
-        (singleModeRole || c.modeName.toLowerCase() === figmaCol.modeName.toLowerCase()),
+        (modeAgnostic || c.modeName.toLowerCase() === figmaCol.modeName.toLowerCase()),
     );
     return buildCollectionDiff(
       figmaCol.collectionName,

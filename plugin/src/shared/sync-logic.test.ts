@@ -8,6 +8,7 @@ import {
   buildApplyPayloads,
   buildCleanApplyPayloads,
   mergeTypographyIntoFigmaMaps,
+  isModeAgnosticRole,
 } from "./sync-logic";
 import type { Metadata, ResolvedCollection, CollectionSources } from "./token-merger";
 import type { TypographyStyle } from "./typography-styles";
@@ -445,6 +446,57 @@ describe("computePushDiff", () => {
     const entry = globalDiff.entries.find((e) => e.path === "text.heading.caption.textCase");
     expect(entry?.status).toBe("added");
     expect(entry?.githubValue).toBe("uppercase");
+  });
+});
+
+describe("isModeAgnosticRole", () => {
+  // The single, shared definition computePushDiff and figmaValuesFor (pull's
+  // matching) both consult — see its own doc comment for the live bug this
+  // fixed. Direct tests here so a future change to this policy can't
+  // silently pass while breaking one direction's actual behavior.
+  it("Global is always mode-agnostic", () => {
+    expect(isModeAgnosticRole("global")).toBe(true);
+    expect(isModeAgnosticRole("global", true)).toBe(true);
+  });
+
+  it("Primitives is mode-agnostic only without a genuine Size axis", () => {
+    expect(isModeAgnosticRole("primitives")).toBe(true);
+    expect(isModeAgnosticRole("primitives", false)).toBe(true);
+    expect(isModeAgnosticRole("primitives", true)).toBe(false);
+  });
+
+  it("every other role always requires a real mode-name match", () => {
+    expect(isModeAgnosticRole("themes")).toBe(false);
+    expect(isModeAgnosticRole("semantic")).toBe(false);
+    expect(isModeAgnosticRole("sizes")).toBe(false);
+    expect(isModeAgnosticRole("unknown")).toBe(false);
+  });
+});
+
+describe("push and pull agree on a genuinely single-mode system", () => {
+  // The actual drift guard: rather than trusting the two directions to keep
+  // agreeing just because they both now call isModeAgnosticRole, this drives
+  // computePushDiff AND computePullDiff from the *same* real-world data (a
+  // single-mode Primitives collection, Figma's real mode name vs GitHub's
+  // reconstructed placeholder) and asserts both report zero changes. If a
+  // future edit to either direction reintroduces a mismatch, this fails
+  // regardless of which side regressed.
+  const figmaCol = col("Primitives", "Mode 1", {
+    "color.a": { $type: "color", $value: "#fff" },
+  });
+  const githubCol = col("Primitives", "Value", {
+    "color.a": { $type: "color", $value: "#fff" },
+  });
+
+  it("push reports no changes", () => {
+    const diffs = computePushDiff([figmaCol], [githubCol], metadata());
+    expect(diffs[0].counts.total).toBe(0);
+  });
+
+  it("pull reports no changes", () => {
+    const figmaMaps = [figmaMap("Primitives", "Mode 1", { "color.a": "#fff" })];
+    const { diffs } = computePullDiff([githubCol], metadata(), figmaMaps);
+    expect(diffs[0].counts.total).toBe(0);
   });
 });
 
