@@ -144,10 +144,19 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
     for (const col of figmaCollections) {
       if ((assignments[col.name] ?? "ignore") !== role) continue;
       for (const mode of col.modes) {
+        // Dedup key stays sanitized (so "Light" from one collection and
+        // "light" from another still count as the same mode), but the
+        // *stored* value is the real Figma name, not the sanitized slug —
+        // found live: a real mode named "Mode 1" (Figma's own unrenamed
+        // default) got stored here as "mode-1", which parseRepository could
+        // then only reconstruct as "Mode-1" — permanently different from
+        // Figma's actual "Mode 1", causing every pull to show the whole
+        // collection as newly "added" no matter how many times it was
+        // pushed and re-pulled. See token-merger.ts's findCaseInsensitive.
         const key = sanitizeName(mode.name);
         if (!seen.has(key)) {
           seen.add(key);
-          ordered.push(key);
+          ordered.push(mode.name);
         }
       }
     }
