@@ -1,9 +1,12 @@
 /**
  * Setup view — shown when no project is configured, or when editing one.
- * A brand-new project goes through the step-by-step AddProjectWizard
- * instead — see that file. This file only handles editing an existing
- * project, where a single flat screen is faster than clicking through
- * steps to change one field.
+ *
+ * A brand-new project defaults to the step-by-step AddProjectWizard (see
+ * that file) — "Skip intro" on its Welcome step drops into the same flat
+ * ProjectForm used for editing, for anyone who already knows what they're
+ * doing and would rather fill in one screen than click through steps.
+ * Editing an existing project always uses the flat form directly; there's
+ * nothing to walk through step by step when every field is already set.
  */
 
 import { useState } from "react";
@@ -19,6 +22,10 @@ import { color, font, space } from "../theme";
 import { describeGitHubError } from "../errors";
 import type { DescribedError } from "../errors";
 
+export function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
+
 interface Props {
   onSave: (project: Project) => void;
   onCancel?: () => void;
@@ -26,15 +33,26 @@ interface Props {
 }
 
 export function Setup({ onSave, onCancel, existing }: Props) {
-  if (!existing) {
-    return <AddProjectWizard onSave={onSave} onCancel={onCancel} />;
+  const [addMode, setAddMode] = useState<"wizard" | "flat">("wizard");
+
+  if (existing) {
+    return <ProjectForm project={existing} onSave={onSave} onCancel={onCancel} />;
   }
-  return <EditProjectForm project={existing} onSave={onSave} onCancel={onCancel} />;
+  if (addMode === "flat") {
+    return <ProjectForm project={null} onSave={onSave} onCancel={() => setAddMode("wizard")} />;
+  }
+  return (
+    <AddProjectWizard
+      onSave={onSave}
+      onCancel={onCancel}
+      onSkipToFlatForm={() => setAddMode("flat")}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Edit — single flat screen; every field is already set, so there's nothing
-// to walk through step by step.
+// Flat form — one screen with every field, used both to edit an existing
+// project and, when the wizard is skipped, to add one from scratch.
 // ---------------------------------------------------------------------------
 
 type TestState =
@@ -43,21 +61,22 @@ type TestState =
   | { kind: "success"; message: string }
   | ({ kind: "error" } & DescribedError);
 
-function EditProjectForm({
+function ProjectForm({
   project,
   onSave,
   onCancel,
 }: {
-  project: Project;
+  /** `null` — a blank add form (the wizard's "Skip intro" path). */
+  project: Project | null;
   onSave: (project: Project) => void;
   onCancel?: () => void;
 }) {
-  const [name, setName] = useState(project.name);
-  const [pat, setPat] = useState(project.pat);
-  const [repo, setRepo] = useState(project.repo);
-  const [branch, setBranch] = useState(project.branch);
-  const [tokensPath, setTokensPath] = useState(project.tokensPath);
-  const [figmaFileKey, setFigmaFileKey] = useState(project.figmaFileKey);
+  const [name, setName] = useState(project?.name ?? "");
+  const [pat, setPat] = useState(project?.pat ?? "");
+  const [repo, setRepo] = useState(project?.repo ?? "");
+  const [branch, setBranch] = useState(project?.branch ?? "main");
+  const [tokensPath, setTokensPath] = useState(project?.tokensPath ?? "tokens/");
+  const [figmaFileKey, setFigmaFileKey] = useState(project?.figmaFileKey ?? "");
   const [error, setError] = useState("");
 
   const [showAdvanced, setShowAdvanced] = useState(true);
@@ -96,12 +115,13 @@ function EditProjectForm({
     setError("");
 
     if (!name.trim()) return setError("Project name is required");
-    if (!pat.trim()) return setError("GitHub Personal Access Token is required");
-    if (!repo.trim() || !repo.includes("/"))
+    // GitHub connection is optional — see AddProjectWizard.tsx's matching
+    // comment on handleSave. Only validate the format of what was typed.
+    if (repo.trim() && !repo.includes("/"))
       return setError("Repository must be in format org/repo-name");
 
     onSave({
-      id: project.id,
+      id: project?.id ?? generateId(),
       name: name.trim(),
       pat: pat.trim(),
       repo: repo.trim(),
@@ -113,7 +133,7 @@ function EditProjectForm({
 
   return (
     <div style={styles.container}>
-      <ViewHeader title="Edit project" onBack={onCancel} />
+      <ViewHeader title={project ? "Edit project" : "Add project"} onBack={onCancel} />
       <p style={styles.subtext}>
         Connect a GitHub repository to this Figma file. Token files will be read from and written to
         the repository via Pull Request.
@@ -226,7 +246,7 @@ function EditProjectForm({
         {error && <StatusBanner tone="danger">{error}</StatusBanner>}
 
         <Button type="submit" variant="primary" fullWidth>
-          Save project
+          {project ? "Save project" : "Add project"}
         </Button>
       </form>
     </div>

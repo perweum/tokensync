@@ -6,8 +6,9 @@
  *
  * Run `npm run dev` from plugin/, then open http://localhost:5173/preview.html
  * to click through views in a real browser without Figma or a real GitHub
- * token. Currently covers onboarding (Setup, both Add and Edit); extend the
- * `pages` map below if you want to preview other views the same way.
+ * token. Currently covers onboarding (Setup, both Add and Edit — Add now
+ * goes through the full Welcome→...→Tips wizard), Push/Pull diffs, and the
+ * standalone Help view; extend the `pages` map below for anything else.
  *
  * Mocks window.fetch for GitHub's branches endpoint: type a repo containing
  * "bad" (e.g. "org/bad-repo") to see the Test Connection failure state.
@@ -18,6 +19,7 @@ import "./index.css";
 import { Setup } from "./views/Setup";
 import { PushDiff } from "./views/PushDiff";
 import { PullDiff } from "./views/PullDiff";
+import { Help } from "./views/Help";
 import type { Project } from "./App";
 import type { CollectionDiff } from "../shared/token-diff";
 
@@ -178,10 +180,24 @@ function PullDiffPreview() {
   );
 }
 
+function HelpPreview() {
+  return (
+    <div style={{ padding: 24, background: "#f0f0f0", minHeight: "100vh" }}>
+      <h1 style={{ fontFamily: "sans-serif", fontSize: 16, marginBottom: 20 }}>Help preview</h1>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        <Frame title="About & tips">
+          <Help onBack={() => {}} />
+        </Frame>
+      </div>
+    </div>
+  );
+}
+
 const pages: Record<string, React.ReactNode> = {
   onboarding: <OnboardingPreview />,
   push: <PushDiffPreview />,
   pull: <PullDiffPreview />,
+  help: <HelpPreview />,
 };
 
 function Root() {

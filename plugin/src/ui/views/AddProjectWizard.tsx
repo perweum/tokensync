@@ -4,15 +4,27 @@
  * instead, where clicking through steps to change one field would be worse
  * than what was there before.
  *
- * Step 2 (Connect GitHub) intentionally can't be skipped past by mistake:
- * Continue is disabled until Test Connection succeeds, unless the user
- * explicitly chooses "Skip for now" — a bad token/repo should be caught
- * here, not on the first real Pull/Push after setup.
+ * Bookended by a Welcome step (what Token Spark does, before asking for
+ * anything) and a Tips step (best practices, right before the actual save)
+ * — the 1/2/3 step count and its indicator only cover the settings in
+ * between, since those two are framing, not something to fill in. Welcome's
+ * "Skip intro" hands off to Setup.tsx's flat ProjectForm instead — for
+ * anyone who already knows what they're doing and would rather fill in one
+ * screen than click through steps.
+ *
+ * Step 2 (Connect GitHub) is optional — Continue is disabled until Test
+ * Connection succeeds so a bad token/repo is caught here rather than on
+ * the first real Pull/Push, but "Skip for now" lets you finish setup with
+ * no GitHub connection at all, to add one later from Settings. Sync.tsx
+ * shows a distinct "not connected" state for that project until you do.
  */
 
 import { useState } from "react";
 import type { Project } from "../App";
 import { fetchBranches } from "../hooks/useGitHub";
+import { generateId } from "./Setup";
+import { AboutTokenSpark, BestPracticesTips } from "./Help";
+import { NameArt, ConnectArt, DefaultsArt } from "../onboardingArt";
 import { Button } from "../components/Button";
 import { Field, TextInput } from "../components/Field";
 import { StatusBanner } from "../components/StatusBanner";
@@ -21,11 +33,7 @@ import { color, font, radius, space } from "../theme";
 import { describeGitHubError } from "../errors";
 import type { DescribedError } from "../errors";
 
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
-}
-
-type Step = 1 | 2 | 3;
+type Step = 0 | 1 | 2 | 3 | 4;
 const STEP_COUNT = 3;
 
 type TestState =
@@ -37,10 +45,13 @@ type TestState =
 interface Props {
   onSave: (project: Project) => void;
   onCancel?: () => void;
+  /** Welcome step's "Skip intro" — hands off to Setup.tsx's flat form instead
+   * of walking through the remaining steps. */
+  onSkipToFlatForm: () => void;
 }
 
-export function AddProjectWizard({ onSave, onCancel }: Props) {
-  const [step, setStep] = useState<Step>(1);
+export function AddProjectWizard({ onSave, onCancel, onSkipToFlatForm }: Props) {
+  const [step, setStep] = useState<Step>(0);
 
   const [name, setName] = useState("");
   const [pat, setPat] = useState("");
@@ -74,8 +85,11 @@ export function AddProjectWizard({ onSave, onCancel }: Props) {
   function handleSave() {
     setReviewError("");
     if (!name.trim()) return setReviewError("Project name is required");
-    if (!pat.trim()) return setReviewError("GitHub Personal Access Token is required");
-    if (!repoValid) return setReviewError("Repository must be in format org/repo-name");
+    // GitHub connection is optional — a project can be saved without one
+    // and connected later from Settings (see Sync.tsx's "not connected"
+    // state). Only validate the format of what was actually typed.
+    if (repo.trim() && !repoValid)
+      return setReviewError("Repository must be in format org/repo-name");
 
     onSave({
       id: generateId(),
@@ -88,15 +102,30 @@ export function AddProjectWizard({ onSave, onCancel }: Props) {
     });
   }
 
-  const back = step === 1 ? onCancel : () => setStep((step - 1) as Step);
+  const back = step === 0 ? onCancel : () => setStep((step - 1) as Step);
 
   return (
     <div style={s.container}>
       <ViewHeader title="Add project" onBack={back} />
-      <StepIndicator step={step} />
+      {step >= 1 && step <= 3 && <StepIndicator step={step as 1 | 2 | 3} />}
+
+      {step === 0 && (
+        <div style={s.stepBody}>
+          <AboutTokenSpark />
+          <div style={s.stepFooter}>
+            <Button variant="primary" fullWidth onClick={() => setStep(1)}>
+              Get started
+            </Button>
+            <Button type="button" variant="ghost" onClick={onSkipToFlatForm}>
+              Skip intro
+            </Button>
+          </div>
+        </div>
+      )}
 
       {step === 1 && (
         <div style={s.stepBody}>
+          <NameArt style={s.stepArt} />
           <p style={s.stepIntro}>Give this project a name — only used inside the plugin.</p>
           <Field label="Project name">
             <TextInput
@@ -114,6 +143,7 @@ export function AddProjectWizard({ onSave, onCancel }: Props) {
 
       {step === 2 && (
         <div style={s.stepBody}>
+          <ConnectArt style={s.stepArt} />
           <p style={s.stepIntro}>Connect the GitHub repository that holds your token files.</p>
           <Field
             label="GitHub Personal Access Token"
@@ -175,10 +205,10 @@ export function AddProjectWizard({ onSave, onCancel }: Props) {
               <Button
                 type="button"
                 variant="ghost"
-                disabled={!pat.trim() || !repoValid}
+                disabled={testState.kind === "loading"}
                 onClick={() => setStep(3)}
               >
-                Skip test and continue
+                Skip for now
               </Button>
             )}
           </div>
@@ -187,6 +217,7 @@ export function AddProjectWizard({ onSave, onCancel }: Props) {
 
       {step === 3 && (
         <div style={s.stepBody}>
+          <DefaultsArt style={s.stepArt} />
           <p style={s.stepIntro}>Confirm the defaults, or adjust them if this repo needs it.</p>
 
           <div style={s.summary}>
@@ -219,10 +250,20 @@ export function AddProjectWizard({ onSave, onCancel }: Props) {
             />
           </Field>
 
+          <Button variant="primary" fullWidth onClick={() => setStep(4)}>
+            Continue
+          </Button>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div style={s.stepBody}>
+          <BestPracticesTips />
+
           {reviewError && <StatusBanner tone="danger">{reviewError}</StatusBanner>}
 
           <Button variant="primary" fullWidth onClick={handleSave}>
-            Save project
+            Finish setup
           </Button>
         </div>
       )}
@@ -230,7 +271,7 @@ export function AddProjectWizard({ onSave, onCancel }: Props) {
   );
 }
 
-function StepIndicator({ step }: { step: Step }) {
+function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
   return (
     <div style={s.steps}>
       {Array.from({ length: STEP_COUNT }, (_, i) => i + 1).map((n) => (
@@ -264,6 +305,7 @@ const s: Record<string, React.CSSProperties> = {
   stepDash: { width: 24, height: 4, borderRadius: 2, flexShrink: 0 },
   stepLabel: { fontSize: font.size.sm, color: color.text.muted, marginLeft: space.xs },
   stepBody: { display: "flex", flexDirection: "column", gap: space.lg },
+  stepArt: { alignSelf: "center" },
   stepIntro: { margin: 0, fontSize: font.size.md, color: color.text.secondary, lineHeight: 1.5 },
   stepFooter: { display: "flex", flexDirection: "column", alignItems: "center", gap: space.sm },
   testRow: { display: "flex", marginTop: -space.sm },
