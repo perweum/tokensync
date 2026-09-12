@@ -173,3 +173,16 @@ export function toFigmaVarName(path: string): string {
 export function fromFigmaVarName(name: string): string {
   return name.replace(/\//g, ".");
 }
+
+/**
+ * Turns a real Figma mode name into a filename-safe slug — lowercase,
+ * spaces/slashes to hyphens. Was independently defined 3 times
+ * (token-merger.ts, figma-to-tokens.ts, CollectionMapping.tsx) — all three
+ * must agree exactly for a file written on push to be found again on pull/
+ * mapping lookups. See token-merger.ts's findCaseInsensitive doc comment
+ * for the live bug (a real mode name containing a space) this class of
+ * inconsistency caused.
+ */
+export function slugifyModeName(name: string): string {
+  return name.toLowerCase().replace(/[\s/]+/g, "-");
+}

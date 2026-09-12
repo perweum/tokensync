@@ -18,6 +18,7 @@ import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
 import { parseRepository } from "../../shared/token-merger";
 import type { CollectionNames } from "../../shared/token-merger";
 import { buildCollectionSources } from "../../shared/figma-to-tokens";
+import { slugifyModeName } from "../../shared/token-format";
 import type { FigmaVariableCollection, FigmaVariable, PluginMessage } from "../../shared/messages";
 import { Button } from "../components/Button";
 import { StatusBanner } from "../components/StatusBanner";
@@ -153,7 +154,7 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
         // Figma's actual "Mode 1", causing every pull to show the whole
         // collection as newly "added" no matter how many times it was
         // pushed and re-pulled. See token-merger.ts's findCaseInsensitive.
-        const key = sanitizeName(mode.name);
+        const key = slugifyModeName(mode.name);
         if (!seen.has(key)) {
           seen.add(key);
           ordered.push(mode.name);
@@ -375,15 +376,6 @@ export function CollectionMapping({ project, activeBranch, onBack, onSaved }: Pr
       )}
     </div>
   );
-}
-
-/** Mode name → the exact string figma-to-tokens.ts's sanitizeFileName uses for
- * the file it writes — lowercase, spaces/slashes collapsed to "-". Metadata's
- * themes/colorSchemes/sizes lists must use this form, since parseRepository
- * looks theme/scheme/size files up by this exact string, not the original
- * Figma-cased mode name. */
-function sanitizeName(modeName: string): string {
-  return modeName.toLowerCase().replace(/[\s/]+/g, "-");
 }
 
 /** metadata.json lives at the root of tokensPath — same convention buildLayers/
