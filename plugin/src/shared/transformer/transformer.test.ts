@@ -4,7 +4,7 @@ import { parseRepository } from "../token-merger";
 import type { ResolvedCollection, CollectionNames, Metadata } from "../token-merger";
 import type { GitHubFile, FigmaVariable } from "../messages";
 import { figmaToCollections, figmaToTokenFiles } from "../figma-to-tokens";
-import { generateSchemeJS } from "./js";
+import { generateSchemeJS, generateJS } from "./js";
 import { generateSchemeSwift } from "./swift";
 import { generateSchemeDart } from "./dart";
 
@@ -710,6 +710,41 @@ describe("JS/TS output — a variable name structurally collides with another (a
     // plain leaf value, not clobbered into a group by the later, longer path.
     expect(js).toMatch(/brand:\s*"#111111"/);
     expect(js).not.toContain("default:");
+  });
+});
+
+describe("JS/TS output — a theme/scheme mode name that isn't a valid bare identifier", () => {
+  // Reproduces a real bug found live on the Coop stress test (14 real
+  // themes, several with real, ordinary hyphenated names — "black-friday",
+  // "grill-perfekt", "rosa-sloyfe"): generateJS's themes/tokens objects build
+  // their own top-level keys via modeKey(col.modeName), interpolated
+  // straight into a template string — completely bypassing serialize()'s
+  // key-quoting logic, which only covers keys built from a token *path*, not
+  // these mode-name keys. The generated file contained a literal, unquoted
+  // `black-friday: {...}` — invalid JS, parsed as a subtraction expression,
+  // not something you'd guess the cause of from the syntax error alone.
+  // Confirmed via actually executing the generated output as an ES module.
+  const collections: ResolvedCollection[] = [
+    {
+      collectionName: "Theme",
+      modeName: "black-friday",
+      tokens: { "color.a": { $type: "color", $value: "#ff0000" } },
+      rawTokens: {},
+      typographyStyles: [],
+    },
+  ];
+  const metadata = metadataFor({
+    primitives: [],
+    global: [],
+    themes: ["Theme"],
+    semantic: [],
+    sizes: [],
+  });
+
+  it("quotes a hyphenated theme name instead of emitting it as a bare key", () => {
+    const js = generateJS(collections, metadata, { typescript: false });
+    expect(js).toContain('"black-friday":');
+    expect(js).not.toMatch(/[^"]black-friday:/);
   });
 });
 

@@ -67,7 +67,7 @@ export function generateJS(
 
   if (themes.length > 0) {
     const themeEntries = themes
-      .map((col) => `  ${modeKey(col.modeName)}: ${flatToNested(col.tokens)}`)
+      .map((col) => `  ${quoteKeyIfNeeded(modeKey(col.modeName))}: ${flatToNested(col.tokens)}`)
       .join(",\n");
     blocks.push(`export const themes = {\n${themeEntries}\n}${asConst}`);
   }
@@ -75,7 +75,7 @@ export function generateJS(
   if (semantic.length > 0) {
     const modeEntries = semantic
       .map((col) => {
-        const key = modeKey(col.modeName);
+        const key = quoteKeyIfNeeded(modeKey(col.modeName));
         return `  ${key}: ${flatToNested(col.tokens)}`;
       })
       .join(",\n");
@@ -141,6 +141,28 @@ function setNested(obj: Record<string, unknown>, keys: string[], value: unknown)
   return true;
 }
 
+/**
+ * Quote a JS/TS object key unless it's already a valid bare identifier —
+ * not just "doesn't start with a digit". Found live: a Figma variable name
+ * like "spacing/1,5" or "stroke/[md]" produces a dot-path segment containing
+ * "[", "]", or "," — none of which start with a digit, so an old digit-only
+ * check let them through unquoted, producing a JS/TS syntax error
+ * (`stroke[md]: "2"` inside an object literal, not a computed key).
+ *
+ * Used both by serialize() below (nested token-tree keys) and directly by
+ * generateJS's themes/tokens object keys (modeKey(col.modeName) used to be
+ * interpolated straight into a template string, bypassing this entirely) —
+ * found live from a *second* real Figma name never checked at all: a real
+ * theme literally named "black-friday" (an ordinary, hyphenated Figma mode
+ * name, same shape as several of Coop's other real themes) produced
+ * `black-friday: {...}` as a top-level object key — invalid JS, parsed as a
+ * subtraction expression, not a syntax error message you'd guess the cause
+ * of from the output alone.
+ */
+function quoteKeyIfNeeded(key: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+}
+
 function serialize(obj: unknown, indent: number): string {
   if (typeof obj === "string") return JSON.stringify(obj);
   if (typeof obj === "number") return String(obj);
@@ -152,16 +174,7 @@ function serialize(obj: unknown, indent: number): string {
   const entries = Object.entries(obj as Record<string, unknown>);
   if (entries.length === 0) return "{}";
 
-  const lines = entries.map(([k, v]) => {
-    // Quote unless k is already a valid bare identifier — not just "doesn't
-    // start with a digit". Found live: a Figma variable name like
-    // "spacing/1,5" or "stroke/[md]" produces a dot-path segment containing
-    // "[", "]", or "," — none of which start with a digit, so the old
-    // digit-only check let them through unquoted, producing a JS/TS syntax
-    // error (`stroke[md]: "2"` inside an object literal, not a computed key).
-    const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : JSON.stringify(k);
-    return `${pad}${key}: ${serialize(v, indent + 1)}`;
-  });
+  const lines = entries.map(([k, v]) => `${pad}${quoteKeyIfNeeded(k)}: ${serialize(v, indent + 1)}`);
 
   return `{\n${lines.join(",\n")}\n${closePad}}`;
 }
