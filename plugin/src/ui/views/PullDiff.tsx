@@ -89,8 +89,8 @@ export function PullDiff({
             tone="warning"
             expandableDetail={
               <>
-                {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in Figma is
-                currently named this, so it won't be found at all. This can hide real changes: if
+                {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in Figma
+                is currently named this, so it won't be found at all. This can hide real changes: if
                 everything else in this collection is now missing from Figma's side of the
                 comparison, it may look identical to "already up to date" even though nothing has
                 actually synced. If you renamed the mode in Figma, open "Map Collections" and save
@@ -99,8 +99,8 @@ export function PullDiff({
             }
           >
             {staleConfiguredModes.length} configured mode name
-            {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma right
-            now.
+            {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma
+            right now.
           </StatusBanner>
         </div>
       )}
@@ -126,18 +126,16 @@ export function PullDiff({
                     label={label}
                     expanded={expanded.has(key)}
                     onToggle={() => toggleExpanded(key)}
-                    right={
-                      <div style={s.sectionRight}>
-                        <CountBadges counts={diff.counts} />
-                        <input
-                          type="checkbox"
-                          checked={selectedKeys.has(key)}
-                          onChange={() => toggleSelected(key)}
-                          aria-label={`Include ${label} when applying`}
-                          title={`Include ${label} when applying`}
-                        />
-                      </div>
+                    left={
+                      <input
+                        type="checkbox"
+                        checked={selectedKeys.has(key)}
+                        onChange={() => toggleSelected(key)}
+                        aria-label={`Include ${label} when applying`}
+                        title={`Include ${label} when applying`}
+                      />
                     }
+                    right={<CountBadges counts={diff.counts} />}
                   >
                     <DiffEntryList entries={diff.entries} />
                   </CollapsibleSection>
@@ -244,7 +242,6 @@ const s: Record<string, React.CSSProperties> = {
 
   body: { flex: 1, overflowY: "auto" },
   section: { borderBottom: `1px solid ${color.border.subtle}` },
-  sectionRight: { display: "flex", alignItems: "center", gap: space.sm },
 
   footer: {
     flexShrink: 0,

@@ -11,13 +11,14 @@ export type CollapsibleLevel = "section" | "category";
  * share one implementation.
  *
  * The row (not the toggle button) carries the padding/background/hover, and
- * `right` renders as the button's sibling rather than its child — a
- * checkbox or other interactive control nested inside a `<button>` is
+ * `left`/`right` render as the button's siblings rather than its children —
+ * a checkbox or other interactive control nested inside a `<button>` is
  * invalid HTML and unpredictable for both click and keyboard activation.
  */
 export function CollapsibleSection({
   level = "section",
   label,
+  left,
   right,
   expanded,
   onToggle,
@@ -25,6 +26,10 @@ export function CollapsibleSection({
 }: {
   level?: CollapsibleLevel;
   label: string;
+  /** e.g. an "include this in the PR/apply" checkbox — kept separate from
+   * the toggle button so it has its own, unambiguous click target instead
+   * of competing with "click to expand" for the same gesture. */
+  left?: ReactNode;
   right?: ReactNode;
   expanded: boolean;
   onToggle: () => void;
@@ -47,6 +52,7 @@ export function CollapsibleSection({
           borderBottom: isCategory ? `1px solid ${color.border.subtle}` : "none",
         }}
       >
+        {left}
         <button
           type="button"
           className="ts-collapsible-trigger"

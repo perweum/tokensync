@@ -169,22 +169,3 @@ select:focus-visible {
   outline: 2px solid #863bff;
   outline-offset: -2px;
 }
-
-.ts-tab {
-  background: none;
-  color: var(--figma-color-text-secondary, #666666);
-  transition:
-    color 100ms ease,
-    background 100ms ease;
-}
-.ts-tab:hover {
-  color: var(--figma-color-text, #1a1a1a);
-}
-.ts-tab--active {
-  color: var(--figma-color-text, #1a1a1a);
-  font-weight: 500;
-}
-.ts-tab:focus-visible {
-  outline: 2px solid #863bff;
-  outline-offset: -2px;
-}

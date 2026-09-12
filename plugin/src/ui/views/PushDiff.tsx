@@ -1,6 +1,13 @@
 /**
  * Push diff view.
  * Shows what will change on GitHub when the user creates a PR from Figma Variables.
+ *
+ * Collections stack as independently-collapsible sections, same pattern as
+ * PullDiff — replaced an earlier tabs-based layout where only one collection
+ * was visible at a time (forcing a click just to see what else changed),
+ * the tab strip itself could overflow and clip a tab off-screen with no
+ * scroll affordance, and a single control (checkbox to include + click to
+ * preview) did two unrelated things at once.
  */
 
 import { useState } from "react";
@@ -8,6 +15,7 @@ import type { CollectionDiff } from "../../shared/token-diff";
 import { diffLabel } from "../../shared/token-diff";
 import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
+import { CollapsibleSection } from "../components/CollapsibleSection";
 import { DiffEntryList } from "../components/DiffEntryList";
 import { DiffOverview } from "../components/DiffOverview";
 import { StatusBanner } from "../components/StatusBanner";
@@ -81,14 +89,26 @@ export function PushDiff({
   const [prTitle, setPrTitle] = useState(
     isOutputOnly ? "chore: generate output files" : "chore: sync design tokens from Figma",
   );
-  const [activeTab, setActiveTab] = useState(0);
 
   // Selective sync — all collections selected by default
   const allKeys = diffs.map((d) => `${d.collectionName}/${d.modeName}`);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set(allKeys));
 
+  // Expanded by default (same convention as PullDiff) — collapse individual
+  // collections to manage a large diff instead of only ever seeing one.
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set(allKeys));
+
   function toggleKey(key: string) {
     setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleExpanded(key: string) {
+    setExpandedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -103,93 +123,95 @@ export function PushDiff({
   const totalChanges = diffs.reduce((n, d) => n + d.counts.total, 0);
   const hasChanges = totalChanges > 0;
 
+  const hasWarnings =
+    unrecognizedCollections.length > 0 ||
+    brokenAliasPaths.length > 0 ||
+    conflictPaths.length > 0 ||
+    staleConfiguredModes.length > 0;
+
   return (
     <div style={s.container}>
       <div style={s.header}>
         <ViewHeader title="Push to GitHub" onBack={onBack} />
       </div>
 
-      {unrecognizedCollections.length > 0 && (
-        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
-          <StatusBanner
-            tone="warning"
-            expandableDetail={
-              <>
-                Not included in this PR: <strong>{unrecognizedCollections.join(", ")}</strong>. Assign{" "}
-                {unrecognizedCollections.length === 1 ? "it" : "them"} to a role on the main screen's
-                "Map collections" if this is unexpected.
-              </>
-            }
-          >
-            {unrecognizedCollections.length} Figma{" "}
-            {unrecognizedCollections.length === 1 ? "collection isn't" : "collections aren't"} set up
-            in Map Collections yet, so {unrecognizedCollections.length === 1 ? "it's" : "they're"}{" "}
-            skipped.
-          </StatusBanner>
-        </div>
-      )}
+      {hasWarnings && (
+        <div style={s.warnings}>
+          {unrecognizedCollections.length > 0 && (
+            <StatusBanner
+              tone="warning"
+              expandableDetail={
+                <>
+                  Not included in this PR: <strong>{unrecognizedCollections.join(", ")}</strong>.
+                  Assign {unrecognizedCollections.length === 1 ? "it" : "them"} to a role on the
+                  main screen's "Map collections" if this is unexpected.
+                </>
+              }
+            >
+              {unrecognizedCollections.length} Figma{" "}
+              {unrecognizedCollections.length === 1 ? "collection isn't" : "collections aren't"} set
+              up in Map Collections yet, so{" "}
+              {unrecognizedCollections.length === 1 ? "it's" : "they're"} skipped.
+            </StatusBanner>
+          )}
 
-      {brokenAliasPaths.length > 0 && (
-        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
-          <StatusBanner
-            tone="warning"
-            expandableDetail={
-              <>
-                <strong>{asFigmaNames(brokenAliasPaths)}</strong>
-                {brokenAliasPaths.length === 1 ? " shows" : " show"} the right name in Figma's variable
-                picker, but the link underneath is broken (its target was likely deleted or
-                recreated). Open{" "}
-                {brokenAliasPaths.length === 1 ? "it" : "each one"} in Figma and re-link{" "}
-                {brokenAliasPaths.length === 1 ? "it" : "them"} to a real value, then push again.
-              </>
-            }
-          >
-            {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped — Figma
-            shows a broken variable link.
-          </StatusBanner>
-        </div>
-      )}
+          {brokenAliasPaths.length > 0 && (
+            <StatusBanner
+              tone="warning"
+              expandableDetail={
+                <>
+                  <strong>{asFigmaNames(brokenAliasPaths)}</strong>
+                  {brokenAliasPaths.length === 1 ? " shows" : " show"} the right name in Figma's
+                  variable picker, but the link underneath is broken (its target was likely deleted
+                  or recreated). Open {brokenAliasPaths.length === 1 ? "it" : "each one"} in Figma
+                  and re-link {brokenAliasPaths.length === 1 ? "it" : "them"} to a real value, then
+                  push again.
+                </>
+              }
+            >
+              {brokenAliasPaths.length} field{brokenAliasPaths.length !== 1 ? "s" : ""} skipped —
+              Figma shows a broken variable link.
+            </StatusBanner>
+          )}
 
-      {conflictPaths.length > 0 && (
-        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
-          <StatusBanner
-            tone="danger"
-            expandableDetail={
-              <>
-                <strong>{asFigmaNames(conflictPaths)}</strong> — each one is a real variable name in
-                Figma, and other variables are also nested under that same name (e.g.{" "}
-                <code>{toFigmaVarName(conflictPaths[0])}/default</code>). One name can't be both at
-                once. Rename or delete one of them in Figma, then push again — this will block the
-                push until it's resolved.
-              </>
-            }
-          >
-            {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} can't sync —{" "}
-            {conflictPaths.length === 1 ? "it conflicts" : "they conflict"} with another variable in
-            Figma.
-          </StatusBanner>
-        </div>
-      )}
+          {conflictPaths.length > 0 && (
+            <StatusBanner
+              tone="danger"
+              expandableDetail={
+                <>
+                  <strong>{asFigmaNames(conflictPaths)}</strong> — each one is a real variable name
+                  in Figma, and other variables are also nested under that same name (e.g.{" "}
+                  <code>{toFigmaVarName(conflictPaths[0])}/default</code>). One name can't be both
+                  at once. Rename or delete one of them in Figma, then push again — this will block
+                  the push until it's resolved.
+                </>
+              }
+            >
+              {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} can't sync
+              — {conflictPaths.length === 1 ? "it conflicts" : "they conflict"} with another
+              variable in Figma.
+            </StatusBanner>
+          )}
 
-      {staleConfiguredModes.length > 0 && (
-        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
-          <StatusBanner
-            tone="warning"
-            expandableDetail={
-              <>
-                {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in Figma is
-                currently named this. If you renamed the mode in Figma, this push will still work
-                under its new real name, but the "Map Collections" screen won't know about that
-                rename until you open it and save again — do that after this push, or the next pull
-                may not find this{" "}
-                {staleConfiguredModes.length === 1 ? "one" : "one of these"} at all.
-              </>
-            }
-          >
-            {staleConfiguredModes.length} configured mode name
-            {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma right
-            now.
-          </StatusBanner>
+          {staleConfiguredModes.length > 0 && (
+            <StatusBanner
+              tone="warning"
+              expandableDetail={
+                <>
+                  {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in Figma
+                  is currently named this. If you renamed the mode in Figma, this push will still
+                  work under its new real name, but the "Map Collections" screen won't know about
+                  that rename until you open it and save again — do that after this push, or the
+                  next pull may not find this{" "}
+                  {staleConfiguredModes.length === 1 ? "one" : "one of these"} at all.
+                </>
+              }
+            >
+              {staleConfiguredModes.length} configured mode name
+              {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma
+              right now.
+            </StatusBanner>
+          )}
         </div>
       )}
 
@@ -198,8 +220,9 @@ export function PushDiff({
           <div style={s.outputOnlyIntro}>
             <div style={s.emptyText}>No token changes</div>
             <div style={s.emptySubtext}>
-              {outputOnlyFiles.length} output file{outputOnlyFiles.length !== 1 ? "s" : ""} from Output
-              Formats {outputOnlyFiles.length !== 1 ? "haven't" : "hasn't"} been generated yet:
+              {outputOnlyFiles.length} output file{outputOnlyFiles.length !== 1 ? "s" : ""} from
+              Output Formats {outputOnlyFiles.length !== 1 ? "haven't" : "hasn't"} been generated
+              yet:
             </div>
           </div>
           <ul style={s.outputOnlyList}>
@@ -226,7 +249,9 @@ export function PushDiff({
                 onCreatePR(prTitle.trim() || "chore: generate output files", new Set())
               }
             >
-              {creating ? "Creating PR…" : `Create PR (${outputOnlyFiles.length} file${outputOnlyFiles.length !== 1 ? "s" : ""})`}
+              {creating
+                ? "Creating PR…"
+                : `Create PR (${outputOnlyFiles.length} file${outputOnlyFiles.length !== 1 ? "s" : ""})`}
             </Button>
           </div>
         </>
@@ -240,59 +265,45 @@ export function PushDiff({
         <>
           <DiffOverview diffs={diffs} unitLabel="file" />
 
-          <div style={s.tabHint}>
-            Check a tab to include it in the PR — click its name to preview.
-          </div>
-          <div style={s.tabs}>
-            {diffs.map((diff, i) => {
+          <div style={s.body}>
+            {diffs.map((diff) => {
               const key = `${diff.collectionName}/${diff.modeName}`;
-              const selected = selectedKeys.has(key);
               const label = diffLabel(diff);
+              const selected = selectedKeys.has(key);
               return (
-                <div
-                  key={key}
-                  style={{
-                    ...s.tab,
-                    ...(activeTab === i ? s.tabActive : {}),
-                    ...(!selected ? s.tabDeselected : {}),
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => toggleKey(key)}
-                    aria-label={`Include ${label} in the pull request`}
-                    style={s.tabCheck}
-                  />
-                  <button
-                    type="button"
-                    className={`ts-tab${activeTab === i ? " ts-tab--active" : ""}`}
-                    onClick={() => setActiveTab(i)}
-                    title={`Preview ${label}`}
-                    style={s.tabButton}
+                <div key={key} style={{ ...s.section, opacity: selected ? 1 : 0.6 }}>
+                  <CollapsibleSection
+                    level="section"
+                    label={label}
+                    expanded={expandedKeys.has(key)}
+                    onToggle={() => toggleExpanded(key)}
+                    left={
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleKey(key)}
+                        aria-label={`Include ${label} in the pull request`}
+                        title={`Include ${label} in the pull request`}
+                      />
+                    }
+                    right={
+                      diff.counts.total > 0 && (
+                        <Badge tone="changed" muted={!selected}>
+                          {diff.counts.total}
+                        </Badge>
+                      )
+                    }
                   >
-                    <span style={s.tabLabel}>{label}</span>
-                    {diff.counts.total > 0 && (
-                      <Badge tone="changed" muted={!selected}>
-                        {diff.counts.total}
-                      </Badge>
+                    {diff.counts.total === 0 ? (
+                      <div style={s.noDiff}>No changes in this collection</div>
+                    ) : (
+                      <DiffEntryList entries={diff.entries} />
                     )}
-                  </button>
+                  </CollapsibleSection>
                 </div>
               );
             })}
           </div>
-
-          {(() => {
-            const diff = diffs[activeTab];
-            if (!diff || diff.counts.total === 0)
-              return <div style={s.noDiff}>No changes in this collection</div>;
-            return (
-              <div style={s.diffList}>
-                <DiffEntryList entries={diff.entries} />
-              </div>
-            );
-          })()}
 
           <div style={s.footer}>
             {error && (
@@ -334,6 +345,12 @@ const s: Record<string, React.CSSProperties> = {
     padding: `${space.md}px ${space.lg}px`,
     borderBottom: `1px solid ${color.border.subtle}`,
   },
+  warnings: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.xs + 2,
+    margin: `${space.sm}px ${space.lg}px 0`,
+  },
   empty: {
     display: "flex",
     flexDirection: "column",
@@ -363,52 +380,14 @@ const s: Record<string, React.CSSProperties> = {
     color: color.text.secondary,
     padding: `${space.xs}px 0`,
   },
-  tabHint: {
-    fontSize: font.size.xs,
-    color: color.text.muted,
-    padding: `${space.sm}px ${space.lg}px 0`,
-  },
-  tabs: {
-    display: "flex",
-    gap: space.xs + 2,
-    padding: `${space.xs}px ${space.lg}px ${space.xs}px`,
-    borderBottom: `1px solid ${color.border.subtle}`,
-    overflowX: "auto",
-  },
-  tab: {
-    display: "flex",
-    alignItems: "center",
-    gap: space.xs,
-    borderRadius: "6px 6px 0 0",
-    padding: `2px ${space.xs}px`,
-    flexShrink: 0,
-  },
-  tabActive: { background: color.surface.muted },
-  tabDeselected: { opacity: 0.55 },
-  tabCheck: { margin: 0, cursor: "pointer", flexShrink: 0 },
-  tabButton: {
-    border: "none",
-    fontSize: font.size.md,
-    padding: `${space.xs + 1}px ${space.sm}px`,
-    display: "flex",
-    alignItems: "center",
-    gap: 5,
-    fontFamily: font.family,
-    minWidth: 0,
-  },
-  tabLabel: {
-    maxWidth: 110,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
+  body: { flex: 1, overflowY: "auto" },
+  section: { borderBottom: `1px solid ${color.border.subtle}` },
   noDiff: {
     padding: `${space.xxl}px ${space.lg}px`,
     fontSize: font.size.md,
     color: color.text.muted,
     textAlign: "center",
   },
-  diffList: { flex: 1, overflowY: "auto", paddingBottom: 100 },
   footer: {
     position: "sticky",
     bottom: 0,
