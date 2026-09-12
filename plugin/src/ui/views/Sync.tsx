@@ -43,18 +43,19 @@ import type {
 } from "../../shared/messages";
 import type { TypographyStyle } from "../../shared/typography-styles";
 import { PullDiff } from "./PullDiff";
+import { Help } from "./Help";
 import { PushDiff } from "./PushDiff";
 import { CollectionMapping } from "./CollectionMapping";
 import { OutputFormats } from "./OutputFormats";
 import { Button } from "../components/Button";
 import { IconButton } from "../components/IconButton";
 import { StatusBanner } from "../components/StatusBanner";
-import { IconArrowRight, IconClose, IconPlus, IconRefresh } from "../icons";
+import { IconArrowRight, IconClose, IconHelp, IconPlus, IconRefresh } from "../icons";
 import { color, font, radius, space } from "../theme";
 import { describeGitHubError, describePluginError } from "../errors";
 import type { DescribedError } from "../errors";
 
-type View = "main" | "pull-diff" | "push-diff" | "collection-mapping" | "output-formats";
+type View = "main" | "pull-diff" | "push-diff" | "collection-mapping" | "output-formats" | "help";
 
 type Status =
   | { kind: "idle" }
@@ -883,6 +884,10 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     );
   }
 
+  if (view === "help") {
+    return <Help onBack={() => setView("main")} />;
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -893,6 +898,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
             {lastSync && <span style={styles.lastSync}> · {formatLastSync(lastSync)}</span>}
           </div>
         </div>
+        <IconButton label="About & tips" onClick={() => setView("help")}>
+          <IconHelp size={13} />
+        </IconButton>
         <Button variant="secondary" size="compact" onClick={onEditProject}>
           Settings
         </Button>

@@ -105,3 +105,13 @@ export function IconArrowRight(props: IconProps) {
     </Svg>
   );
 }
+
+export function IconHelp(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8" cy="8" r="5.6" />
+      <path d="M6.3 6.4a1.9 1.9 0 1 1 3 1.6c-.7.45-1.1.9-1.1 1.7" />
+      <circle cx="8.2" cy="11.6" r="0.15" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
