@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildFigmaFlatMaps } from "./useFigmaValues";
 import type { FigmaVariable, FigmaVariableCollection } from "../../shared/messages";
 
-describe("buildFigmaFlatMaps — number formatting only appends \"px\" for genuine dimensions", () => {
+describe('buildFigmaFlatMaps — number formatting only appends "px" for genuine dimensions', () => {
   // Reproduces a real bug found live: this file had its own, separate
   // number-formatting logic from figma-to-tokens.ts's type-aware
   // rawToTokenValue — it appended "px" to *every* FLOAT value unconditionally,
@@ -11,10 +11,15 @@ describe("buildFigmaFlatMaps — number formatting only appends \"px\" for genui
   // permanently mismatched GitHub's correctly bare-number value on every
   // pull, even though nothing had actually changed.
   const collections: FigmaVariableCollection[] = [
-    { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1", "v2"] },
+    {
+      id: "c1",
+      name: "Primitives",
+      modes: [{ modeId: "m1", name: "Value" }],
+      variableIds: ["v1", "v2"],
+    },
   ];
 
-  it("does not append \"px\" to a plain number variable (e.g. opacity)", () => {
+  it('does not append "px" to a plain number variable (e.g. opacity)', () => {
     const variables: FigmaVariable[] = [
       {
         id: "v1",
@@ -30,7 +35,7 @@ describe("buildFigmaFlatMaps — number formatting only appends \"px\" for genui
     expect(map.values["opacity.low"]).toBe("30");
   });
 
-  it("still appends \"px\" to a genuine dimension variable", () => {
+  it('still appends "px" to a genuine dimension variable', () => {
     const variables: FigmaVariable[] = [
       {
         id: "v2",
@@ -48,7 +53,12 @@ describe("buildFigmaFlatMaps — number formatting only appends \"px\" for genui
 
   it("decides px-or-not from the alias TARGET's own name/type, not the aliasing variable's", () => {
     const aliasCollections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
       { id: "c2", name: "Semantic", modes: [{ modeId: "m2", name: "Light" }], variableIds: ["v2"] },
     ];
     const variables: FigmaVariable[] = [
@@ -113,10 +123,20 @@ describe("buildFigmaFlatMaps — rawValues stop at one hop, unlike the fully-res
   // "changed" — only a token whose own {ref} definition actually changed
   // should. That requires knowing what a token aliases, not just its final
   // resolved value, which buildFigmaFlatMaps didn't track at all before.
-  it("an alias's raw value is \"{target.path}\", not the resolved final value", () => {
+  it('an alias\'s raw value is "{target.path}", not the resolved final value', () => {
     const collections = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
-      { id: "c2", name: "Themes", modes: [{ modeId: "m2", name: "Masterbrand" }], variableIds: ["v2"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
+      {
+        id: "c2",
+        name: "Themes",
+        modes: [{ modeId: "m2", name: "Masterbrand" }],
+        variableIds: ["v2"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -145,7 +165,12 @@ describe("buildFigmaFlatMaps — rawValues stop at one hop, unlike the fully-res
 
   it("a literal's raw value equals its resolved value", () => {
     const collections = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {

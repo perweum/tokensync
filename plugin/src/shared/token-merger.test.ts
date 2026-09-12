@@ -241,10 +241,9 @@ describe("parseRepository — theme/colorScheme lookup is case-insensitive", () 
     const files = [
       file("tokens/primitives/color.json", primitiveColor),
       file("tokens/semantic/themes/original.json", originalTheme),
-      file(
-        "tokens/semantic/light.json",
-        { background: { default: { $type: "color", $value: "{light.background.default}" } } },
-      ),
+      file("tokens/semantic/light.json", {
+        background: { default: { $type: "color", $value: "{light.background.default}" } },
+      }),
       file("tokens/metadata.json", meta),
     ];
 
@@ -263,10 +262,9 @@ describe("parseRepository — theme/colorScheme lookup is case-insensitive", () 
     const files = [
       file("tokens/primitives/color.json", primitiveColor),
       file("tokens/semantic/themes/original.json", originalTheme),
-      file(
-        "tokens/semantic/light.json",
-        { background: { default: { $type: "color", $value: "{light.background.default}" } } },
-      ),
+      file("tokens/semantic/light.json", {
+        background: { default: { $type: "color", $value: "{light.background.default}" } },
+      }),
       file("tokens/metadata.json", meta),
     ];
 
@@ -586,7 +584,7 @@ describe("parseRepository — theme file reuses Primitives' top-level key", () =
   // every other primitive color from scope. A ref like {color.blue.950}
   // then failed to resolve and stayed as the literal unresolved string,
   // even though color.blue.950 is a real, correctly-defined primitive.
-  it("resolves a primitive ref even when the theme's own top-level key is also \"color\"", () => {
+  it('resolves a primitive ref even when the theme\'s own top-level key is also "color"', () => {
     const files = [
       file("tokens/primitives/color.json", {
         color: { blue: { 950: { $type: "color", $value: "#001224" } } },
@@ -604,7 +602,9 @@ describe("parseRepository — theme file reuses Primitives' top-level key", () =
       file("tokens/semantic/dark.json", semanticDark),
     ];
     const { collections } = parseRepository(files, tokensPath);
-    const theme = collections.find((c) => c.collectionName === "Themes" && c.modeName === "Masterbrand")!;
+    const theme = collections.find(
+      (c) => c.collectionName === "Themes" && c.modeName === "Masterbrand",
+    )!;
     expect(theme.tokens["color.dark.accent.background-default"].$value).toBe("#001224");
   });
 });
@@ -678,7 +678,7 @@ describe("parseRepository — Global collection falls back to a real name when n
     },
   };
 
-  it("names the collection \"Global\" instead of leaving it undefined", () => {
+  it('names the collection "Global" instead of leaving it undefined', () => {
     const files = [
       ...makeFiles(),
       file("tokens/metadata.json", meta),

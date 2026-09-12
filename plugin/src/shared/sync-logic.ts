@@ -8,7 +8,12 @@
  * mode-name case-sensitivity fix, the ignored-collection role lookup).
  */
 
-import type { Metadata, ResolvedCollection, CollectionNames, CollectionSources } from "./token-merger";
+import type {
+  Metadata,
+  ResolvedCollection,
+  CollectionNames,
+  CollectionSources,
+} from "./token-merger";
 import type { FigmaVariableCollection, FigmaVariable, TokenValue } from "./messages";
 import { buildCollectionDiff } from "./token-diff";
 import type { CollectionDiff } from "./token-diff";
@@ -370,7 +375,10 @@ export function buildFilesFromDiffs(
   const names = metadata.figma.collections;
   const selectedList = Array.from(selectedKeys);
   const filteredCollections = figmaRaw.collections
-    .map((col) => ({ ...col, modes: col.modes.filter((mode) => isModeSelected(col, mode, names, selectedList)) }))
+    .map((col) => ({
+      ...col,
+      modes: col.modes.filter((mode) => isModeSelected(col, mode, names, selectedList)),
+    }))
     .filter((col) => col.modes.length > 0);
 
   const { files: tokenFileList, conflictPaths } = figmaToTokenFiles(
@@ -474,14 +482,20 @@ function isModeSelected(
     const primitivesName = names.primitives[0] ?? ROLE_DEFAULT_NAME.primitives;
     return selectedList.some((key) => {
       const slash = key.indexOf("/");
-      return key.slice(0, slash) === primitivesName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
+      return (
+        key.slice(0, slash) === primitivesName &&
+        key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase()
+      );
     });
   }
 
   const syntheticName = names[kind][0] ?? ROLE_DEFAULT_NAME[kind];
   return selectedList.some((key) => {
     const slash = key.indexOf("/");
-    return key.slice(0, slash) === syntheticName && key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase();
+    return (
+      key.slice(0, slash) === syntheticName &&
+      key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase()
+    );
   });
 }
 
@@ -557,7 +571,11 @@ export function buildApplyPayloads(
 
   const groups = new Map<
     string,
-    { tokens: Record<string, TokenValue>; resolvedValues: Record<string, string>; removedPaths: string[] }
+    {
+      tokens: Record<string, TokenValue>;
+      resolvedValues: Record<string, string>;
+      removedPaths: string[];
+    }
   >();
 
   for (const entry of diff.entries) {
@@ -603,7 +621,10 @@ export function buildCleanApplyPayloads(
 ): ApplyPayload[] {
   const role = collectionKind(col.collectionName, names);
 
-  const groups = new Map<string, { tokens: Record<string, TokenValue>; resolvedValues: Record<string, string> }>();
+  const groups = new Map<
+    string,
+    { tokens: Record<string, TokenValue>; resolvedValues: Record<string, string> }
+  >();
 
   for (const [path, token] of Object.entries(col.rawTokens)) {
     const target = resolveTarget(path, role, sources, col.collectionName);

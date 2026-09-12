@@ -96,7 +96,11 @@ function DiffRow({ entry }: { entry: DiffEntry }) {
           <IconArrowRight size={11} style={{ color: color.text.faint }} />
         )}
         {entry.githubValue !== null && (
-          <Value value={entry.githubRawValue ?? entry.githubValue} isColor={isColor} faded={false} />
+          <Value
+            value={entry.githubRawValue ?? entry.githubValue}
+            isColor={isColor}
+            faded={false}
+          />
         )}
       </div>
     </div>

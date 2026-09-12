@@ -95,7 +95,9 @@ describe("createTokenPR — writes one commit via the Git Data API, not N sequen
 
     const blobCalls = calls.filter((c) => c.path === "repos/org/repo/git/blobs");
     const treeCalls = calls.filter((c) => c.path === "repos/org/repo/git/trees");
-    const commitCalls = calls.filter((c) => c.path === "repos/org/repo/git/commits" && c.method === "POST");
+    const commitCalls = calls.filter(
+      (c) => c.path === "repos/org/repo/git/commits" && c.method === "POST",
+    );
     const refCalls = calls.filter((c) => c.path === "repos/org/repo/git/refs");
 
     // One blob per file — not one commit per file.
@@ -113,7 +115,12 @@ describe("createTokenPR — writes one commit via the Git Data API, not N sequen
     };
     expect(treeBody.base_tree).toBe("base-tree-sha");
     expect(treeBody.tree).toEqual([
-      { path: "tokens/metadata.json", mode: "100644", type: "blob", sha: `blob-sha:${encodedMetadata}` },
+      {
+        path: "tokens/metadata.json",
+        mode: "100644",
+        type: "blob",
+        sha: `blob-sha:${encodedMetadata}`,
+      },
       {
         path: "tokens/primitives/color.json",
         mode: "100644",

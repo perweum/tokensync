@@ -174,7 +174,9 @@ function serialize(obj: unknown, indent: number): string {
   const entries = Object.entries(obj as Record<string, unknown>);
   if (entries.length === 0) return "{}";
 
-  const lines = entries.map(([k, v]) => `${pad}${quoteKeyIfNeeded(k)}: ${serialize(v, indent + 1)}`);
+  const lines = entries.map(
+    ([k, v]) => `${pad}${quoteKeyIfNeeded(k)}: ${serialize(v, indent + 1)}`,
+  );
 
   return `{\n${lines.join(",\n")}\n${closePad}}`;
 }

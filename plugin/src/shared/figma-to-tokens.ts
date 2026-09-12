@@ -10,7 +10,12 @@ import type {
   FigmaVariableValue,
   TokenValue,
 } from "./messages";
-import type { ResolvedCollection, CollectionNames, CollectionSources, Metadata } from "./token-merger";
+import type {
+  ResolvedCollection,
+  CollectionNames,
+  CollectionSources,
+  Metadata,
+} from "./token-merger";
 import {
   fromFigmaVarName,
   resolveAllReferences,
@@ -103,7 +108,11 @@ export function figmaToCollections(
     const collVars = variables.filter((v) => v.collectionId === collection.id);
 
     for (const mode of collection.modes) {
-      const { tokens: raw, brokenAliasPaths: broken } = buildFlatTokens(collVars, mode.modeId, varById);
+      const { tokens: raw, brokenAliasPaths: broken } = buildFlatTokens(
+        collVars,
+        mode.modeId,
+        varById,
+      );
       brokenAliasPaths.push(...broken);
       if (kind === "primitives") {
         primitivesRaw = { ...primitivesRaw, ...raw };
@@ -191,7 +200,11 @@ export function figmaToCollections(
   }
 
   if (Object.keys(globalRaw).length > 0) {
-    const resolved = resolveAllReferences({ ...defaultPrimitivesRaw, ...defaultThemeRaw, ...globalRaw });
+    const resolved = resolveAllReferences({
+      ...defaultPrimitivesRaw,
+      ...defaultThemeRaw,
+      ...globalRaw,
+    });
     result.push({
       // Falls back to a literal "Global" when no Figma collection is actually
       // mapped to the role (figmaCollectionNames.global === []) — a real,
@@ -260,7 +273,6 @@ function mergeIntoMode(
   }
 }
 
-
 export interface FigmaToTokenFilesResult {
   files: TokenFile[];
   /** Dot-paths skipped because a real Figma variable name structurally
@@ -323,7 +335,9 @@ export function figmaToTokenFiles(
 
   const files: TokenFile[] = [];
   files.push(...buildPrimitiveFiles(primitivesEntries, varById, tokensPath, conflictPaths));
-  files.push(...buildGlobalFiles(globalEntries, varById, tokensPath, typographyStyles, conflictPaths));
+  files.push(
+    ...buildGlobalFiles(globalEntries, varById, tokensPath, typographyStyles, conflictPaths),
+  );
   for (const { modeName, entries } of themeModeEntries.values()) {
     const file = buildThemeFile(entries, modeName, varById, tokensPath, conflictPaths);
     if (file) files.push(file);
@@ -411,7 +425,11 @@ function buildFlatTokens(
  */
 function isBrokenAlias(raw: FigmaVariableValue, varById: Map<string, FigmaVariable>): boolean {
   return (
-    typeof raw === "object" && raw !== null && "type" in raw && raw.type === "VARIABLE_ALIAS" && !varById.has(raw.id)
+    typeof raw === "object" &&
+    raw !== null &&
+    "type" in raw &&
+    raw.type === "VARIABLE_ALIAS" &&
+    !varById.has(raw.id)
   );
 }
 
@@ -700,7 +718,8 @@ export function inferType(name: string, resolvedType: string): string {
     return "string";
   }
   if (resolvedType === "FLOAT") {
-    if (/dimension|size|spacing|padding|radius|width|height|border|gap/i.test(name)) return "dimension";
+    if (/dimension|size|spacing|padding|radius|width|height|border|gap/i.test(name))
+      return "dimension";
     if (/weight/i.test(name)) return "fontWeight";
     if (/lineHeight|line.height/i.test(name)) return "number";
     if (/letterSpacing|letter.spacing/i.test(name)) return "dimension";
@@ -812,7 +831,12 @@ function setNested(obj: Record<string, unknown>, keys: string[], value: unknown)
   }
   const finalKey = keys[keys.length - 1];
   const existingFinal = current[finalKey];
-  if (existingFinal !== undefined && typeof existingFinal === "object" && existingFinal !== null && !isTokenValue(existingFinal)) {
+  if (
+    existingFinal !== undefined &&
+    typeof existingFinal === "object" &&
+    existingFinal !== null &&
+    !isTokenValue(existingFinal)
+  ) {
     return false; // a longer path already established this position as a group
   }
   current[finalKey] = value;

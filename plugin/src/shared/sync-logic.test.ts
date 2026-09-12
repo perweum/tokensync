@@ -197,9 +197,7 @@ describe("computePullDiff", () => {
     // bug found via /code-review — case-sensitive matching silently treats
     // every token as "added" when the casing doesn't line up.
     const github = [col("Semantic", "Light", { "color.a": { $type: "color", $value: "#fff" } })];
-    const figmaMaps: FigmaFlatMap[] = [
-      figmaMap("Semantic", "light", { "color.a": "#fff" }),
-    ];
+    const figmaMaps: FigmaFlatMap[] = [figmaMap("Semantic", "light", { "color.a": "#fff" })];
 
     const { diffs } = computePullDiff(github, metadata(), figmaMaps);
 
@@ -324,7 +322,10 @@ describe("mergeTypographyIntoFigmaMaps", () => {
 
   it("adds an unbound field's literal value as a new Global-role entry", () => {
     const typographyStyles: TypographyStyle[] = [
-      { path: "text.heading.caption", fields: { textCase: { $type: "string", $value: "uppercase" } } },
+      {
+        path: "text.heading.caption",
+        fields: { textCase: { $type: "string", $value: "uppercase" } },
+      },
     ];
 
     const merged = mergeTypographyIntoFigmaMaps([], typographyStyles, meta);
@@ -377,7 +378,9 @@ describe("mergeTypographyIntoFigmaMaps", () => {
         // rawTokens stays the unresolved {ref} — matches what's actually
         // committed to typography.json (injectTypographyStyles writes the
         // literal ref, never the resolved value).
-        { "typography.banner.fontFamily": { $type: "fontFamily", $value: "{font-family.display}" } },
+        {
+          "typography.banner.fontFamily": { $type: "fontFamily", $value: "{font-family.display}" },
+        },
       ),
     ];
     const figmaMaps: FigmaFlatMap[] = [
@@ -513,7 +516,10 @@ describe("computePushDiff", () => {
     // Text Style change before it's pushed — textCase has no Variable
     // counterpart at all, so this is the only path it can appear on.
     const { collections: figmaCollections } = figmaToCollections([], [], metadata(), [
-      { path: "text.heading.caption", fields: { textCase: { $type: "string", $value: "uppercase" } } },
+      {
+        path: "text.heading.caption",
+        fields: { textCase: { $type: "string", $value: "uppercase" } },
+      },
     ]);
 
     const diffs = computePushDiff(figmaCollections, [], metadata());
@@ -584,7 +590,9 @@ describe("findMissingOutputFiles", () => {
   // and never generated its output file — the check only ever looked at
   // token-level diffs, with no idea that metadata.platforms is a second,
   // independent source of "something changed."
-  const collections = [col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } })];
+  const collections = [
+    col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } }),
+  ];
 
   it("reports the configured output path as missing when it doesn't exist in the repo yet", () => {
     const meta = metadata({ platforms: { js: { enabled: true, output: "dist/tokens.js" } } });
@@ -594,7 +602,12 @@ describe("findMissingOutputFiles", () => {
 
   it("reports nothing missing once the output path already exists in the repo", () => {
     const meta = metadata({ platforms: { js: { enabled: true, output: "dist/tokens.js" } } });
-    const missing = findMissingOutputFiles(collections, meta, "tokens/", new Set(["dist/tokens.js"]));
+    const missing = findMissingOutputFiles(
+      collections,
+      meta,
+      "tokens/",
+      new Set(["dist/tokens.js"]),
+    );
     expect(missing).toEqual([]);
   });
 
@@ -612,7 +625,12 @@ describe("findMissingOutputFiles", () => {
       },
     });
     // css already exists; js was just enabled and never generated
-    const missing = findMissingOutputFiles(collections, meta, "tokens/", new Set(["dist/tokens.css"]));
+    const missing = findMissingOutputFiles(
+      collections,
+      meta,
+      "tokens/",
+      new Set(["dist/tokens.css"]),
+    );
     expect(missing.map((f) => f.path)).toEqual(["dist/tokens.js"]);
   });
 });
@@ -752,7 +770,12 @@ describe("buildFilesFromDiffs", () => {
     // even though it was shown, counted, and checked in the diff the user approved.
     const realCollections: FigmaVariableCollection[] = [
       { id: "c1", name: "size", modes: [{ modeId: "m1", name: "mobile" }], variableIds: ["v1"] },
-      { id: "c2", name: "primitives", modes: [{ modeId: "m2", name: "color" }], variableIds: ["v2"] },
+      {
+        id: "c2",
+        name: "primitives",
+        modes: [{ modeId: "m2", name: "color" }],
+        variableIds: ["v2"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -808,8 +831,18 @@ describe("buildFilesFromDiffs", () => {
     // "multiple physical collections mapped to one role"), and mode names
     // merge case-insensitively (mergeIntoMode). The selection check must too.
     const realCollections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Main Color", modes: [{ modeId: "m1", name: "Christmas" }], variableIds: ["v1"] },
-      { id: "c2", name: "Support Color", modes: [{ modeId: "m2", name: "christmas" }], variableIds: ["v2"] },
+      {
+        id: "c1",
+        name: "Main Color",
+        modes: [{ modeId: "m1", name: "Christmas" }],
+        variableIds: ["v1"],
+      },
+      {
+        id: "c2",
+        name: "Support Color",
+        modes: [{ modeId: "m2", name: "christmas" }],
+        variableIds: ["v2"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -866,7 +899,12 @@ describe("buildFilesFromDiffs", () => {
     // collection's mobile mode specifically, and separately always include
     // the real "primitives" collection since it's shared across every mode.
     const realCollections: FigmaVariableCollection[] = [
-      { id: "c1", name: "primitives", modes: [{ modeId: "m1", name: "color" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "primitives",
+        modes: [{ modeId: "m1", name: "color" }],
+        variableIds: ["v1"],
+      },
       {
         id: "c2",
         name: "size",

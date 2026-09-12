@@ -16,7 +16,11 @@ const figmaCollectionNames = {
  * size-mode order, `.themes` for the default theme) — this wraps a bare
  * CollectionNames into a minimal but complete Metadata for tests that don't
  * care about the rest. */
-function metadataFor(collections: CollectionNames, sizes: string[] = [], themes = ["default"]): Metadata {
+function metadataFor(
+  collections: CollectionNames,
+  sizes: string[] = [],
+  themes = ["default"],
+): Metadata {
   return {
     version: "1.0.0",
     themes,
@@ -434,7 +438,12 @@ describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.js
     // File-writing counterpart to the figmaToCollections test above — the
     // committed JSON must keep the real alias too, not just the diff.
     const collections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
       { id: "c2", name: "Global", modes: [{ modeId: "m2", name: "Value" }], variableIds: ["v2"] },
     ];
     const variables: FigmaVariable[] = [
@@ -551,8 +560,18 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
     // false "changed" entry (GitHub's already-fixed resolved value vs.
     // Figma's still-literal one) even when nothing had actually changed.
     const collections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
-      { id: "c2", name: "Theme", modes: [{ modeId: "m2", name: "Masterbrand" }], variableIds: ["v2"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
+      {
+        id: "c2",
+        name: "Theme",
+        modes: [{ modeId: "m2", name: "Masterbrand" }],
+        variableIds: ["v2"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -591,7 +610,7 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
     expect(global.tokens["typography.banner.fontFamily"].$value).toBe("Coop Sans");
   });
 
-  it("falls back to a literal \"Global\" collection name when no Figma collection is mapped to that role", () => {
+  it('falls back to a literal "Global" collection name when no Figma collection is mapped to that role', () => {
     // Reproduces a real bug found live against a production Figma file: a
     // project whose only typography source is Text Styles (no decomposed
     // Variables ever set up) has figma.collections.global === [] — the
@@ -624,7 +643,12 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
     // unbound literal with no user-initiated change at all — silently baking
     // a dead value over a live one in both the diff and the committed file.
     const collections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
       { id: "c2", name: "Global", modes: [{ modeId: "m2", name: "Value" }], variableIds: ["v2"] },
     ];
     const variables: FigmaVariable[] = [
@@ -667,7 +691,7 @@ describe("figmaToCollections — real Figma Text Styles are diffable, not just w
   });
 });
 
-describe("figmaToCollections — a \"ghost\" alias (right name, dead target id) is reported, not silently dropped", () => {
+describe('figmaToCollections — a "ghost" alias (right name, dead target id) is reported, not silently dropped', () => {
   // Confirmed live (Vy's Spor system): a Theme-collection color variable's
   // VARIABLE_ALIAS pointed at a target id that no longer resolves to any
   // real variable — the target was deleted/recreated and the alias's id was
@@ -685,7 +709,12 @@ describe("figmaToCollections — a \"ghost\" alias (right name, dead target id) 
 
   it("reports the path as a broken alias and excludes it from tokens, instead of silently dropping it", () => {
     const collections: FigmaVariableCollection[] = [
-      { id: "cTheme", name: "Theme", modes: [{ modeId: "mVy", name: "Vy" }], variableIds: ["vSuccess"] },
+      {
+        id: "cTheme",
+        name: "Theme",
+        modes: [{ modeId: "mVy", name: "Vy" }],
+        variableIds: ["vSuccess"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -715,7 +744,12 @@ describe("figmaToCollections — a \"ghost\" alias (right name, dead target id) 
     // every "no value" case is a broken alias, only a dangling VARIABLE_ALIAS
     // target specifically.
     const collections: FigmaVariableCollection[] = [
-      { id: "cTheme", name: "Theme", modes: [{ modeId: "mVy", name: "Vy" }], variableIds: ["vUnset"] },
+      {
+        id: "cTheme",
+        name: "Theme",
+        modes: [{ modeId: "mVy", name: "Vy" }],
+        variableIds: ["vUnset"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -735,8 +769,18 @@ describe("figmaToCollections — a \"ghost\" alias (right name, dead target id) 
 
   it("does not report a genuinely working alias", () => {
     const collections: FigmaVariableCollection[] = [
-      { id: "cFoundation", name: "Foundation", modes: [{ modeId: "mF", name: "Value" }], variableIds: ["vPrimitive"] },
-      { id: "cTheme", name: "Theme", modes: [{ modeId: "mVy", name: "Vy" }], variableIds: ["vCore"] },
+      {
+        id: "cFoundation",
+        name: "Foundation",
+        modes: [{ modeId: "mF", name: "Value" }],
+        variableIds: ["vPrimitive"],
+      },
+      {
+        id: "cTheme",
+        name: "Theme",
+        modes: [{ modeId: "mVy", name: "Vy" }],
+        variableIds: ["vCore"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -758,7 +802,11 @@ describe("figmaToCollections — a \"ghost\" alias (right name, dead target id) 
     ];
     const namesWithPrimitives = { ...names, primitives: ["Foundation"] };
 
-    const { brokenAliasPaths } = figmaToCollections(collections, variables, metadataFor(namesWithPrimitives));
+    const { brokenAliasPaths } = figmaToCollections(
+      collections,
+      variables,
+      metadataFor(namesWithPrimitives),
+    );
 
     expect(brokenAliasPaths).toEqual([]);
   });
@@ -949,7 +997,12 @@ describe("figmaToTokenFiles — STRING variable type inference", () => {
     // Named weights are STRING in real usage, not FLOAT — see the
     // fontWeight/fontStyle decision in DECISIONS.md.
     const collections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -971,7 +1024,12 @@ describe("figmaToTokenFiles — STRING variable type inference", () => {
 
   it("still classifies a genuine fontFamily variable as fontFamily", () => {
     const collections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {
@@ -1000,7 +1058,7 @@ describe("figmaToTokenFiles — FLOAT variable type inference", () => {
     sizes: [] as string[],
   };
 
-  it("classifies a FLOAT variable literally named \"dimension\" as dimension, not number", () => {
+  it('classifies a FLOAT variable literally named "dimension" as dimension, not number', () => {
     // Real bug found live: a variable group literally named "dimension"
     // (e.g. "dimension/0") didn't match the FLOAT-classification regex
     // (size|spacing|padding|radius|width|height|border|gap) — none of those
@@ -1009,7 +1067,12 @@ describe("figmaToTokenFiles — FLOAT variable type inference", () => {
     // a permanent false "changed" diff (e.g. Figma's live "0px" vs GitHub's
     // stored "0"), even though the numeric value never actually changed.
     const collections: FigmaVariableCollection[] = [
-      { id: "c1", name: "Primitives", modes: [{ modeId: "m1", name: "Value" }], variableIds: ["v1"] },
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
     ];
     const variables: FigmaVariable[] = [
       {

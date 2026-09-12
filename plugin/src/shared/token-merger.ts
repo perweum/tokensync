@@ -480,7 +480,6 @@ function isGroup(node: TokenValue | TokenTree | string | undefined): node is Tok
   return typeof node === "object" && node !== null && !isTokenValue(node);
 }
 
-
 // ---------------------------------------------------------------------------
 // Metadata parsing
 // ---------------------------------------------------------------------------

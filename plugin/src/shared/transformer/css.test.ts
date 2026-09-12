@@ -425,13 +425,19 @@ describe("generateCSS — Global tokens (e.g. typography) get var(--*) too, not 
 
   it("a Global field referencing a size-varying primitive gets var(--*), not the size baked in", () => {
     const collections = [
-      col(names.primitives, "Mobile", { "primitive.font-size.11": { $type: "dimension", $value: "48px" } }),
-      col(names.primitives, "Desktop", { "primitive.font-size.11": { $type: "dimension", $value: "60px" } }),
+      col(names.primitives, "Mobile", {
+        "primitive.font-size.11": { $type: "dimension", $value: "48px" },
+      }),
+      col(names.primitives, "Desktop", {
+        "primitive.font-size.11": { $type: "dimension", $value: "60px" },
+      }),
       col(
         names.global,
         "Value",
         { "typography.banner.fontSize": { $type: "dimension", $value: "48px" } },
-        { "typography.banner.fontSize": { $type: "dimension", $value: "{primitive.font-size.11}" } },
+        {
+          "typography.banner.fontSize": { $type: "dimension", $value: "{primitive.font-size.11}" },
+        },
       ),
     ];
 
@@ -447,13 +453,19 @@ describe("generateCSS — Global tokens (e.g. typography) get var(--*) too, not 
 
   it("a Global field referencing a theme-scoped choice gets var(--*), not the default theme's value baked in", () => {
     const collections = [
-      col(names.themes, "Masterbrand", { "font-family.display": { $type: "fontFamily", $value: "Coop Sans" } }),
-      col(names.themes, "Christmas", { "font-family.display": { $type: "fontFamily", $value: "Extra Round" } }),
+      col(names.themes, "Masterbrand", {
+        "font-family.display": { $type: "fontFamily", $value: "Coop Sans" },
+      }),
+      col(names.themes, "Christmas", {
+        "font-family.display": { $type: "fontFamily", $value: "Extra Round" },
+      }),
       col(
         names.global,
         "Value",
         { "typography.banner.fontFamily": { $type: "fontFamily", $value: "Coop Sans" } },
-        { "typography.banner.fontFamily": { $type: "fontFamily", $value: "{font-family.display}" } },
+        {
+          "typography.banner.fontFamily": { $type: "fontFamily", $value: "{font-family.display}" },
+        },
       ),
     ];
 
@@ -465,7 +477,9 @@ describe("generateCSS — Global tokens (e.g. typography) get var(--*) too, not 
 
   it("a Global field with a plain literal (no ref) still resolves the same way it always did", () => {
     const collections = [
-      col(names.global, "Value", { "typography.banner.textCase": { $type: "string", $value: "title" } }),
+      col(names.global, "Value", {
+        "typography.banner.textCase": { $type: "string", $value: "title" },
+      }),
     ];
 
     const css = generateCSS(collections, metadata);

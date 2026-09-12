@@ -166,4 +166,3 @@ function resolveOneHop(
 
   return null;
 }
-
