@@ -67,22 +67,32 @@ export async function getLocalTypographyStyles(): Promise<TypographyStyle[]> {
   });
 }
 
-function readLiteralField(style: TextStyle, field: TypographyField): string | null {
+export function readLiteralField(style: TextStyle, field: TypographyField): string | null {
   switch (field) {
     case "fontFamily":
       return style.fontName.family;
     case "fontWeight":
       return style.fontName.style;
     case "fontSize":
-      return String(style.fontSize);
+      // $type "dimension" (see TYPOGRAPHY_FIELD_TOKEN_TYPE) — needs the "px"
+      // every other dimension token in this codebase carries. Found live: a
+      // bare "48" produced `--typography-h1-fontsize: 48;`, invalid CSS for
+      // a font-size (formatCSSValue does no unit fallback for "dimension").
+      // Safe to add unconditionally — the write side's toFigmaValue/
+      // parseDimension already strips a "px" suffix before parsing back to
+      // a float, unlike lineHeight below, where the suffix is a meaningful
+      // PIXELS-vs-PERCENT marker, not just formatting.
+      return `${style.fontSize}px`;
     case "lineHeight":
       return style.lineHeight.unit === "AUTO" ? null : formatUnitValue(style.lineHeight);
     case "letterSpacing":
       return formatUnitValue(style.letterSpacing);
     case "paragraphSpacing":
-      return String(style.paragraphSpacing);
+      // Same fix as fontSize just above — same $type "dimension", same
+      // missing unit, same safe round-trip via parseDimension.
+      return `${style.paragraphSpacing}px`;
     case "paragraphIndent":
-      return String(style.paragraphIndent);
+      return `${style.paragraphIndent}px`;
     case "textCase":
       return style.textCase.toLowerCase();
     case "textDecoration":
