@@ -17,6 +17,8 @@ import { IconCheck } from "../icons";
 import { color, font, space } from "../theme";
 import type { DescribedError } from "../errors";
 import { toFigmaVarName } from "../../shared/token-format";
+import type { StaleConfiguredMode } from "../../shared/sync-logic";
+import { describeStaleModes } from "../staleModes";
 
 /** Dot-paths are this project's own internal representation — a user
  * reading a warning has no reason to know that convention, and has to
@@ -43,6 +45,12 @@ interface Props {
    * against the full Figma data, so this can show up even for a collection
    * the user hasn't selected yet. */
   conflictPaths?: string[];
+  /** A theme/colorScheme/size mode renamed in Figma since "Map Collections"
+   * was last saved — metadata.json's configured name no longer matches any
+   * live Figma mode for that role. Figma itself always pushes under its
+   * current real name; this warns that the *other* side (metadata.json)
+   * hasn't caught up, before that silently drops the role on a future pull. */
+  staleConfiguredModes?: StaleConfiguredMode[];
   /** Paths runTransformers would write that don't exist in the repo yet —
    * an enabled platform (Output Formats) whose file was never generated,
    * found even though there's zero token-level change to review. */
@@ -62,6 +70,7 @@ export function PushDiff({
   unrecognizedCollections = [],
   brokenAliasPaths = [],
   conflictPaths = [],
+  staleConfiguredModes = [],
   outputOnlyFiles = [],
   onCreatePR,
   onBack,
@@ -158,6 +167,28 @@ export function PushDiff({
             {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} can't sync —{" "}
             {conflictPaths.length === 1 ? "it conflicts" : "they conflict"} with another variable in
             Figma.
+          </StatusBanner>
+        </div>
+      )}
+
+      {staleConfiguredModes.length > 0 && (
+        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
+          <StatusBanner
+            tone="warning"
+            expandableDetail={
+              <>
+                {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in Figma is
+                currently named this. If you renamed the mode in Figma, this push will still work
+                under its new real name, but the "Map Collections" screen won't know about that
+                rename until you open it and save again — do that after this push, or the next pull
+                may not find this{" "}
+                {staleConfiguredModes.length === 1 ? "one" : "one of these"} at all.
+              </>
+            }
+          >
+            {staleConfiguredModes.length} configured mode name
+            {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma right
+            now.
           </StatusBanner>
         </div>
       )}

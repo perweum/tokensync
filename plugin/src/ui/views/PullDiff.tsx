@@ -19,9 +19,15 @@ import { ViewHeader } from "../components/ViewHeader";
 import { IconCheck } from "../icons";
 import { color, font, radius, space } from "../theme";
 import type { DescribedError } from "../errors";
+import type { StaleConfiguredMode } from "../../shared/sync-logic";
+import { describeStaleModes } from "../staleModes";
 
 interface Props {
   diffs: CollectionDiff[];
+  /** A theme/colorScheme/size mode renamed in Figma since "Map Collections"
+   * was last saved — see PushDiff's identical prop and sync-logic.ts's
+   * findStaleConfiguredModes for the live bug this warns about. */
+  staleConfiguredModes?: StaleConfiguredMode[];
   onApply: (selectedKeys: Set<string>) => void;
   onCleanApply: () => void;
   onBack: () => void;
@@ -29,7 +35,15 @@ interface Props {
   error?: DescribedError;
 }
 
-export function PullDiff({ diffs, onApply, onCleanApply, onBack, applying, error }: Props) {
+export function PullDiff({
+  diffs,
+  staleConfiguredModes = [],
+  onApply,
+  onCleanApply,
+  onBack,
+  applying,
+  error,
+}: Props) {
   const [confirmClean, setConfirmClean] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(diffs.map((d) => `${d.collectionName}/${d.modeName}`)),
@@ -68,6 +82,28 @@ export function PullDiff({ diffs, onApply, onCleanApply, onBack, applying, error
       <div style={s.header}>
         <ViewHeader title="Pull from GitHub" onBack={onBack} />
       </div>
+
+      {staleConfiguredModes.length > 0 && (
+        <div style={{ margin: `${space.sm}px ${space.lg}px 0` }}>
+          <StatusBanner
+            tone="warning"
+            expandableDetail={
+              <>
+                {describeStaleModes(staleConfiguredModes)} — configured here, but no mode in Figma is
+                currently named this, so it won't be found at all. This can hide real changes: if
+                everything else in this collection is now missing from Figma's side of the
+                comparison, it may look identical to "already up to date" even though nothing has
+                actually synced. If you renamed the mode in Figma, open "Map Collections" and save
+                again to pick up the new name, then pull once more.
+              </>
+            }
+          >
+            {staleConfiguredModes.length} configured mode name
+            {staleConfiguredModes.length !== 1 ? "s don't" : " doesn't"} match anything in Figma right
+            now.
+          </StatusBanner>
+        </div>
+      )}
 
       {!hasDiffs ? (
         <div style={s.empty}>

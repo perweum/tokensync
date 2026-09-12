@@ -17,6 +17,7 @@ import type { CollectionKind } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
 import type { TransformedFile } from "./transformer";
 import type { TypographyStyle } from "./typography-styles";
+import { slugifyModeName } from "./token-format";
 
 /** A flat resolved value map for one collection/mode from Figma — same shape
  * the UI's useFigmaValues.ts (`buildFigmaFlatMaps`) produces. Duplicated as a
@@ -42,6 +43,68 @@ export function isIgnoredCollection(collectionName: string, metadata: Metadata):
     names[k].includes(collectionName),
   );
   return key !== undefined && (metadata.ignoredCollections ?? []).includes(key);
+}
+
+export interface StaleConfiguredMode {
+  role: "themes" | "colorSchemes" | "sizes";
+  /** The configured name (metadata.themes[i], etc.) that no longer matches
+   * any real Figma mode — Figma's *own* display casing, if it can be
+   * recovered, e.g. via toFigmaVarName-style formatting by the caller. */
+  name: string;
+}
+
+/**
+ * Configured theme/colorScheme/size names that don't match any real Figma
+ * mode currently present, for a role that *is* actively mapped to at least
+ * one real Figma collection right now — the sign of a mode renamed in
+ * Figma since "Map Collections" was last saved.
+ *
+ * Found live: a Figma mode renamed from its default ("Mode 1") to something
+ * meaningful ("Semantic") pushed fine under its new real name — Figma is
+ * always the source of truth for its own live data — but metadata.json's
+ * colorSchemes still held the old sanitized slug ("mode-1"), unrenamed,
+ * since nothing else ever prompts a re-save of Map Collections. The next
+ * pull's `findCaseInsensitive(layers.semantic keys, "mode-1")` then finds no
+ * matching file at all — the semantic collection silently vanishes from
+ * parseRepository's output, exactly like a role that was never configured,
+ * with no error or indication anything is wrong. This doesn't fix that (Map
+ * Collections still has to be the one to update metadata.json — this file
+ * has no business writing config), it only makes the mismatch visible
+ * before it causes a silent no-op.
+ *
+ * Skips a role entirely when nothing is currently mapped to it at all
+ * (`figma.collections[role]` is empty) — metadata's leftover placeholder
+ * for a role a project simply doesn't use (e.g. `themes: ["default"]` on a
+ * single-theme system) is expected, not stale.
+ */
+export function findStaleConfiguredModes(
+  metadata: Metadata,
+  figmaCollections: FigmaVariableCollection[],
+): StaleConfiguredMode[] {
+  const names = metadata.figma.collections;
+  const roleChecks: Array<{
+    role: StaleConfiguredMode["role"];
+    kind: keyof CollectionNames;
+    configured: string[];
+  }> = [
+    { role: "themes", kind: "themes", configured: metadata.themes },
+    { role: "colorSchemes", kind: "semantic", configured: metadata.colorSchemes },
+    { role: "sizes", kind: "sizes", configured: metadata.sizes },
+  ];
+
+  const stale: StaleConfiguredMode[] = [];
+  for (const { role, kind, configured } of roleChecks) {
+    if (names[kind].length === 0) continue; // role not mapped to any real collection at all
+    const realSlugs = new Set(
+      figmaCollections
+        .filter((c) => collectionKind(c.name, names) === kind)
+        .flatMap((c) => c.modes.map((m) => slugifyModeName(m.name))),
+    );
+    for (const name of configured) {
+      if (!realSlugs.has(slugifyModeName(name))) stale.push({ role, name });
+    }
+  }
+  return stale;
 }
 
 /**
