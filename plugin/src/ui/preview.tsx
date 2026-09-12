@@ -17,6 +17,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import { Setup } from "./views/Setup";
 import { PushDiff } from "./views/PushDiff";
+import { PullDiff } from "./views/PullDiff";
 import type { Project } from "./App";
 import type { CollectionDiff } from "../shared/token-diff";
 
@@ -156,9 +157,31 @@ function PushDiffPreview() {
   );
 }
 
+function PullDiffPreview() {
+  return (
+    <div style={{ padding: 24, background: "#f0f0f0", minHeight: "100vh" }}>
+      <h1 style={{ fontFamily: "sans-serif", fontSize: 16, marginBottom: 20 }}>
+        Pull diff preview
+      </h1>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        <Frame title="Default">
+          <PullDiff
+            diffs={pushDiffs}
+            onApply={() => {}}
+            onCleanApply={() => {}}
+            onBack={() => {}}
+            applying={false}
+          />
+        </Frame>
+      </div>
+    </div>
+  );
+}
+
 const pages: Record<string, React.ReactNode> = {
   onboarding: <OnboardingPreview />,
   push: <PushDiffPreview />,
+  pull: <PullDiffPreview />,
 };
 
 function Root() {
