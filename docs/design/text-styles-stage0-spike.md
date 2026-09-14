@@ -1,6 +1,11 @@
 # Stage 0 spike: does `fontWeight` or `fontStyle` actually bind a font's style name?
 
-Text Styles work is blocked on this. Figma's `VariableBindableTextField` type
+Status: **resolved** (Stage 0 spike, real Figma file, July 2026) — our
+`fontWeight` field must bind to Figma's `fontStyle`, not `fontWeight`. See
+DECISIONS.md's "Typography Style Groups" entry for the concrete finding; this
+document is kept for the spike methodology, not as a live question.
+
+Text Styles work was blocked on this. Figma's `VariableBindableTextField` type
 lists **both** `'fontWeight'` and `'fontStyle'` as separate bindable fields, but
 no Figma doc found gives an example of what each one actually does — whether
 `fontStyle` binds the literal installed font style name (`"SemiBold"` — what

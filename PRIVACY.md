@@ -20,7 +20,11 @@ fields per project:
 - A per-project last-sync timestamp and a couple of UI preferences (active
   branch selection, whether to sync Text Styles)
 
-Removing a project from the plugin removes all of this from `clientStorage`.
+There is currently no way to remove a project from the plugin's UI — this is
+a known gap, tracked to be fixed, not a deliberate design choice. The most
+effective thing you can do today is revoke the GitHub token itself on
+GitHub's side, which immediately cuts the plugin's access regardless of what
+it still has stored locally.
 
 ## What the plugin sends, and to whom
 

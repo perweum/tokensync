@@ -472,7 +472,7 @@ No changes to `light.json` or `dark.json` are required. Severity tokens are not 
 
 Add `"ignoredCollections": ["primitives"]` to `metadata.json` to exclude layers from pull and push diffs. Entries are layer keys — `primitives`, `global`, `themes`, or `semantic`. Useful for read-only core collections managed elsewhere. Platform output (CSS, JS, Dart, Swift) still includes ignored collections so references resolve.
 
-Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns on applying typography groups (`"$type": "typography"`) to Figma as Text Styles, independent of Variables sync — off by default until the full apply flow is verified against your own Figma file, remembered per project. This is coarser than `ignoredCollections`: it's all typography styles or none, not per-collection.
+Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns on applying typography groups (`"$type": "typography"`) to Figma as Text Styles, independent of Variables sync — off by default, remembered per project. Push, pull-diff, and apply have all been verified live end-to-end, but only against a single real Figma file's typography styles so far (not yet broad enough to cover every real-world case — multiple pixel-based `lineHeight`/`letterSpacing` values, delete-safety for a style removed from the repo); flip it on once you've verified it against your own file. This is coarser than `ignoredCollections`: it's all typography styles or none, not per-collection.
 
 ### Already have a build step?
 
@@ -485,9 +485,9 @@ This is also the reasonable default for a team migrating from another tool that 
 ### First-time project setup
 
 1. Copy this repo as a template
-2. Edit `metadata.json` — set `github.repo`, `github.branch`, and `figma.fileKey`
-3. Run the plugin and use **Apply to Figma** to populate the Figma file for the first time
-4. Commit the token files to the repo
+2. Open the plugin in Figma and add a project — repo, branch, and a [GitHub token](docs/github-token-setup.md) are entered here, in the plugin's own Setup screen, not in `metadata.json` (this data lives in the plugin's local storage, never in the repo)
+3. Run **Map Collections** to assign each real Figma Variable Collection to a role (primitives/global/themes/semantic/sizes) — this writes `figma.collections` into `metadata.json` for you
+4. Use **Apply to Figma** to populate the Figma file for the first time, or **Push to GitHub** if you're starting from an existing Figma file instead
 
 ---
 
@@ -558,6 +558,6 @@ The token files Token Spark produces are plain DTCG JSON — see "Already have a
 | Output format selection (which platforms generate) | Done |
 | Branch switching per project | Done |
 | Figma Text Styles — pull direction (apply to Figma) | Done |
-| Figma Text Styles — push direction (Figma → GitHub) | Planned |
+| Figma Text Styles — push direction (Figma → GitHub) | Done |
 | Token Studio migration (one-time import) | Planned |
 | GitLab / Azure DevOps provider | Not planned |

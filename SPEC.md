@@ -79,7 +79,10 @@ All tokens follow the W3C DTCG format:
 | `fontFamily` | `"Inter, sans-serif"` | Typography |
 | `fontWeight` | `"600"` | Typography |
 | `number` | `"1.5"` | Line height, opacity |
-| `shadow` | `"0 2px 4px {color.black.10}"` | Elevation |
+| `boolean` | `"true"` | A Figma `BOOLEAN` variable — not an official DTCG type, a pragmatic extension |
+| `string` | `"uppercase"` | A Figma `STRING` variable not related to a font — also not an official DTCG type |
+
+`shadow`/gradient/border are **not yet supported** — Figma Effect Styles have no read/write path in the plugin at all today (Variables and Text Styles do; Effect Styles are a separate, not-yet-built Plugin API surface). A token typed `shadow` would currently pass through as an unvalidated, unresolved string, not something to rely on yet.
 
 ---
 
@@ -272,7 +275,7 @@ Switching the active theme mode in Figma (or via `[data-theme]` in CSS) cascades
 
 ## Metadata Schema
 
-`metadata.json` is the project configuration file. It is not a token file and does not participate in reference resolution.
+`metadata.json` is the project configuration file. It is not a token file and does not participate in reference resolution. It never holds the GitHub repo/branch or a Figma file key on its own, though — those (plus the access token) are configured through the plugin's own Setup screen and stored in the plugin's local storage, never committed to the repo.
 
 ```json
 {
@@ -291,11 +294,6 @@ Switching the active theme mode in Figma (or via `[data-theme]` in CSS) cascades
       "semantic":   ["Semantic"],
       "sizes":      []
     }
-  },
-  "github": {
-    "repo":       "your-org/design-tokens",
-    "branch":     "main",
-    "tokensPath": "tokens/"
   },
   "platforms": {
     "css":   { "enabled": true, "output": "dist/tokens.css" },

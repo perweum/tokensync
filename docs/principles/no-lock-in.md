@@ -101,9 +101,11 @@ Consequences worth designing toward, not just avoiding harm:
 Most adopters will arrive from Token Studio. Interoperating with its format is a
 migration path, not a permanent commitment.
 
-Reading `$themes.json` and `$metadata.json` natively means a team can adopt Token
-Sync without restructuring first, then restructure later if they want. Requiring
-conversion up front makes evaluation expensive and adoption unlikely.
+Reading `$themes.json` and `$metadata.json` natively — planned, not yet built —
+would mean a team could adopt Token Spark without restructuring first, then
+restructure later if they want. Requiring conversion up front makes evaluation
+expensive and adoption unlikely; see `docs/design/canonical-model.md` for the
+adapter approach this points toward, and DECISIONS.md for its current status.
 
 See `docs/interop/token-studio.md` for the format contract and the failure modes
 worth defending against.

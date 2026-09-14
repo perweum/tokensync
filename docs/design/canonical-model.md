@@ -160,14 +160,20 @@ not just a transformer:
   variable-reference export is enabled — also creates and binds scalar Variables
   into that style's individual fields.
 
-**Consequence:** README currently lists "Figma Styles export — Not planned." That
-is no longer viable if typography/shadow tokens are to round-trip at all — this
-affects native Token Spark users too, not only Token Studio migrants, because it's
-a Figma platform limitation, not a Token Studio quirk. This needs its own Plugin
-API surface (`figma.getLocalTextStylesAsync`, `figma.createTextStyle`,
-`TextStyle.setBoundVariable`, and the Effect Style equivalents), separate from the
-Variables code the plugin has today. Scoped as new work, not yet built — see
-DECISIONS.md §4.
+**Consequence:** this affects native Token Spark users too, not only Token Studio
+migrants, because it's a Figma platform limitation, not a Token Studio quirk. It
+needed its own Plugin API surface, separate from the Variables code the plugin
+already had — split by which object it targets:
+
+- **Text Styles** (`figma.getLocalTextStylesAsync`, `figma.createTextStyle`,
+  `TextStyle.setBoundVariable`) — **done.** Push, pull, and Apply to Figma are
+  all built and live-verified end-to-end for Typography, gated behind the
+  "Sync type styles" setting (currently off by default until it's verified
+  against a broader range of real Figma files — see README).
+- **Effect Styles** (the shadow equivalent) — not yet built. No read/write path
+  exists for Figma Effect Styles anywhere in the codebase today.
+
+See DECISIONS.md §4.
 
 ### 5.3 Why this makes merge-not-replace mandatory, not optional
 

@@ -81,11 +81,11 @@ sub-fields, that's the entire size-varying set; nothing else needs excluding.
 {
   "figma": {
     "collections": {
-      "primitives": "Primitives",
-      "global": "Global",
-      "themes": "Themes",
-      "semantic": "Semantic",
-      "sizes": "Size"               // NEW — optional
+      "primitives": ["Primitives"],
+      "global": ["Global"],
+      "themes": ["Themes"],
+      "semantic": ["Semantic"],
+      "sizes": ["Size"]              // NEW — optional
     }
   },
   "sizes": [                         // NEW — optional, mirrors colorSchemes' shape
