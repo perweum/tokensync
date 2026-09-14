@@ -89,6 +89,7 @@ Updated whenever something below changes state. For *why* something was built th
 * The project switcher's "Add" button is now visible with exactly one project configured, not only once a second one already exists; a project's cached "last synced" label is now validated against which repo it was cached for, same as the branch cache already was — found live starting a fourth stress test, single-theme (§1 *No Visible Way to Add a Second Project…*).
 * Typography's `fontSize`/`paragraphSpacing`/`paragraphIndent` now get their `px` unit — previously bare numbers with `$type: "dimension"`, producing invalid CSS (`--typography-h1-fontsize: 48;`); `lineHeight`'s own `px`-or-not suffix is a deliberate PIXELS/PERCENT marker for apply-to-Figma and was correctly left untouched — found on the first real push against the single-theme stress test (§1 *Three Typography Dimension Fields Were Missing Their Unit…*).
 * A real Figma mode name containing a space (e.g. `"Mode 1"`, Figma's own unrenamed default) now round-trips correctly instead of permanently showing every token in the collection as newly "added" on every pull — `metadata.json` now stores each mode's real name, not a sanitized filename-safe slug that could never be reconstructed back into the original (§1 *A Real Mode Name Containing a Space Never Round-Tripped Correctly…*).
+* First-run onboarding rebuilt as a guided, skippable wizard — a Welcome step (what the plugin does) and a Tips step (best practices) bookend the existing Name/Connect GitHub/Defaults steps; "Skip intro" drops into the existing flat form instead, and a `?` button in the main screen reopens the Welcome/Tips content anytime without re-running setup. GitHub connection is now optional at setup (previously blocked even "skip") — a project can be saved with no PAT/repo and connected later, and `Sync.tsx` shows a distinct "not connected" prompt instead of firing API calls with empty credentials. Shipped ahead of the gate below, at the user's direct request rather than after multi-system testing — see §4 for what that means for its scope. Icons also moved from hand-drawn inline SVGs to `lucide-react`, after a hand-drawn `?` icon came out visibly wrong with no visual tool to check it against; new icons should come from lucide's set, not be hand-drawn (§4 *Onboarding, Revisited* for the full writeup, including what's still a placeholder).
 
 **In progress — real-world stress test against the actual 14-theme Coop production system**
 * A live Figma library (not a Token Studio export — the plugin has no Token Studio reader yet, see below) is being pushed through the plugin as-is to see what breaks against real scale/structure, using a disposable private test repo (`tokensync-coop-stresstest`). First real PR confirmed 14 themes (`birthday`, `black-friday`, `byggmix`, `christmas`, `extra`, `grill-perfekt`, `marked`, `masterbrand`, `mega`, `obs`, `obsbygg`, `prix`, `rosa-sloyfe`, `summer`) — matching the scale `docs/interop/` always described, now proven against the real thing rather than the smaller `@kilden` stand-in (see canonical-model.md §9).
@@ -111,7 +112,7 @@ Updated whenever something below changes state. For *why* something was built th
 * Priority 2 remainder — only the manifest plugin ID/icon/Community listing copy, which needs the Figma desktop app, not code (§4). First-run scaffolding and PAT hardening are mostly done. A genuinely empty repo (zero commits) now has a confirmed live failure, not just a theoretical gap (§4).
 * Map Collections structural validation checklist — 6 concrete checks (duplicate primitives modes with no `sizes` role, a collection double-mapped to two roles, scheme-named groups inside a Themes collection, no visible "this is the default theme/size" confirmation, an unrecognized dimension-naming convention, and an info note for `global: []`), all traced to real Coop/Spor incidents — design accepted, not yet built (§4).
 * A general "advisor" surface (recommendations, not just success/error) — direction only, not scoped; the Map Collections checklist above and an unbound-typography-field-shadows-a-primitive nudge are its first two identified cases (§4).
-* Onboarding revisit — deliberately gated until multi-design-system testing (Coop, Spor, whatever's next) is done, so it's designed against real friction rather than one system's experience (§4).
+* Per-Figma-file project scoping and a real delete/reset affordance (currently a dead `onDeleteProject` prop nothing calls) — flagged to bundle into the onboarding pass below, not addressed by it (§4).
 * Priority 3 — description sync v2 (diffable + applied on pull) (§4).
 * Priority 4 remainder — GitHub API pagination/limits, a genuine per-collection Clean Apply result breakdown, `Sync.tsx` tests (§4). Apply-flow error accounting is fixed.
 * Later/on demand — Enterprise REST provider, `{theme}` output placeholder, rename detection, dogfooding, Effect Styles/shadow (§4).
@@ -468,6 +469,7 @@ Non-obvious constraints that must hold; each was the source of a real bug.
 ## 3. Changelog & Implementation Progress
 
 ### September 2026
+* **Onboarding rebuilt as a guided, skippable wizard, ahead of the original gate.** See §4 *Onboarding, Revisited* for the full writeup — shipped at the user's direct request, not after the multi-design-system testing the original gate called for. Welcome/Tips bookend steps, GitHub connection now optional at setup (`Sync.tsx` gained a "not connected" state), a standalone `Help.tsx` reachable from a `?` button, and icons moved to `lucide-react`. The five spot illustrations are an explicit placeholder, not a finished decision — flagged directly by the user as something they may redo themselves.
 * **"Sync type styles" toggle default flipped from on to off.** Found while assessing readiness for a Figma Community submission: the toggle existed specifically because the Text Style apply flow wasn't verified end-to-end (§1, §4 Priority 1b), but defaulted *on* anyway — meaning a first-time user, including a Figma reviewer testing with their own file, would exercise the unverified path by default. Off is the safer default until that verification happens; a team that has verified it against their own file can turn it back on per-project.
 * **Text Styles push direction built — real Figma Text Styles are now written into `semantic/global/typography.json` on push.** Previously `getLocalTypographyStyles()` was read on every collection load and then silently discarded before reaching the push flow (`handlePushCollectionsLoaded` only forwarded `collections`/`variables`) — found while investigating a user question about whether pushing overwrites or merges. Threaded through `Sync.tsx` → `sync-logic.ts`'s `buildFilesFromDiffs` → `figma-to-tokens.ts`'s `figmaToTokenFiles`, ending in a new `injectTypographyStyles` step that overlays the group-level `$type: "typography"` marker and every field the Text Style reports directly onto the Variable-derived tree. See the new decision above (§1 *Push direction built…*) for why fields are overwritten unconditionally rather than merged, and 4 new tests across `figma-to-tokens.test.ts`/`sync-logic.test.ts` — including the case of a Text Style created entirely by hand with no matching Variables at all.
 * **Text Style changes now show in the push diff view, not just the pushed file.** Follow-up to the above, same day: `figmaToCollections` now also merges Text Style fields into the Global collection's flat token map, so `computePushDiff` diffs them like any other token — no new UI code needed, since the diff view was already generic over whatever's in that map. See the new decision above (§1 *Diff visibility built…*) and 3 new tests proving a `textCase`-only change (no backing Variable) actually surfaces as an "added" diff entry end-to-end.
@@ -651,29 +653,50 @@ left open until there's a second and third real case beyond the two above to
 design the mechanism against — same reasoning as not building the Map
 Collections checklist mechanism from one incident alone.
 
-### Onboarding, Revisited Once Multi-Design-System Testing Is Done (gated, not yet started)
-User's own framing (September 2026): hold off on a deliberate onboarding pass
-until testing against multiple real, structurally different design systems
-(Coop, Vy's Spor, whatever comes next) has run its course — the real friction
-points won't be known until then, and this session's own history backs that
-up: Priority 2's existing "stranger installs it" scope (PAT hardening, manifest/
-icons, first-run scaffolding) didn't anticipate the empty-repo bootstrap gap,
-the structural mapping mistakes now tracked above, or unclear error copy —
-all found only by actually onboarding a second design system, not by
-speculating about a generic "stranger." Revisit Priority 2 and the Map
-Collections checklist together once the current testing phase is done, rather
-than designing onboarding improvements from Coop's experience alone.
+### Onboarding, Revisited (shipped September 2026 — ahead of the original gate)
+This was originally deliberately gated: hold off on a deliberate onboarding
+pass until testing against multiple real, structurally different design
+systems (Coop, Vy's Spor, whatever comes next) had run its course, since the
+real friction points wouldn't be known until then. That gate was **not**
+what triggered this pass — the user asked for an onboarding redesign directly
+in September 2026, before a second design system's testing had concluded.
+Worth remembering when evaluating it: this was designed more from general
+UX judgment than from a second system's concrete friction, which is exactly
+the gap the original gate was meant to avoid.
 
-Another concrete data point for this revisit, found starting the fourth stress
-test: **project identity has no per-Figma-file awareness at all.** `Project`
+**What shipped**: `AddProjectWizard` bookends the existing Name/Connect
+GitHub/Defaults steps with a Welcome step (what the plugin does, illustrated)
+and a Tips step (best practices), with the step-count indicator only
+covering the three settings steps in between. "Skip intro" drops into the
+existing flat form. A `?` button in `Sync.tsx`'s header reopens the same
+Welcome/Tips content standalone (`Help.tsx`) any time, without re-running
+setup. GitHub connection, previously required even to "skip" past step 2,
+is now optional at setup — `AddProjectWizard`/`Setup.tsx` only require a
+project name, and `Sync.tsx` has a real "not connected" state instead of
+firing API calls with empty credentials. Icons moved from hand-drawn inline
+SVGs to `lucide-react`, after the hand-drawn `?` icon added for this pass
+came out visibly wrong — new icons should be pulled from lucide's set
+(lucide.dev/icons), not hand-drawn.
+
+**What's explicitly still a placeholder, not a finished decision**: the five
+spot illustrations (`onboardingArt.tsx` — Welcome/Name/Connect/Defaults/Tips)
+are simple flat shapes, deliberately kept low-effort rather than iterated on
+visually, because the user said directly they may redo the visuals
+themselves later if the current ones are difficult to get right. Treat them
+as a rough placeholder a designer is expected to replace, not as an accepted
+final look — don't invest further polish here without checking first.
+
+**Not addressed by this pass, despite being flagged to bundle in**: a
+concrete gap found starting the fourth stress test, before this pass began —
+**project identity has no per-Figma-file awareness at all.** `Project`
 already carries a `figmaFileKey`, captured on save but never read back to
-scope which project is "active" — `figma.clientStorage` is global across every
-file, so opening the plugin in a brand-new file shows whatever project was
-last active anywhere. The immediate "can't add a second project" symptom is
-fixed (§1 *No Visible Way to Add a Second Project…*), but real per-file
+scope which project is "active" — `figma.clientStorage` is global across
+every file, so opening the plugin in a brand-new file shows whatever project
+was last active anywhere. The immediate "can't add a second project" symptom
+is fixed (§1 *No Visible Way to Add a Second Project…*), but real per-file
 project selection — and a delete/reset affordance, currently a dead
-`onDeleteProject` prop nothing calls — is still open. Bundle into the same
-onboarding pass rather than designing it in isolation now.
+`onDeleteProject` prop nothing calls — is still open, and this pass did not
+pick it up.
 
 ### Priority 3 — Description sync v2
 * **Description-only changes are invisible in diffs.** The diff compares `$type`/`$value` only. Needs: include `$description` in `buildCollectionDiff` plus diff UI rendering.
