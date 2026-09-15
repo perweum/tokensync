@@ -89,6 +89,7 @@ Updated whenever something below changes state. For *why* something was built th
 * The project switcher's "Add" button is now visible with exactly one project configured, not only once a second one already exists; a project's cached "last synced" label is now validated against which repo it was cached for, same as the branch cache already was — found live starting a fourth stress test, single-theme (§1 *No Visible Way to Add a Second Project…*).
 * Typography's `fontSize`/`paragraphSpacing`/`paragraphIndent` now get their `px` unit — previously bare numbers with `$type: "dimension"`, producing invalid CSS (`--typography-h1-fontsize: 48;`); `lineHeight`'s own `px`-or-not suffix is a deliberate PIXELS/PERCENT marker for apply-to-Figma and was correctly left untouched — found on the first real push against the single-theme stress test (§1 *Three Typography Dimension Fields Were Missing Their Unit…*).
 * A real Figma mode name containing a space (e.g. `"Mode 1"`, Figma's own unrenamed default) now round-trips correctly instead of permanently showing every token in the collection as newly "added" on every pull — `metadata.json` now stores each mode's real name, not a sanitized filename-safe slug that could never be reconstructed back into the original (§1 *A Real Mode Name Containing a Space Never Round-Tripped Correctly…*).
+* README gained a "Why Token Spark instead of Token Studio" section after the introduction, drawn directly from the documented Token Studio failure modes and the no-lock-in principle rather than general impression (§3 September 2026).
 * First-run onboarding rebuilt as a guided, skippable wizard — a Welcome step (what the plugin does) and a Tips step (best practices) bookend the existing Name/Connect GitHub/Defaults steps; "Skip intro" drops into the existing flat form instead, and a `?` button in the main screen reopens the Welcome/Tips content anytime without re-running setup. GitHub connection is now optional at setup (previously blocked even "skip") — a project can be saved with no PAT/repo and connected later, and `Sync.tsx` shows a distinct "not connected" prompt instead of firing API calls with empty credentials. Shipped ahead of the gate below, at the user's direct request rather than after multi-system testing — see §4 for what that means for its scope. Icons also moved from hand-drawn inline SVGs to `lucide-react`, after a hand-drawn `?` icon came out visibly wrong with no visual tool to check it against; new icons should come from lucide's set, not be hand-drawn (§4 *Onboarding, Revisited* for the full writeup, including what's still a placeholder).
 
 **In progress — real-world stress test against the actual 14-theme Coop production system**
@@ -116,6 +117,7 @@ Updated whenever something below changes state. For *why* something was built th
 * Priority 3 — description sync v2 (diffable + applied on pull) (§4).
 * Priority 4 remainder — GitHub API pagination/limits, a genuine per-collection Clean Apply result breakdown, `Sync.tsx` tests (§4). Apply-flow error accounting is fixed.
 * Later/on demand — Enterprise REST provider, `{theme}` output placeholder, rename detection, dogfooding, Effect Styles/shadow (§4).
+* Five roadmap ideas raised together (September 2026) — flexible semantic output groups and an AI-assisted sync tool each got a written exploration ([docs/design/semantic-output-flexibility.md](docs/design/semantic-output-flexibility.md), [docs/design/ai-figma-sync-tool.md](docs/design/ai-figma-sync-tool.md)); a docs site, the repo rename, and the Token Studio README section are smaller and mostly unblocked already (§4).
 
 ---
 
@@ -469,6 +471,7 @@ Non-obvious constraints that must hold; each was the source of a real bug.
 ## 3. Changelog & Implementation Progress
 
 ### September 2026
+* **README gained a "Why Token Spark instead of Token Studio" section**, placed directly after the introduction. Drawn from `docs/interop/token-studio.md`'s six documented failure modes (all observed during the real 14-brand migration) and `docs/principles/no-lock-in.md`'s repo-is-truth framing — not written from general impression. Deliberately even-handed about what Token Studio does well and honest about what Token Spark doesn't have yet (a Token Studio import path), rather than a one-sided pitch.
 * **Onboarding rebuilt as a guided, skippable wizard, ahead of the original gate.** See §4 *Onboarding, Revisited* for the full writeup — shipped at the user's direct request, not after the multi-design-system testing the original gate called for. Welcome/Tips bookend steps, GitHub connection now optional at setup (`Sync.tsx` gained a "not connected" state), a standalone `Help.tsx` reachable from a `?` button, and icons moved to `lucide-react`. The five spot illustrations are an explicit placeholder, not a finished decision — flagged directly by the user as something they may redo themselves.
 * **"Sync type styles" toggle default flipped from on to off.** Found while assessing readiness for a Figma Community submission: the toggle existed specifically because the Text Style apply flow wasn't verified end-to-end (§1, §4 Priority 1b), but defaulted *on* anyway — meaning a first-time user, including a Figma reviewer testing with their own file, would exercise the unverified path by default. Off is the safer default until that verification happens; a team that has verified it against their own file can turn it back on per-project.
 * **Text Styles push direction built — real Figma Text Styles are now written into `semantic/global/typography.json` on push.** Previously `getLocalTypographyStyles()` was read on every collection load and then silently discarded before reaching the push flow (`handlePushCollectionsLoaded` only forwarded `collections`/`variables`) — found while investigating a user question about whether pushing overwrites or merges. Threaded through `Sync.tsx` → `sync-logic.ts`'s `buildFilesFromDiffs` → `figma-to-tokens.ts`'s `figmaToTokenFiles`, ending in a new `injectTypographyStyles` step that overlays the group-level `$type: "typography"` marker and every field the Text Style reports directly onto the Variable-derived tree. See the new decision above (§1 *Push direction built…*) for why fields are overwritten unconditionally rather than merged, and 4 new tests across `figma-to-tokens.test.ts`/`sync-logic.test.ts` — including the case of a Text Style created entirely by hand with no matching Variables at all.
@@ -707,6 +710,58 @@ pick it up.
 * ~~Push diff's typography entries have no descriptive label, just a count.~~ **Root-caused and fixed (September 2026).** Found live against the real Coop stress-test repo, which has `figma.collections.global: []` — no Figma collection is mapped to the "global" role at all. Not a misconfiguration: the repo migrated from Token Studio, where composite typography lives only in the plugin's own token sets, never as a Figma variable (`docs/interop/token-studio.md` §"Composite typography tokens cannot exist as Figma variables" already documents exactly this — a prior fix even routed Token Studio's typography to a root key specifically because no Figma collection would ever match it). So `global: []` is the *expected* shape for this project's primary documented migration audience, not an edge case. `figmaToCollections` built the synthetic Text-Style-only collection with `collectionName: figmaCollectionNames.global[0]`, which came out `undefined` — rendering as a genuinely blank push-diff tab label, not a wrong-but-visible one. Fixed with a `?? "Global"` fallback; regression test confirms it fails without the fix. **The same bug existed on the pull side too, and mattered more there**: `token-merger.ts`'s `parseRepository` had the identical `collectionName: names.global[0]` pattern, unconditionally pushed on every pull (not gated on the tree being non-empty). `undefined` there isn't just a blank diff label — `handleApplyAll` sends it straight through as `collectionId: diff.collectionName` to `APPLY_TOKENS`, which reaches `figma.variables.createVariableCollection(undefined)` in `figma-variables.ts` on apply. Fixed the same way, with its own regression test (`token-merger.test.ts`) reproducing a Token-Studio-shaped repo (`global: []`, real content in `semantic/global/typography.json`) and confirming a real collection name comes out, not `undefined`. ~~**Known remaining gap**: the CSS (and other platform) transformer output still won't include these fields when `global` has no real role mapping.~~ **Fixed (September 2026)** — see §1 *Every Transformer Silently Dropped Typography…*. All four transformers now locate Global via the new `findGlobalCollection(collections, names)` (falls back to the synthetic `"Global"` name when `names.global` is `[]`, same fallback this entry's own fix introduced), instead of the exact-membership `names.global.includes(c.collectionName)` check that could never match an empty role list. Confirmed against the real repo: every transformer's output now contains typography fields that were previously silently dropped in every generation.
 * ~~Apply-flow error accounting: multi-collection apply shows only the first error, and a mid-batch throw desyncs the completion counter~~ **Fixed** — see §1 *Three More Findings From the Same `/code-review` Pass, Fixed*. `applyAllBatchErrors` now accumulates across every task in a batch (including one that threw entirely), so the final summary's error count reflects the whole batch, not just whichever message happened to arrive last. Still open, and a bigger piece of work: Clean Apply (destructive) would still benefit from a genuine per-collection result breakdown in the UI, not just an aggregate count + first error in one banner.
 * ~~Sync flow tests: `Sync.tsx` logic (ignore filtering, PR building) is untested~~ **Done for the pure parts** — see §1 *`Sync.tsx`'s Core Diff/PR Logic Extracted Into a Tested Module*. Still genuinely untested, and would need real component-testing infrastructure (not just extraction) to cover: the apply-batch counter/error accumulation, clientStorage persistence, branch switching, message-handler wiring.
+
+### Roadmap ideas raised by the user (September 2026) — explored or written up, none scoped yet
+
+Five ideas raised together in one pass. Each was investigated against the
+real code/docs before writing anything down, rather than answered from
+impression; three produced a doc, one was actioned immediately (the README
+section above), one is left for the user to execute.
+
+* **Flexible semantic output groups** (e.g. a team's existing CSS extractor
+  wanting named groups like Global-light/Global-dark/Global/Theme-light/
+  Theme-dark fed into it). Explored in
+  [docs/design/semantic-output-flexibility.md](docs/design/semantic-output-flexibility.md):
+  turns out to be mostly a documentation gap — four of the five names already
+  map onto existing mechanism (Global role, Themes' light/dark halves, plus
+  value-based CSS dedup already collapsing anything identical across
+  schemes). One narrow, genuinely new capability identified (an optional
+  per-scheme split for the Global role, mirroring how top-level
+  `semantic/light.json`/`dark.json` already work) — left unbuilt until a real
+  project actually needs it, not built speculatively.
+* **AI-assisted Figma sync, as a controlled tool with strict rules** (not
+  "run sync unattended" — "let an AI operate the sync loop safely"). Written
+  up in [docs/design/ai-figma-sync-tool.md](docs/design/ai-figma-sync-tool.md):
+  splits into two genuinely different ideas gated by the same Enterprise-plan
+  line the plugin's own architecture already runs into (README — "Why a
+  Figma plugin and not a browser app?"). (A) a GitHub-file-only MCP surface —
+  buildable today, any plan, reuses `plugin/src/shared/`'s existing
+  validation logic, but never confirms the eventual Figma-side apply
+  succeeded. (B) a full headless Figma REST integration — Enterprise-plan
+  only, a genuinely new sync engine, same scope as the already-filed
+  "Enterprise REST provider" item below. Recommendation: (A) is the
+  realistic near-term path, sequenced naturally with the `@tokenspark/core`
+  extraction (Priority 1); (B) stays exactly where it already sits below,
+  gated on a real Enterprise use case.
+* **Landing page / documentation website.** Mostly a promotion/packaging
+  exercise — the content already exists in README.md and `docs/`; the gap is
+  presentation, not material. No CI or static-site tooling exists in this
+  repo yet at all, so this naturally bundles with the CI-build item under
+  Priority 1 above (both need a first GitHub Actions workflow) rather than
+  being a separate effort. The docs site version should also go further than
+  the README on limitations and best practices, which the README
+  deliberately keeps terse.
+* **Rename the GitHub repo from `tokensync` to Token Spark.** Checked
+  directly: the app-facing identity is already "Token Spark" everywhere that
+  matters — plugin manifest name and id, root `package.json` name
+  (`tokenspark`), `clientStorage` key prefixes. Only the GitHub repo slug and
+  local directory still say `tokensync`. Only one hardcoded old-slug URL
+  exists in the whole repo (a historical PR link in this changelog), and it
+  keeps resolving via GitHub's own redirect after a rename regardless. A
+  low-risk, mechanical, one-click rename — left for the user to execute
+  directly since it's a GitHub account-level action.
+* **README section on why Token Spark over Token Studio.** Done — see the
+  September 2026 changelog entry and Status at a Glance above.
 
 ### Later / on demand
 * **`hexToRGBA` (`figma-variables.ts`, write direction) and `parseColorComponents` (`token-diff.ts`, diff direction) duplicate the same rgba()/#rrggbb/#rrggbbaa string-parsing logic**, just scaled differently (0-1 float for Figma's API vs 0-255 int for comparison). Found during the same whole-plugin drift review as the fixes below, but deliberately not consolidated alongside them: unlike those, these two serve genuinely different type contracts, so a clean fix means one delegating to the other with a scale conversion, not a straight merge — lower priority, needs a more careful pass than the others.

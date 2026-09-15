@@ -8,6 +8,48 @@ of their own.
 
 ---
 
+## Why Token Spark instead of Token Studio (or similar)
+
+Token Studio does a lot right — the primitives/theme/semantic layering, the
+global vs. brand-specific split, composite typography tokens. This isn't an
+argument against those ideas; several of them shaped Token Spark's own model
+directly. The difference is architectural: **Token Studio's plugin holds the
+authoritative state; the repository is an export target.** That distinction
+cost real time during a real 14-brand production migration — documented in
+full in `docs/interop/token-studio.md` — concretely:
+
+- **A Figma variable import silently deleted configuration the plugin
+  couldn't derive from Figma.** Reference-only (`source`) token sets vanished
+  from every theme, and plugin-only sets — composite typography has no Figma
+  variable representation at all — were wiped outright, because the import
+  rebuilds from Figma and keeps only what has a matching collection.
+- **Editing `$themes.json` by hand in Git worked until the next plugin push
+  overwrote it.** An out-of-band repo edit doesn't stick unless it's pulled
+  back into the plugin immediately.
+- **After a rename, the plugin kept reporting every token as broken while the
+  repo was completely correct** — its cache had gone stale with no visible
+  signal that it had.
+
+None of this is really a bug — it's the consequence of the plugin being the
+source of truth and the repo living downstream of it. Token Spark inverts
+that: **the repository is the source of truth, the plugin holds a cache**
+(see `docs/principles/no-lock-in.md`). A team with the repo and no plugin
+installed can still build, configure, and generate the full design system.
+If Figma and GitHub ever disagree, GitHub wins — not whichever side wrote
+most recently.
+
+The other structural difference: **every sync is a Pull Request, never a
+direct push.** A design token change reaches every product built on the
+design system simultaneously, so Token Spark treats that the same way a code
+change would — reviewed before it merges, not after.
+
+What Token Spark doesn't have yet: a way to import an existing Token Studio
+repo directly (see `docs/design/canonical-model.md` — planned, not built).
+Migrating in today means restructuring by hand, a real cost worth weighing
+against the operational trade-off above.
+
+---
+
 ## How it works
 
 ```
