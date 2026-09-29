@@ -32,6 +32,10 @@ A Figma plugin is really two separate JS environments that only talk to each oth
 | `npm run format:check` | `oxfmt --check`                                                                            |
 | `npm run verify`       | Runs lint, format check, typecheck, and test together                                      |
 
+CI (`.github/workflows/verify.yml`) runs `npm run verify` and `npm run build` on every push to `main` and every pull request, stacked ones included.
+
+`npm run dev` also serves UI-only preview pages at `/preview.html?page=…` — `onboarding`, `push`, `pull`, `help`, and `sync`. The `sync` page runs the real `Sync` screen against a fake GitHub API and a fake Figma bridge (`?figma=4` matches GitHub so everything reads "up to date", `?figma=8` makes a change; `&broken=1`, `&truncated=1` and `&applyError=1` exercise the failure paths), so Pull/Push/Apply can be driven in a browser without Figma.
+
 `npm run build`/`npm run typecheck` are the ones that actually matter for correctness — always run both before considering a change done; see [`CLAUDE.md`](../CLAUDE.md) at the repo root for this project's fuller working conventions.
 
 ## Source layout

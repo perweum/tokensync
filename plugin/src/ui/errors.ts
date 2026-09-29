@@ -79,6 +79,25 @@ export function describePluginError(message: string, context?: string): Describe
 }
 
 /**
+ * Pull found tokens whose value has no string form (a composite shadow array,
+ * a typography object). Token Spark can't apply them, so it leaves them out
+ * of the comparison — which would make them look absent from GitHub, and
+ * Apply deletes a Figma variable that shares a name with an "absent" token.
+ * Refused for the same reason unreadable files are.
+ */
+export function describeUnsupportedTokens(
+  tokens: Array<{ file: string; path: string }>,
+): DescribedError {
+  const n = tokens.length;
+  const listed = tokens.slice(0, 10).map((t) => `${t.file}: ${t.path}`);
+  if (n > 10) listed.push(`…and ${n - 10} more`);
+  return {
+    message: `${n} token${n !== 1 ? "s" : ""} in GitHub ${n !== 1 ? "use" : "uses"} a value type Token Spark can't sync yet (for example a composite shadow), so pulling now could delete Figma variables with the same names. Convert or remove ${n !== 1 ? "them" : "it"} in the repository, then pull again.`,
+    detail: listed.join(", "),
+  };
+}
+
+/**
  * Pull found token files it couldn't read (see parseRepository's
  * `unreadableFiles`). Refusing outright — rather than diffing without them —
  * is the point: their tokens would look "removed in GitHub", and Apply would

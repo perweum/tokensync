@@ -14,6 +14,7 @@ import {
   slugifyModeName,
   sameMode,
   pickDefaultMode,
+  normalizeTokenTree,
 } from "./token-format";
 import type { TokenTree } from "./messages";
 
@@ -433,5 +434,47 @@ describe("pickDefaultMode", () => {
 
   it("is undefined when there are no candidates at all", () => {
     expect(pickDefaultMode(["light"], [], nameOf)).toBeUndefined();
+  });
+});
+
+describe("normalizeTokenTree", () => {
+  it("coerces numeric and boolean $value to strings, leaving strings alone", () => {
+    const { tree, unsupportedPaths } = normalizeTokenTree({
+      size: { a: { $type: "number", $value: 16 }, b: { $type: "boolean", $value: false } },
+      color: { c: { $type: "color", $value: "#fff" } },
+    } as never);
+    expect(tree).toEqual({
+      size: { a: { $type: "number", $value: "16" }, b: { $type: "boolean", $value: "false" } },
+      color: { c: { $type: "color", $value: "#fff" } },
+    });
+    expect(unsupportedPaths).toEqual([]);
+  });
+
+  it("removes tokens whose $value is composite or null, and reports their dot paths", () => {
+    // A Token Studio shadow is an array of layer objects; typography can be a
+    // whole object. Neither has a string form the rest of the code can use —
+    // they used to crash normalise()/startsWith() well past the parse step.
+    const { tree, unsupportedPaths } = normalizeTokenTree({
+      shadow: {
+        card: { $type: "boxShadow", $value: [{ x: 0, y: 1 }] },
+        flat: { $type: "boxShadow", $value: null },
+      },
+      type: { body: { $type: "typography", $value: { fontSize: "16px" } } },
+      color: { ok: { $type: "color", $value: "#000" } },
+    } as never);
+    expect(unsupportedPaths.sort()).toEqual(["shadow.card", "shadow.flat", "type.body"]);
+    expect(tree).toEqual({
+      shadow: {},
+      type: {},
+      color: { ok: { $type: "color", $value: "#000" } },
+    });
+  });
+
+  it("keeps group-level $-keys and does not mutate its input", () => {
+    const input = { g: { $type: "dimension", a: { $value: 4 } } };
+    const copy = JSON.parse(JSON.stringify(input));
+    const { tree } = normalizeTokenTree(input as never);
+    expect(tree).toEqual({ g: { $type: "dimension", a: { $value: "4" } } });
+    expect(input).toEqual(copy);
   });
 });
