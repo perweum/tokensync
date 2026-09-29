@@ -48,7 +48,12 @@ import { IconButton } from "../components/IconButton";
 import { StatusBanner } from "../components/StatusBanner";
 import { IconArrowRight, IconClose, IconHelp, IconPlus, IconRefresh } from "../icons";
 import { color, font, radius, space } from "../theme";
-import { describeGitHubError, describePluginError, describeUnreadableFiles } from "../errors";
+import {
+  describeGitHubError,
+  describePluginError,
+  describeUnreadableFiles,
+  describeUnsupportedTokens,
+} from "../errors";
 import type { DescribedError } from "../errors";
 
 type View = "main" | "pull-diff" | "push-diff" | "collection-mapping" | "output-formats" | "help";
@@ -367,6 +372,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         // Never diff without them: their tokens would show as removed in
         // GitHub, and Apply would delete the matching Figma variables.
         setStatus({ kind: "error", ...describeUnreadableFiles(parsed.unreadableFiles) });
+        return;
+      }
+      if (parsed.unsupportedTokens.length > 0) {
+        // Left out of the comparison they'd look absent from GitHub — see
+        // describeUnsupportedTokens.
+        setStatus({ kind: "error", ...describeUnsupportedTokens(parsed.unsupportedTokens) });
         return;
       }
       pendingGitHub.current = parsed;
