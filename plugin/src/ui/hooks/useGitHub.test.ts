@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { decodeBase64Utf8, encodeUtf8Base64, createTokenPR } from "./useGitHub";
+import {
+  decodeBase64Utf8,
+  encodeUtf8Base64,
+  createTokenPR,
+  fetchTokenFiles,
+  fetchRepoPaths,
+} from "./useGitHub";
 
 describe("base64 <-> UTF-8 round trip", () => {
   // Reproduces a real corruption found in production: metadata.json's
@@ -138,5 +144,104 @@ describe("createTokenPR — writes one commit via the Git Data API, not N sequen
     const refBody = refCalls[0].body as { sha: string; ref: string };
     expect(refBody.sha).toBe("new-commit-sha");
     expect(refBody.ref).toMatch(/^refs\/heads\/tokens\/sync-/);
+  });
+});
+
+describe("fetchTokenFiles — never hands back a silently incomplete or empty read", () => {
+  // A missing or empty token file looks exactly like "this token was deleted
+  // in GitHub" to the pull diff, and Apply then deletes the Figma variable.
+  // So an incomplete read must throw, not degrade.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const config = { pat: "x", repo: "org/repo", branch: "main", tokensPath: "tokens/" };
+  const json = (data: unknown) => ({ ok: true, status: 200, json: async () => data });
+  const b64 = (text: string) => btoa(text);
+
+  it("throws when GitHub reports the recursive tree was truncated", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ truncated: true, tree: [{ type: "blob", path: "tokens/a.json" }] })),
+    );
+    await expect(fetchTokenFiles(config)).rejects.toThrow(/too large|truncated/i);
+    await expect(fetchRepoPaths(config)).rejects.toThrow(/too large|truncated/i);
+  });
+
+  it("reads a file over 1 MB through the blob API instead of accepting the Contents API's empty body", async () => {
+    // For files over 1 MB the Contents API answers with `encoding: "none"` and
+    // an empty `content` string — which decoded to "" and parsed as no file.
+    const paths: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = url.replace("https://api.github.com/", "");
+        paths.push(path);
+        if (path.startsWith("repos/org/repo/git/trees/")) {
+          return json({ tree: [{ type: "blob", path: "tokens/big.json", sha: "sha-big" }] });
+        }
+        if (path.startsWith("repos/org/repo/contents/tokens/big.json")) {
+          return json({ content: "", encoding: "none", size: 2_000_000, sha: "sha-big" });
+        }
+        if (path === "repos/org/repo/git/blobs/sha-big") {
+          return json({ content: b64('{"a":1}'), encoding: "base64", sha: "sha-big" });
+        }
+        throw new Error(`Unexpected request: ${path}`);
+      }),
+    );
+
+    const files = await fetchTokenFiles(config);
+    expect(files).toHaveLength(1);
+    expect(files[0].content).toBe('{"a":1}');
+    expect(paths).toContain("repos/org/repo/git/blobs/sha-big");
+  });
+
+  it("throws if the file still comes back empty/unencoded after the blob fallback", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = url.replace("https://api.github.com/", "");
+        if (path.startsWith("repos/org/repo/git/trees/")) {
+          return json({ tree: [{ type: "blob", path: "tokens/big.json", sha: "sha-big" }] });
+        }
+        if (path.startsWith("repos/org/repo/contents/")) {
+          return json({ content: "", encoding: "none", size: 2_000_000, sha: "sha-big" });
+        }
+        return json({ content: "", encoding: "none", sha: "sha-big" });
+      }),
+    );
+    await expect(fetchTokenFiles(config)).rejects.toThrow(/tokens\/big\.json/);
+  });
+
+  it("encodes each path segment so a #, ? or % in a file name doesn't break the request", async () => {
+    const requested: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = url.replace("https://api.github.com/", "");
+        if (path.startsWith("repos/org/repo/git/trees/")) {
+          return json({ tree: [{ type: "blob", path: "tokens/my dir/a#b?.json", sha: "s" }] });
+        }
+        requested.push(path);
+        return json({ content: b64("{}"), encoding: "base64", sha: "s" });
+      }),
+    );
+    await fetchTokenFiles(config);
+    expect(requested[0]).toBe("repos/org/repo/contents/tokens/my%20dir/a%23b%3F.json?ref=main");
+  });
+
+  it("still reads an ordinary base64 file exactly as before", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = url.replace("https://api.github.com/", "");
+        if (path.startsWith("repos/org/repo/git/trees/")) {
+          return json({ tree: [{ type: "blob", path: "tokens/a.json", sha: "sha-a" }] });
+        }
+        return json({ content: b64('{"x":2}'), encoding: "base64", size: 7, sha: "sha-a" });
+      }),
+    );
+    const files = await fetchTokenFiles(config);
+    expect(files).toEqual([{ path: "tokens/a.json", content: '{"x":2}', sha: "sha-a" }]);
   });
 });

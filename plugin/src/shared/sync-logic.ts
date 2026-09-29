@@ -609,6 +609,34 @@ export function buildApplyPayloads(
 }
 
 /**
+ * The Figma variables an Apply would delete — every "removed" entry (present
+ * in Figma, absent from GitHub) in the selected diffs. `selectedKeys` uses the
+ * same `collection/mode` keys as the diff view's checkboxes; omit it to mean
+ * every diff (what Clean Apply does, which ignores the checkboxes).
+ *
+ * A variable belongs to a collection, not to a mode, so one that's removed
+ * under two modes is one deletion — deduplicated by collection + path.
+ */
+export function collectRemovals(
+  diffs: CollectionDiff[],
+  selectedKeys?: Set<string>,
+): Array<{ collection: string; path: string }> {
+  const seen = new Set<string>();
+  const removals: Array<{ collection: string; path: string }> = [];
+  for (const d of diffs) {
+    if (selectedKeys && !selectedKeys.has(`${d.collectionName}/${d.modeName}`)) continue;
+    for (const e of d.entries) {
+      if (e.status !== "removed") continue;
+      const id = `${d.collectionName}\u0000${e.path}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      removals.push({ collection: d.collectionName, path: e.path });
+    }
+  }
+  return removals;
+}
+
+/**
  * Same routing as buildApplyPayloads, for Clean Apply — which sends every
  * token in the collection (not just the changed ones) and has no concept of
  * "removed" entries of its own (deletion there is handled by `cleanApply`
