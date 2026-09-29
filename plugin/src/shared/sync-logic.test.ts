@@ -206,6 +206,22 @@ describe("computePullDiff", () => {
     expect(diffs[0].counts.total).toBe(0); // matched and identical -> no diff entries
   });
 
+  it("matches a legacy filename-slug mode name on the GitHub side to the real Figma mode name", () => {
+    // Regression: metadata.json may still hold the slug ("mode-1") from before
+    // real mode names were stored, so parseRepository yields "Mode-1" — while
+    // Figma's own mode is "Mode 1". Plain toLowerCase() comparison ("mode-1"
+    // vs "mode 1") never matched, so every token in the collection showed as
+    // added/removed on every pull, and findStaleConfiguredModes (which
+    // slugifies) stayed silent about it.
+    const github = [col("Semantic", "Mode-1", { "color.a": { $type: "color", $value: "#fff" } })];
+    const figmaMaps: FigmaFlatMap[] = [figmaMap("Semantic", "Mode 1", { "color.a": "#fff" })];
+
+    const { diffs } = computePullDiff(github, metadata(), figmaMaps);
+
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].counts.total).toBe(0);
+  });
+
   it("excludes ignored collections from both the diff and the filtered list", () => {
     const github = [
       col("Primitives", "Value", { "color.a": { $type: "color", $value: "#fff" } }),

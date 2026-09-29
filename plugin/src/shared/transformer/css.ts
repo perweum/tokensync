@@ -45,7 +45,7 @@ import type { ResolvedCollection, Metadata } from "../token-merger";
 import { findGlobalCollection } from "../token-merger";
 import type { TokenValue } from "../messages";
 import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
-import { toCSSVar } from "../token-format";
+import { toCSSVar, sameMode, pickDefaultMode } from "../token-format";
 
 export function generateCSS(collections: ResolvedCollection[], metadata: Metadata): string {
   const blocks: string[] = [cssHeader()];
@@ -61,20 +61,14 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   // already decide the default theme/scheme. Falls back to the first mode
   // found when sizes isn't configured to match (or primitives has exactly one
   // mode, the common case with no Size axis at all).
-  const defaultPrimitives =
-    metadata.sizes
-      .map((name) => primitivesCols.find((c) => c.modeName.toLowerCase() === name.toLowerCase()))
-      .find((c): c is ResolvedCollection => c !== undefined) ?? primitivesCols[0];
+  const defaultPrimitives = pickDefaultMode(metadata.sizes, primitivesCols, (c) => c.modeName);
   const nonDefaultPrimitives = primitivesCols.filter((c) => c !== defaultPrimitives);
 
   // Same reasoning as defaultPrimitives just above — config order decides the
   // default, not whatever order themeCols happened to arrive in (GitHub tree
   // order, or Figma's own mode order on the push side, neither of which is
   // guaranteed to put metadata.themes[0] first).
-  const defaultTheme =
-    metadata.themes
-      .map((name) => themeCols.find((c) => c.modeName.toLowerCase() === name.toLowerCase()))
-      .find((c): c is ResolvedCollection => c !== undefined) ?? themeCols[0];
+  const defaultTheme = pickDefaultMode(metadata.themes, themeCols, (c) => c.modeName);
   const nonDefaultThemes = themeCols.filter((c) => c !== defaultTheme);
 
   // Every path that will actually get its own `--var: value;` declaration in
@@ -94,8 +88,8 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
     ...Object.keys(defaultTheme?.tokens ?? {}),
   ]);
 
-  const lightCol = semanticCols.find((c) => c.modeName.toLowerCase() === "light");
-  const darkCol = semanticCols.find((c) => c.modeName.toLowerCase() === "dark");
+  const lightCol = semanticCols.find((c) => sameMode(c.modeName, "light"));
+  const darkCol = semanticCols.find((c) => sameMode(c.modeName, "dark"));
   const {
     shared: sharedSemantic,
     light: lightOnly,
