@@ -227,6 +227,19 @@ describe("resolveReference", () => {
     const result = resolveReference("0 1px 2px {color.missing}", flat);
     expect(result).toBe("0 1px 2px {color.missing}");
   });
+
+  it("resolves a composite value that both starts and ends with a ref", () => {
+    // Regression: `^\{(.+)\}$` is greedy, so this whole string used to match as
+    // ONE pure ref whose "path" was `a.1} solid {color.brand.600` — never found,
+    // so the value stayed unresolved and the embedded-ref branch was unreachable.
+    const composite = {
+      "space.1": { $type: "dimension", $value: "4px" },
+      "color.brand.600": { $type: "color", $value: "#1a52d8" },
+    };
+    expect(resolveReference("{space.1} solid {color.brand.600}", composite)).toBe(
+      "4px solid #1a52d8",
+    );
+  });
 });
 
 describe("resolveReference — circular references", () => {

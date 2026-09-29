@@ -251,7 +251,7 @@ export function mergeTypographyIntoFigmaMaps(
   const typographyValues: Record<string, string> = {};
   const typographyRawValues: Record<string, string> = {};
   for (const [path, token] of Object.entries(flattenTypographyStyles(typographyStyles))) {
-    const match = /^\{(.+)\}$/.exec(token.$value);
+    const match = /^\{([^{}]+)\}$/.exec(token.$value);
     typographyValues[path] = match ? (allResolved[match[1]] ?? token.$value) : token.$value;
     // Already one-hop as-is — getLocalTypographyStyles produces exactly this
     // shape (a literal, or a "{ref}" into the bound variable's dot-path).

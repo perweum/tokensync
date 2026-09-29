@@ -691,6 +691,72 @@ describe("parseRepository — Global collection falls back to a real name when n
   });
 });
 
+describe("parseRepository — every role falls back to a real collection name when unmapped", () => {
+  // Same class of bug as the Global case above, for the other three roles:
+  // coerceToList deliberately keeps an explicit `[]` ("intentionally
+  // unmapped"), so `names.primitives[0]`/`themes[0]`/`semantic[0]` were all
+  // `undefined` for a repo with real files but no collection mapped to that
+  // role — which reaches createVariableCollection(undefined) on apply.
+  const meta = {
+    version: "1.0.0",
+    themes: ["default"],
+    colorSchemes: ["light", "dark"],
+    figma: {
+      fileKey: "abc123",
+      collections: { primitives: [], global: [], themes: [], semantic: [] },
+    },
+  };
+
+  it("never emits a collection with an undefined name", () => {
+    const files = [...makeFiles(), file("tokens/metadata.json", meta)];
+    const { collections } = parseRepository(files, tokensPath);
+
+    expect(collections.length).toBeGreaterThan(0);
+    expect(collections.some((c) => c.collectionName === undefined)).toBe(false);
+    const names = collections.map((c) => c.collectionName);
+    expect(names).toContain("Primitives");
+    expect(names).toContain("Themes");
+    expect(names).toContain("Semantic");
+  });
+});
+
+describe("parseRepository — hand-edited JSON that isn't strictly string-valued", () => {
+  // DTCG permits `"$value": 16` (a number) and `true` (a boolean); a repo
+  // teams hand-edit can contain them. Everything downstream (diffing,
+  // transformers, Figma apply) assumes a string $value, so a raw number used
+  // to crash `.trim()`/`.startsWith()` well past the parse step.
+  it("coerces numeric and boolean $value to strings at the parse boundary", () => {
+    const files = [
+      file("tokens/metadata.json", {
+        version: "1.0.0",
+        themes: ["default"],
+        colorSchemes: ["light", "dark"],
+        figma: { fileKey: "", collections: { primitives: ["Primitives"] } },
+      }),
+      file("tokens/primitives/misc.json", {
+        opacity: { low: { $type: "number", $value: 0.3 } },
+        flag: { on: { $type: "boolean", $value: true } },
+      }),
+    ];
+    const { collections } = parseRepository(files, tokensPath);
+    const prim = collections.find((c) => c.collectionName === "Primitives")!;
+    expect(prim.tokens["opacity.low"].$value).toBe("0.3");
+    expect(prim.tokens["flag.on"].$value).toBe("true");
+    expect(prim.rawTokens["opacity.low"].$value).toBe("0.3");
+  });
+
+  it("skips a file whose JSON is not an object instead of crashing the whole parse", () => {
+    const files = [
+      file("tokens/metadata.json", { version: "1.0.0", themes: ["default"] }),
+      { path: "tokens/primitives/broken.json", content: "null", sha: "x" },
+      file("tokens/primitives/ok.json", { a: { $type: "number", $value: "1" } }),
+    ];
+    const { collections } = parseRepository(files, tokensPath);
+    const prim = collections.find((c) => c.collectionName === "Primitives")!;
+    expect(prim.tokens["a"].$value).toBe("1");
+  });
+});
+
 // ────────────────────────────────────────────────────────────────
 // findGlobalCollection / selectDefaultPrimitives — output-generator-only
 // helpers, additive and separate from collectionKind()/sync-logic.ts
