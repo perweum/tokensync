@@ -21,16 +21,16 @@ A Figma plugin is really two separate JS environments that only talk to each oth
 
 ## Scripts
 
-| Command | What it does |
-|---|---|
-| `npm run build` | Full build — both runtimes, output in `dist/` |
-| `npm run dev` | Vite dev server for the UI half only (browser, not Figma) |
-| `npm test` | Run the test suite once (Vitest) |
-| `npm run test:watch` | Vitest in watch mode |
-| `npm run typecheck` | Type-checks both `tsconfig.app.json` (UI) and `tsconfig.plugin.json` (sandbox) in parallel |
-| `npm run lint` | `oxlint` |
-| `npm run format:check` | `oxfmt --check` |
-| `npm run verify` | Runs lint, format check, typecheck, and test together |
+| Command                | What it does                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------ |
+| `npm run build`        | Full build — both runtimes, output in `dist/`                                              |
+| `npm run dev`          | Vite dev server for the UI half only (browser, not Figma)                                  |
+| `npm test`             | Run the test suite once (Vitest)                                                           |
+| `npm run test:watch`   | Vitest in watch mode                                                                       |
+| `npm run typecheck`    | Type-checks both `tsconfig.app.json` (UI) and `tsconfig.plugin.json` (sandbox) in parallel |
+| `npm run lint`         | `oxlint`                                                                                   |
+| `npm run format:check` | `oxfmt --check`                                                                            |
+| `npm run verify`       | Runs lint, format check, typecheck, and test together                                      |
 
 `npm run build`/`npm run typecheck` are the ones that actually matter for correctness — always run both before considering a change done; see [`CLAUDE.md`](../CLAUDE.md) at the repo root for this project's fuller working conventions.
 
