@@ -13,7 +13,6 @@ import {
   createTokenPR,
 } from "../hooks/useGitHub";
 import { useSendMessage, usePluginMessage } from "../hooks/usePlugin";
-import { buildFigmaFlatMaps } from "../hooks/useFigmaValues";
 import { parseRepository } from "../../shared/token-merger";
 import type {
   ParsedRepository,
@@ -21,26 +20,23 @@ import type {
   CollectionNames,
   CollectionSources,
 } from "../../shared/token-merger";
-import { figmaToCollections, figmaToTokenFiles } from "../../shared/figma-to-tokens";
+import type { figmaToCollections } from "../../shared/figma-to-tokens";
 import { toFigmaVarName } from "../../shared/token-format";
 import type { CollectionDiff } from "../../shared/token-diff";
+import { buildFilesFromDiffs } from "../../shared/sync-logic";
 import {
-  computePullDiff,
-  computePushDiff,
-  buildFilesFromDiffs,
-  findMissingOutputFiles,
-  buildApplyPayloads,
-  buildCleanApplyPayloads,
-  mergeTypographyIntoFigmaMaps,
-  findStaleConfiguredModes,
-} from "../../shared/sync-logic";
+  startApplyBatch,
+  isBatchActive,
+  batchTaskFinished,
+  batchErrorReceived,
+  summarizeBatch,
+  planApply,
+  planCleanApply,
+} from "../../shared/apply-batch";
+import type { ApplyBatch } from "../../shared/apply-batch";
+import { reviewPull, reviewPush, skippedCollectionsSuffix } from "../syncReview";
 import type { StaleConfiguredMode } from "../../shared/sync-logic";
-import type {
-  PluginMessage,
-  FigmaVariableCollection,
-  FigmaVariable,
-  TokenValue,
-} from "../../shared/messages";
+import type { PluginMessage, FigmaVariableCollection, FigmaVariable } from "../../shared/messages";
 import type { TypographyStyle } from "../../shared/typography-styles";
 import { PullDiff } from "./PullDiff";
 import { Help } from "./Help";
@@ -157,13 +153,10 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   const viewRef = useRef<View>("main");
   const pendingAction = useRef<PendingAction | null>(null);
-  const applyAllRemaining = useRef(0);
-  // Accumulates errors across every collection in a batch apply — including
-  // ones whose task threw entirely (reported as a plain ERROR message, not a
-  // TOKENS_APPLIED/TEXT_STYLES_APPLIED with its own errors array) — so the
-  // final summary reflects the whole batch, not just whichever message
-  // happened to be the last one processed.
-  const applyAllBatchErrors = useRef<string[]>([]);
+  // Progress of the running batch apply — see shared/apply-batch.ts. Errors and
+  // removals accumulate across every task (including one that threw entirely,
+  // which arrives as a plain ERROR), so the summary covers the whole batch.
+  const applyBatch = useRef<ApplyBatch>(startApplyBatch(0));
   const pendingGitHub = useRef<ReturnType<typeof parseRepository> | null>(null);
   const pendingGitHubCollections = useRef<ReturnType<typeof parseRepository>["collections"] | null>(
     null,
@@ -300,12 +293,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         }
         if (msg.type === "TOKENS_APPLIED") {
           const removedSuffix = msg.removed > 0 ? `, ${msg.removed} removed` : "";
-          if (applyAllRemaining.current > 0) {
-            applyAllBatchErrors.current.push(...msg.errors);
-            applyAllRemaining.current--;
-            if (applyAllRemaining.current === 0) {
-              finishApplyBatch(`All collections applied to Figma${removedSuffix}`);
-            }
+          if (isBatchActive(applyBatch.current)) {
+            applyBatch.current = batchTaskFinished(applyBatch.current, msg);
+            if (!isBatchActive(applyBatch.current)) finishApplyBatch();
           } else {
             const errSuffix = msg.errors.length
               ? ` (${msg.errors.length} error${msg.errors.length > 1 ? "s" : ""}: ${msg.errors[0]})`
@@ -321,12 +311,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           }
         }
         if (msg.type === "TEXT_STYLES_APPLIED") {
-          if (applyAllRemaining.current > 0) {
-            applyAllBatchErrors.current.push(...msg.errors);
-            applyAllRemaining.current--;
-            if (applyAllRemaining.current === 0) {
-              finishApplyBatch("All collections applied to Figma");
-            }
+          if (isBatchActive(applyBatch.current)) {
+            applyBatch.current = batchTaskFinished(applyBatch.current, msg);
+            if (!isBatchActive(applyBatch.current)) finishApplyBatch();
           }
         }
         if (msg.type === "ERROR") {
@@ -336,12 +323,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           // the batch the same way a reported error would, or the counter
           // never reaches zero and the collections that DID succeed never get
           // a final summary shown.
-          if (applyAllRemaining.current > 0) {
-            applyAllBatchErrors.current.push(msg.message);
-            applyAllRemaining.current--;
-            if (applyAllRemaining.current === 0) {
-              finishApplyBatch("All collections applied to Figma");
-            }
+          if (isBatchActive(applyBatch.current)) {
+            applyBatch.current = batchErrorReceived(applyBatch.current, msg.message, msg.context);
+            if (!isBatchActive(applyBatch.current)) finishApplyBatch();
             return;
           }
           setApplying(false);
@@ -365,6 +349,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
   async function handlePull() {
     try {
+      // A failure from a previous apply stays in diffError until something
+      // clears it — without this it reappeared on the next pull's diff screen.
+      setDiffError(undefined);
       setStatus({ kind: "loading", message: "Fetching tokens from GitHub…" });
 
       const files = await fetchTokenFiles({
@@ -410,39 +397,23 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     // exception here left "Calculating diff…" spinning forever with no
     // visible error at all.
     try {
-      const figmaMaps = mergeTypographyIntoFigmaMaps(
-        buildFigmaFlatMaps(figmaCollections, figmaVariables),
-        figmaTypographyStyles,
-        github.metadata,
-      );
-      const { diffs: result, filteredGithubCollections } = computePullDiff(
-        github.collections,
-        github.metadata,
-        figmaMaps,
-      );
+      const review = reviewPull(github, figmaCollections, figmaVariables, figmaTypographyStyles);
+      setStaleConfiguredModes(review.staleModes);
 
-      const staleModes = findStaleConfiguredModes(github.metadata, figmaCollections);
-      setStaleConfiguredModes(staleModes);
-
-      const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
-
-      // A stale configured mode name means its whole collection is invisible
-      // to computePullDiff (nothing on the GitHub side to compare against at
-      // all) — that can make totalChanges look like 0 even though a real
-      // collection isn't being synced. Open the diff view anyway so the
-      // warning banner above the (correctly empty) diff list actually has a
-      // chance to render, instead of this looking identical to genuinely
-      // being up to date.
-      if (totalChanges === 0 && staleModes.length === 0) {
+      // "Up to date" needs no changes AND no stale configured mode: a stale mode
+      // hides its whole collection from the diff (nothing on the other side to
+      // compare against), which looks identical to being up to date. Open the
+      // diff view anyway so the warning banner has a chance to render.
+      if (review.outcome === "up-to-date") {
         setStatus({ kind: "success", message: "Figma is already up to date with GitHub" });
       } else {
         setStatus({ kind: "idle" });
-        setDiffs(result.filter((d) => d.counts.total > 0));
+        setDiffs(review.diffs);
         setView("pull-diff");
       }
 
       // Clean Apply must also skip ignored collections — store the filtered list
-      pendingGitHubCollections.current = filteredGithubCollections;
+      pendingGitHubCollections.current = review.filteredGithubCollections;
       pendingGitHubMetadata.current = github.metadata;
     } catch (err) {
       setStatus({
@@ -455,49 +426,19 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   }
 
   /**
-   * Gathers typography styles (from marked "$type": "typography" groups —
-   * see shared/typography-styles.ts) across the given collections into one
-   * APPLY_TEXT_STYLES payload, along with a flat resolved-value fallback map
-   * for refs the plugin can't bind directly. Returns null when there's
-   * nothing to apply, so callers can skip sending the message entirely.
-   */
-  function collectTypographyPayload(
-    collections: Array<{ typographyStyles: TypographyStyle[]; tokens: Record<string, TokenValue> }>,
-  ): { styles: TypographyStyle[]; resolvedFallback: Record<string, string> } | null {
-    const styles = collections.flatMap((c) => c.typographyStyles);
-    if (styles.length === 0) return null;
-
-    const resolvedFallback: Record<string, string> = {};
-    for (const col of collections) {
-      for (const [path, token] of Object.entries(col.tokens)) {
-        resolvedFallback[path] = token.$value;
-      }
-    }
-
-    return { styles, resolvedFallback };
-  }
-
-  /**
    * Shared finalize step once every task in a batch apply has reported back
    * — whether via its own TOKENS_APPLIED/TEXT_STYLES_APPLIED, or because it
    * threw entirely and came back as a plain ERROR instead (see the message
-   * handler above). Both paths funnel through the same applyAllRemaining/
-   * applyAllBatchErrors bookkeeping, so there's exactly one place that
-   * decides the batch is done and what its final summary says.
+   * handler above). Every path funnels through applyBatch, so there's exactly
+   * one place that decides the batch is done and what its summary says.
    */
-  function finishApplyBatch(baseMessage: string) {
-    const allErrors = applyAllBatchErrors.current;
-    const errSuffix = allErrors.length
-      ? ` (${allErrors.length} error${allErrors.length > 1 ? "s" : ""}: ${allErrors[0]})`
-      : "";
+  function finishApplyBatch() {
+    const summary = summarizeBatch(applyBatch.current);
     setApplying(false);
     viewRef.current = "main";
     setView("main");
-    if (!allErrors.length) saveLastSync("pull");
-    setStatus({
-      kind: allErrors.length ? "error" : "success",
-      message: `${baseMessage}${errSuffix}`,
-    });
+    if (summary.kind === "success") saveLastSync("pull");
+    setStatus(summary);
   }
 
   /**
@@ -517,90 +458,36 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     return { names: metadata.figma.collections, sources: metadata.figma.collectionSources ?? {} };
   }
 
-  function handleApplyAll(selectedKeys: Set<string>) {
-    const pending = diffs.filter(
-      (d) => d.counts.total > 0 && selectedKeys.has(`${d.collectionName}/${d.modeName}`),
-    );
-    if (pending.length === 0) return;
-
-    const { names, sources } = requirePendingMetadata();
-
-    // A role backed by more than one physical Figma collection can now fan
-    // out into more than one APPLY_TOKENS payload — each routed to the real
-    // collection its tokens belong to (see buildApplyPayloads). With no
-    // provenance recorded for a role, every payload still targets
-    // diff.collectionName, identical to the single-message behavior before
-    // this existed.
-    const payloads = pending.flatMap((diff) => buildApplyPayloads(diff, names, sources));
-
-    // Typography styles ride along only for the collections actually being applied.
-    const relevantCollections = (pendingGitHubCollections.current ?? []).filter((c) =>
-      pending.some((d) => d.collectionName === c.collectionName && d.modeName === c.modeName),
-    );
-    const typographyPayload = syncTypeStyles ? collectTypographyPayload(relevantCollections) : null;
-
-    applyAllRemaining.current = payloads.length + (typographyPayload ? 1 : 0);
-    applyAllBatchErrors.current = [];
+  // Both apply paths build a plan of exactly what to send (shared/apply-batch.ts),
+  // start the batch tracker with the number of tasks to expect, then send in
+  // order — the plugin's serial queue runs them in that order, which is what
+  // makes typography (last) bind after the Variables it references exist.
+  function runApplyPlan(plan: { messages: Parameters<typeof send>[0][]; taskCount: number }) {
+    if (plan.taskCount === 0) return; // nothing to send — don't sit on "Applying…" forever
+    applyBatch.current = startApplyBatch(plan.taskCount);
     setApplying(true);
-    for (const payload of payloads) {
-      send({
-        type: "APPLY_TOKENS",
-        tokens: payload.tokens,
-        resolvedValues: payload.resolvedValues,
-        collectionId: payload.collectionId,
-        modeId: payload.modeId,
-        removedPaths: payload.removedPaths,
-      });
-    }
-    // Sent last so the plugin's serial apply queue runs it after every
-    // collection above — styles must bind after their Variables exist.
-    if (typographyPayload) {
-      send({
-        type: "APPLY_TEXT_STYLES",
-        styles: typographyPayload.styles,
-        resolvedFallback: typographyPayload.resolvedFallback,
-      });
-    }
+    for (const message of plan.messages) send(message);
+  }
+
+  function handleApplyAll(selectedKeys: Set<string>) {
+    const { names, sources } = requirePendingMetadata();
+    runApplyPlan(
+      planApply({
+        diffs,
+        selectedKeys,
+        pendingCollections: pendingGitHubCollections.current ?? [],
+        names,
+        sources,
+        syncTypeStyles,
+      }),
+    );
   }
 
   function handleCleanApplyAll() {
-    const allCollections = pendingGitHubCollections.current;
-    if (!allCollections) return;
-
+    const collections = pendingGitHubCollections.current;
+    if (!collections) return;
     const { names, sources } = requirePendingMetadata();
-
-    const typographyPayload = syncTypeStyles ? collectTypographyPayload(allCollections) : null;
-    const payloads = allCollections.flatMap((col) => buildCleanApplyPayloads(col, names, sources));
-    applyAllRemaining.current = payloads.length + (typographyPayload ? 1 : 0);
-    applyAllBatchErrors.current = [];
-    setApplying(true);
-    // Only send cleanApply=true for the first payload targeting each real
-    // Figma collection — keyed by the resolved collectionId, not the role's
-    // display name, since a role split across collections can now route
-    // more than one payload to distinct real collections that each need
-    // their own first-time wipe, and two different roles/modes can resolve
-    // to the *same* real collection and must not wipe it twice.
-    const cleanedCollections = new Set<string>();
-    for (const payload of payloads) {
-      const isFirst = !cleanedCollections.has(payload.collectionId);
-      if (isFirst) cleanedCollections.add(payload.collectionId);
-      send({
-        type: "APPLY_TOKENS",
-        tokens: payload.tokens,
-        resolvedValues: payload.resolvedValues,
-        collectionId: payload.collectionId,
-        modeId: payload.modeId,
-        cleanApply: isFirst,
-      });
-    }
-    // Sent last — same ordering guarantee as handleApplyAll.
-    if (typographyPayload) {
-      send({
-        type: "APPLY_TEXT_STYLES",
-        styles: typographyPayload.styles,
-        resolvedFallback: typographyPayload.resolvedFallback,
-      });
-    }
+    runApplyPlan(planCleanApply({ collections, names, sources, syncTypeStyles }));
   }
 
   // ---------------------------------------------------------------------------
@@ -650,98 +537,40 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
     // exception here left "Calculating diff…" spinning forever with no
     // visible error at all.
     try {
-      // GitHub side: parse existing token files
-      const githubParsed = parseRepository(githubFiles, project.tokensPath);
-      pendingParsed.current = githubParsed;
-
-      // Figma side: convert to same ResolvedCollection shape
-      const {
-        collections: figmaCollectionData,
-        unknownCollectionNames,
-        brokenAliasPaths: brokenPaths,
-      } = figmaToCollections(
+      const review = reviewPush({
+        githubFiles,
+        tokensPath: project.tokensPath,
         figmaCollections,
         figmaVariables,
-        githubParsed.metadata,
         figmaTypographyStyles,
-      );
-      setUnrecognizedCollections(unknownCollectionNames);
-      setBrokenAliasPaths(brokenPaths);
+        repoPaths: pendingRepoPaths.current ?? new Set(),
+      });
 
-      // Proactive check against the *full*, unfiltered Figma data — a
-      // structural naming collision can't be seen by figmaToCollections'
-      // flat map (string keys don't nest), only by the tree builder
-      // figmaToTokenFiles actually uses to write files. Surfacing it here,
-      // as soon as the diff loads, means the user doesn't have to select
-      // collections and click Create PR just to discover a Figma-side
-      // naming problem that handleCreatePR would refuse anyway.
-      setConflictPaths(
-        figmaToTokenFiles(
-          figmaCollections,
-          figmaVariables,
-          project.tokensPath,
-          githubParsed.metadata.figma.collections,
-          figmaTypographyStyles,
-        ).conflictPaths,
-      );
-
-      const staleModes = findStaleConfiguredModes(githubParsed.metadata, figmaCollections);
-      setStaleConfiguredModes(staleModes);
-
-      pendingFigmaCollections.current = figmaCollectionData;
+      pendingParsed.current = review.githubParsed;
+      pendingFigmaCollections.current = review.figmaCollectionData;
       // Keep raw data for writing complete token files to GitHub (not just diff entries)
       pendingFigmaRaw.current = {
         collections: figmaCollections,
         variables: figmaVariables,
         typographyStyles: figmaTypographyStyles,
       };
+      setUnrecognizedCollections(review.unknownCollectionNames);
+      setBrokenAliasPaths(review.brokenAliasPaths);
+      setConflictPaths(review.conflictPaths);
+      setStaleConfiguredModes(review.staleModes);
+      setOutputOnlyFiles(review.outputOnlyFiles);
 
-      // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
-      // GitHub, figmaValue = new state from Figma.
-      const result = computePushDiff(
-        figmaCollectionData,
-        githubParsed.collections,
-        githubParsed.metadata,
-      );
-
-      const totalChanges = result.reduce((n, d) => n + d.counts.total, 0);
-      const unknownSuffix = unknownCollectionNames.length
-        ? ` (skipped unrecognized collection${unknownCollectionNames.length > 1 ? "s" : ""}: ${unknownCollectionNames.join(", ")} — check metadata.json figma.collections)`
-        : "";
-
-      if (totalChanges === 0) {
-        // No token changes — but an enabled platform (Output Formats) might
-        // have never had its file generated yet, since that's a config
-        // change with nothing to do with any token's value. Check before
-        // reporting "up to date" so turning on a new format actually does
-        // something on the next push, not just on the next unrelated token edit.
-        const missing = findMissingOutputFiles(
-          figmaCollectionData,
-          githubParsed.metadata,
-          project.tokensPath,
-          pendingRepoPaths.current ?? new Set(),
-        );
-        // A stale configured mode name (see findStaleConfiguredModes) can
-        // make a whole collection invisible to computePushDiff — nothing on
-        // the GitHub side to compare against, so totalChanges looks like 0
-        // even though a real collection isn't being synced. Open the diff
-        // view anyway so the warning banner actually has a chance to render.
-        if (missing.length > 0 || staleModes.length > 0) {
-          setOutputOnlyFiles(missing.map((f) => f.path));
-          setStatus({ kind: "idle" });
-          setDiffs([]);
-          setView("push-diff");
-        } else {
-          setOutputOnlyFiles([]);
-          setStatus({
-            kind: "success",
-            message: `GitHub is already up to date with Figma${unknownSuffix}`,
-          });
-        }
+      // "Up to date" needs no token changes, no enabled-but-never-generated
+      // output file, AND no stale configured mode — the last two are reasons to
+      // open the screen even with an empty diff (see shared syncReview.ts).
+      if (review.outcome === "up-to-date") {
+        setStatus({
+          kind: "success",
+          message: `GitHub is already up to date with Figma${skippedCollectionsSuffix(review.unknownCollectionNames)}`,
+        });
       } else {
-        setOutputOnlyFiles([]);
         setStatus({ kind: "idle" });
-        setDiffs(result.filter((d) => d.counts.total > 0));
+        setDiffs(review.diffs);
         setView("push-diff");
       }
     } catch (err) {
