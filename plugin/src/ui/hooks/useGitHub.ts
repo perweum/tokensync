@@ -37,13 +37,33 @@ export class GitHubApiError extends Error {
   }
 }
 
+/** GitHub answered, but not with everything — a silently partial read is worse
+ * than a failed one, because a token file that goes missing from the read
+ * looks exactly like "this token was deleted in GitHub", and a pull's Apply
+ * then deletes the matching Figma variable. */
+export class GitHubReadIncompleteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GitHubReadIncompleteError";
+  }
+}
+
 // Minimal GitHub API response shapes
 interface TreeResponse {
+  /** Set when the repo is too big for one recursive listing — the `tree`
+   * array is then an arbitrary subset, not the whole repo. */
+  truncated?: boolean;
   tree: Array<{ type: string; path: string }>;
 }
 interface ContentsResponse {
   content: string;
+  /** "base64" for ordinary files; "none" (with an empty `content`) over 1 MB. */
+  encoding?: string;
   sha: string;
+}
+interface BlobReadResponse {
+  content: string;
+  encoding?: string;
 }
 interface RefResponse {
   object: { sha: string };
@@ -93,13 +113,25 @@ export async function createBranch(
   return newBranchName;
 }
 
-export async function fetchTokenFiles(config: GitHubConfig): Promise<GitHubFile[]> {
+/** The repo's full recursive tree at `config.branch`, or a thrown
+ * GitHubReadIncompleteError if GitHub could only list part of it. */
+async function fetchTree(config: GitHubConfig): Promise<TreeResponse["tree"]> {
   const tree = await apiGet<TreeResponse>(
     `repos/${config.repo}/git/trees/${encodeURIComponent(config.branch)}?recursive=1`,
     config.pat,
   );
+  if (tree.truncated) {
+    throw new GitHubReadIncompleteError(
+      "This repository is too large for GitHub to list in one response, so Token Spark can't be sure it's seeing every token file. It stopped rather than risk deleting variables that do exist in GitHub.",
+    );
+  }
+  return tree.tree;
+}
 
-  const jsonPaths = tree.tree
+export async function fetchTokenFiles(config: GitHubConfig): Promise<GitHubFile[]> {
+  const tree = await fetchTree(config);
+
+  const jsonPaths = tree
     .filter(
       (item) =>
         item.type === "blob" &&
@@ -120,19 +152,35 @@ export async function fetchTokenFiles(config: GitHubConfig): Promise<GitHubFile[
  * file has never been generated" instead of reporting nothing to do.
  */
 export async function fetchRepoPaths(config: GitHubConfig): Promise<Set<string>> {
-  const tree = await apiGet<TreeResponse>(
-    `repos/${config.repo}/git/trees/${encodeURIComponent(config.branch)}?recursive=1`,
-    config.pat,
-  );
-  return new Set(tree.tree.filter((item) => item.type === "blob").map((item) => item.path));
+  const tree = await fetchTree(config);
+  return new Set(tree.filter((item) => item.type === "blob").map((item) => item.path));
 }
 
 async function fetchFile(path: string, config: GitHubConfig): Promise<GitHubFile> {
+  // Encode each segment — a `#`, `?` or `%` in a file name would otherwise be
+  // read as URL syntax and fail the whole pull.
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
   const data = await apiGet<ContentsResponse>(
-    `repos/${config.repo}/contents/${path}?ref=${encodeURIComponent(config.branch)}`,
+    `repos/${config.repo}/contents/${encodedPath}?ref=${encodeURIComponent(config.branch)}`,
     config.pat,
   );
-  const content = decodeBase64Utf8(data.content.replace(/\n/g, ""));
+  let base64: string | null = data.encoding === "base64" ? data.content : null;
+  if (base64 === null) {
+    // Over 1 MB the Contents API returns encoding "none" and an empty
+    // `content`, which used to decode to "" and parse as "no such file".
+    // The blob endpoint has the real bytes.
+    const blob = await apiGet<BlobReadResponse>(
+      `repos/${config.repo}/git/blobs/${data.sha}`,
+      config.pat,
+    );
+    if (blob.encoding !== "base64") {
+      throw new GitHubReadIncompleteError(
+        `Couldn't read ${path} from GitHub — its content came back empty. It stopped rather than treat the file as missing.`,
+      );
+    }
+    base64 = blob.content;
+  }
+  const content = decodeBase64Utf8(base64.replace(/\n/g, ""));
   return { path, content, sha: data.sha };
 }
 

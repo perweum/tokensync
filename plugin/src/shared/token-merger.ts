@@ -195,6 +195,11 @@ export interface ResolvedCollection {
 export interface ParsedRepository {
   metadata: Metadata;
   collections: ResolvedCollection[];
+  /** Paths (relative to tokensPath) of files that exist in the repo but could
+   * not be read as a JSON object — invalid JSON, or a top level that isn't an
+   * object. Their tokens are absent from `collections`, so a caller that
+   * treats "absent from GitHub" as "delete from Figma" must check this first. */
+  unreadableFiles: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -214,8 +219,14 @@ export interface ParsedRepository {
 export function parseRepository(files: GitHubFile[], tokensPath: string): ParsedRepository {
   const stripped = stripTokensPath(files, tokensPath);
 
+  const unreadableFiles: string[] = [];
   const metadata = parseMetadata(stripped);
-  const layers = buildLayers(stripped);
+  // parseMetadata quietly falls back to defaults on bad JSON; surface it too,
+  // or a broken metadata.json silently swaps the whole real config for defaults.
+  const rawMetadata = stripped.get("metadata.json");
+  if (rawMetadata !== undefined && !isJsonObject(rawMetadata))
+    unreadableFiles.push("metadata.json");
+  const layers = buildLayers(stripped, unreadableFiles);
 
   // Several physical Figma collections can back one role (see CollectionNames);
   // the GitHub side has no way to know which one a given token file belongs to,
@@ -392,7 +403,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     });
   }
 
-  return { metadata, collections };
+  return { metadata, collections, unreadableFiles };
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +424,18 @@ interface Layers {
   sizes: Record<string, TokenTree>;
 }
 
-function buildLayers(files: Map<string, string>): Layers {
+/** True when `text` parses as a JSON object (not null, an array, or a scalar). */
+function isJsonObject(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
+
+/** Pushes the path of every file that couldn't be read into `unreadable`. */
+function buildLayers(files: Map<string, string>, unreadable: string[]): Layers {
   const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {}, sizes: {} };
 
   for (const [path, content] of files) {
@@ -426,11 +448,13 @@ function buildLayers(files: Map<string, string>): Layers {
       // no tokens and would crash the tree merges below.
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         console.warn(`[TokenSpark] Skipping ${path}: top level is not a JSON object`);
+        unreadable.push(path);
         continue;
       }
       tree = coerceScalarValues(parsed as TokenTree);
     } catch {
       console.warn(`[TokenSpark] Failed to parse ${path}`);
+      unreadable.push(path);
       continue;
     }
 
