@@ -691,6 +691,44 @@ describe("parseRepository — Global collection falls back to a real name when n
   });
 });
 
+describe("parseRepository — default theme is the first configured name that actually exists", () => {
+  // Regression: the Figma side (figmaToCollections) and the CSS generator pick
+  // the default theme as the first metadata.themes entry that matches a real
+  // theme, falling back to the first theme found. parseRepository only ever
+  // tried metadata.themes[0] — when that matched no file it resolved against
+  // an empty tree, so a Global ref into a theme-scoped group stayed literal
+  // on this side only, and the two sides of every diff disagreed.
+  it("resolves against the first configured theme that exists when themes[0] matches none", () => {
+    const files = [
+      file("tokens/metadata.json", {
+        version: "1.0.0",
+        themes: ["nonexistent", "second"],
+        colorSchemes: ["light", "dark"],
+      }),
+      file("tokens/primitives/fontFamily.json", {
+        fontFamily: {
+          a: { $type: "fontFamily", $value: "Font A" },
+          b: { $type: "fontFamily", $value: "Font B" },
+        },
+      }),
+      file("tokens/semantic/themes/first.json", {
+        "font-family": { display: { $type: "fontFamily", $value: "{fontFamily.a}" } },
+      }),
+      file("tokens/semantic/themes/second.json", {
+        "font-family": { display: { $type: "fontFamily", $value: "{fontFamily.b}" } },
+      }),
+      file("tokens/semantic/global/typography.json", {
+        typography: {
+          banner: { fontFamily: { $type: "fontFamily", $value: "{font-family.display}" } },
+        },
+      }),
+    ];
+    const { collections } = parseRepository(files, tokensPath);
+    const global = collections.find((c) => c.collectionName === "Global")!;
+    expect(global.tokens["typography.banner.fontFamily"].$value).toBe("Font B");
+  });
+});
+
 describe("parseRepository — every role falls back to a real collection name when unmapped", () => {
   // Same class of bug as the Global case above, for the other three roles:
   // coerceToList deliberately keeps an explicit `[]` ("intentionally

@@ -29,7 +29,8 @@ import {
   resolveAllReferences,
   isTokenValue,
   filterByPaths,
-  slugifyModeName,
+  pickDefaultMode,
+  sameMode,
 } from "./token-format";
 import { extractTypographyStyles } from "./typography-styles";
 import type { TypographyStyle } from "./typography-styles";
@@ -300,11 +301,8 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
       ? primitivesTree
       : deepMergeTokenTrees(
           primitivesTree,
-          layers.sizes[
-            metadata.sizes
-              .map((name) => findCaseInsensitive(sizeModeNames, name))
-              .find((name): name is string => name !== undefined) ?? sizeModeNames[0]
-          ],
+          // sizeModeNames is non-empty on this branch, so a default always exists.
+          layers.sizes[pickDefaultMode(metadata.sizes, sizeModeNames, (n) => n)!],
         );
 
   // Resolved-display context for anything downstream of Theme — e.g. a
@@ -314,11 +312,12 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   // theme mirrors exactly what Semantic already did below before this moved
   // up: resolved output shows one theme's choice for diff/display/CSS
   // purposes; rawTokens (used for Figma alias creation) never include this.
-  const firstThemeName = findCaseInsensitive(
-    Object.keys(layers.themes),
-    metadata.themes[0] ?? "default",
-  );
-  const defaultThemeTree = firstThemeName ? layers.themes[firstThemeName] : {};
+  // Same selection the Figma side (figmaToCollections) and the CSS generator
+  // use: first configured name that exists, else the first theme found. This
+  // used to try only metadata.themes[0] and resolve against an empty tree when
+  // it didn't match a file, while every other side fell back to a real theme.
+  const defaultThemeName = pickDefaultMode(metadata.themes, Object.keys(layers.themes), (n) => n);
+  const defaultThemeTree = defaultThemeName === undefined ? {} : layers.themes[defaultThemeName];
 
   // --- Global collection ---
   const globalTree = deepMergeTrees(Object.values(layers.global));
@@ -599,8 +598,7 @@ function capitalise(s: string): string {
  * is safe — for a name already free of spaces/slashes (every real-world case
  * before this one), slugifying is a no-op beyond lowercasing. */
 function findCaseInsensitive(candidates: string[], target: string): string | undefined {
-  const slug = slugifyModeName(target);
-  return candidates.find((c) => slugifyModeName(c) === slug);
+  return candidates.find((c) => sameMode(c, target));
 }
 
 // ---------------------------------------------------------------------------
@@ -661,9 +659,5 @@ export function selectDefaultPrimitives(
   metadata: Metadata,
 ): ResolvedCollection | undefined {
   const primitivesCols = findRoleCollections(collections, "primitives", metadata.figma.collections);
-  return (
-    metadata.sizes
-      .map((name) => primitivesCols.find((c) => c.modeName.toLowerCase() === name.toLowerCase()))
-      .find((c): c is ResolvedCollection => c !== undefined) ?? primitivesCols[0]
-  );
+  return pickDefaultMode(metadata.sizes, primitivesCols, (c) => c.modeName);
 }
