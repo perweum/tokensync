@@ -19,8 +19,12 @@ import { ViewHeader } from "../components/ViewHeader";
 import { IconCheck } from "../icons";
 import { color, font, radius, space } from "../theme";
 import type { DescribedError } from "../errors";
+import { collectRemovals } from "../../shared/sync-logic";
 import type { StaleConfiguredMode } from "../../shared/sync-logic";
 import { describeStaleModes } from "../staleModes";
+
+/** How many pending deletions the apply-confirmation lists by name. */
+const REMOVAL_PREVIEW = 5;
 
 interface Props {
   diffs: CollectionDiff[];
@@ -45,6 +49,7 @@ export function PullDiff({
   error,
 }: Props) {
   const [confirmClean, setConfirmClean] = useState(false);
+  const [confirmApply, setConfirmApply] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(diffs.map((d) => `${d.collectionName}/${d.modeName}`)),
   );
@@ -76,6 +81,10 @@ export function PullDiff({
   const selectedChanges = diffs
     .filter((d) => selectedKeys.has(`${d.collectionName}/${d.modeName}`))
     .reduce((n, d) => n + d.counts.total, 0);
+  // Apply deletes any Figma variable GitHub doesn't have; Clean Apply ignores
+  // the checkboxes, so it deletes across every diff.
+  const removals = collectRemovals(diffs, selectedKeys);
+  const allRemovals = collectRemovals(diffs);
 
   return (
     <div style={s.container}>
@@ -154,9 +163,21 @@ export function PullDiff({
             {confirmClean ? (
               <div style={s.confirmBox}>
                 <div style={s.confirmText}>
-                  This will delete and recreate <strong>all</strong> variables in sorted order —
-                  regardless of the checkboxes above — which can briefly break existing references
-                  to them elsewhere in Figma. Continue?
+                  This will delete and recreate <strong>all</strong> variables in every mapped
+                  collection, and recreate their modes — regardless of the checkboxes above. That
+                  can break references to them elsewhere in Figma, and resets any per-layer mode
+                  overrides.
+                  {allRemovals.length > 0 && (
+                    <>
+                      {" "}
+                      It will also permanently delete{" "}
+                      <strong>
+                        {allRemovals.length} variable{allRemovals.length !== 1 ? "s" : ""}
+                      </strong>{" "}
+                      that exist only in Figma, not in GitHub.
+                    </>
+                  )}{" "}
+                  This can't be undone. Continue?
                 </div>
                 <div style={s.confirmBtns}>
                   <Button
@@ -174,13 +195,52 @@ export function PullDiff({
                   </Button>
                 </div>
               </div>
+            ) : confirmApply && removals.length > 0 ? (
+              <div style={s.confirmBox}>
+                <div style={s.confirmText}>
+                  Applying will permanently delete{" "}
+                  <strong>
+                    {removals.length} variable{removals.length !== 1 ? "s" : ""}
+                  </strong>{" "}
+                  from Figma that no longer exist in GitHub:
+                  <ul style={s.removalList}>
+                    {removals.slice(0, REMOVAL_PREVIEW).map((r) => (
+                      <li key={`${r.collection}/${r.path}`}>
+                        {r.collection}: {r.path}
+                      </li>
+                    ))}
+                  </ul>
+                  {removals.length > REMOVAL_PREVIEW && (
+                    <div>…and {removals.length - REMOVAL_PREVIEW} more.</div>
+                  )}
+                  If GitHub is missing them by mistake, uncheck the collection above (or cancel) and
+                  fix the repository first.
+                </div>
+                <div style={s.confirmBtns}>
+                  <Button
+                    variant="dangerFilled"
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      setConfirmApply(false);
+                      onApply(selectedKeys);
+                    }}
+                  >
+                    Yes, apply and delete
+                  </Button>
+                  <Button variant="secondary" onClick={() => setConfirmApply(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             ) : (
               <>
                 <Button
                   variant="primary"
                   fullWidth
                   disabled={applying || selectedChanges === 0}
-                  onClick={() => onApply(selectedKeys)}
+                  onClick={() =>
+                    removals.length > 0 ? setConfirmApply(true) : onApply(selectedKeys)
+                  }
                 >
                   {applying
                     ? "Applying…"
@@ -264,4 +324,5 @@ const s: Record<string, React.CSSProperties> = {
   },
   confirmText: { fontSize: font.size.md, color: color.status.warning.text, lineHeight: 1.4 },
   confirmBtns: { display: "flex", gap: space.sm },
+  removalList: { margin: `${space.xs}px 0`, paddingLeft: space.lg, fontFamily: font.mono },
 };

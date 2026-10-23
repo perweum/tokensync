@@ -77,3 +77,17 @@ export function describePluginError(message: string, context?: string): Describe
   const label = context ? PLUGIN_CONTEXT_LABEL[context] : undefined;
   return label ? { message: `Something went wrong while ${label}.`, detail: message } : { message };
 }
+
+/**
+ * Pull found token files it couldn't read (see parseRepository's
+ * `unreadableFiles`). Refusing outright — rather than diffing without them —
+ * is the point: their tokens would look "removed in GitHub", and Apply would
+ * delete the matching Figma variables.
+ */
+export function describeUnreadableFiles(paths: string[]): DescribedError {
+  const count = paths.length;
+  return {
+    message: `${count} token file${count !== 1 ? "s" : ""} in GitHub couldn't be read, so pulling now could delete Figma variables that do exist in GitHub. Fix ${count !== 1 ? "them" : "it"} in the repository and pull again.`,
+    detail: paths.join(", "),
+  };
+}

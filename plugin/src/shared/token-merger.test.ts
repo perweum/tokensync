@@ -757,6 +757,40 @@ describe("parseRepository — hand-edited JSON that isn't strictly string-valued
   });
 });
 
+describe("parseRepository — reports files it could not read instead of silently dropping them", () => {
+  // A token file that fails to parse just disappears from the merge, so every
+  // token in it looks "removed in GitHub" to the pull diff — and Apply then
+  // deletes the matching Figma variables. The caller has to be able to tell.
+  const goodMeta = { version: "1.0.0", themes: ["default"], colorSchemes: ["light", "dark"] };
+
+  it("lists a token file with invalid JSON, and a file that isn't a JSON object", () => {
+    const files = [
+      file("tokens/metadata.json", goodMeta),
+      { path: "tokens/primitives/broken.json", content: "{ not json", sha: "x" },
+      { path: "tokens/primitives/null.json", content: "null", sha: "x" },
+      file("tokens/primitives/ok.json", { a: { $type: "number", $value: "1" } }),
+    ];
+    const { unreadableFiles } = parseRepository(files, tokensPath);
+    expect(unreadableFiles.sort()).toEqual(["primitives/broken.json", "primitives/null.json"]);
+  });
+
+  it("lists an unparseable metadata.json — otherwise defaults silently replace the real config", () => {
+    const files = [
+      { path: "tokens/metadata.json", content: "{ oops", sha: "x" },
+      file("tokens/primitives/ok.json", { a: { $type: "number", $value: "1" } }),
+    ];
+    expect(parseRepository(files, tokensPath).unreadableFiles).toEqual(["metadata.json"]);
+  });
+
+  it("is empty for a repo where every file parses (and for one with no metadata.json at all)", () => {
+    const ok = [file("tokens/primitives/ok.json", { a: { $type: "number", $value: "1" } })];
+    expect(parseRepository(ok, tokensPath).unreadableFiles).toEqual([]);
+    expect(
+      parseRepository([file("tokens/metadata.json", goodMeta), ...ok], tokensPath).unreadableFiles,
+    ).toEqual([]);
+  });
+});
+
 // ────────────────────────────────────────────────────────────────
 // findGlobalCollection / selectDefaultPrimitives — output-generator-only
 // helpers, additive and separate from collectionKind()/sync-logic.ts

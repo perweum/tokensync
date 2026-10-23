@@ -52,7 +52,7 @@ import { IconButton } from "../components/IconButton";
 import { StatusBanner } from "../components/StatusBanner";
 import { IconArrowRight, IconClose, IconHelp, IconPlus, IconRefresh } from "../icons";
 import { color, font, radius, space } from "../theme";
-import { describeGitHubError, describePluginError } from "../errors";
+import { describeGitHubError, describePluginError, describeUnreadableFiles } from "../errors";
 import type { DescribedError } from "../errors";
 
 type View = "main" | "pull-diff" | "push-diff" | "collection-mapping" | "output-formats" | "help";
@@ -376,6 +376,12 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
 
       setStatus({ kind: "loading", message: `Parsing ${files.length} token files…` });
       const parsed = parseRepository(files, project.tokensPath);
+      if (parsed.unreadableFiles.length > 0) {
+        // Never diff without them: their tokens would show as removed in
+        // GitHub, and Apply would delete the matching Figma variables.
+        setStatus({ kind: "error", ...describeUnreadableFiles(parsed.unreadableFiles) });
+        return;
+      }
       pendingGitHub.current = parsed;
 
       setStatus({ kind: "loading", message: "Reading Figma variables…" });

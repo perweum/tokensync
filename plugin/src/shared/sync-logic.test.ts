@@ -10,6 +10,7 @@ import {
   mergeTypographyIntoFigmaMaps,
   isModeAgnosticRole,
   findStaleConfiguredModes,
+  collectRemovals,
 } from "./sync-logic";
 import type { Metadata, ResolvedCollection, CollectionSources } from "./token-merger";
 import type { TypographyStyle } from "./typography-styles";
@@ -1090,5 +1091,32 @@ describe("buildCleanApplyPayloads", () => {
     const payloads = buildCleanApplyPayloads(c, names, sources);
 
     expect(payloads.map((p) => p.collectionId).sort()).toEqual(["primitives", "size"]);
+  });
+});
+
+describe("collectRemovals — what Apply would delete from Figma", () => {
+  const diffs = [
+    diff("Themes", "Alpha", [entry("brand.old", "removed"), entry("brand.kept", "changed")]),
+    // Same variable, second mode of the same collection: one Figma variable.
+    diff("Themes", "Beta", [entry("brand.old", "removed")]),
+    diff("Semantic", "light", [entry("text.gone", "removed"), entry("text.new", "added")]),
+  ];
+
+  it("lists each removed variable once, even when it appears under several modes", () => {
+    const removals = collectRemovals(diffs);
+    expect(removals).toEqual([
+      { collection: "Themes", path: "brand.old" },
+      { collection: "Semantic", path: "text.gone" },
+    ]);
+  });
+
+  it("only counts collections that are selected for apply", () => {
+    const removals = collectRemovals(diffs, new Set(["Semantic/light"]));
+    expect(removals).toEqual([{ collection: "Semantic", path: "text.gone" }]);
+  });
+
+  it("is empty when nothing selected has a removal", () => {
+    expect(collectRemovals(diffs, new Set())).toEqual([]);
+    expect(collectRemovals([diff("Themes", "Alpha", [entry("a", "added")])])).toEqual([]);
   });
 });

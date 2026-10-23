@@ -159,6 +159,35 @@ function PushDiffPreview() {
   );
 }
 
+// Variables that exist in Figma but not in GitHub — Apply would delete them, so
+// PullDiff asks for confirmation first. Two modes of one collection share a
+// removal, to show it's counted once.
+const removedEntry = (path: string) => ({
+  path,
+  type: "color",
+  status: "removed" as const,
+  githubValue: null,
+  githubRawValue: null,
+  figmaValue: "#0142fe",
+  figmaRawValue: "#0142fe",
+});
+const pullDiffsWithRemovals: CollectionDiff[] = [
+  {
+    collectionName: "Themes",
+    modeName: "Alpha",
+    counts: { added: 0, changed: 0, removed: 7, total: 7 },
+    entries: ["brand.a", "brand.b", "brand.c", "brand.d", "brand.e", "brand.f", "brand.g"].map(
+      removedEntry,
+    ),
+  },
+  {
+    collectionName: "Themes",
+    modeName: "Beta",
+    counts: { added: 0, changed: 0, removed: 1, total: 1 },
+    entries: [removedEntry("brand.a")],
+  },
+];
+
 function PullDiffPreview() {
   return (
     <div style={{ padding: 24, background: "#f0f0f0", minHeight: "100vh" }}>
@@ -169,6 +198,15 @@ function PullDiffPreview() {
         <Frame title="Default">
           <PullDiff
             diffs={pushDiffs}
+            onApply={() => {}}
+            onCleanApply={() => {}}
+            onBack={() => {}}
+            applying={false}
+          />
+        </Frame>
+        <Frame title="With pending deletions">
+          <PullDiff
+            diffs={pullDiffsWithRemovals}
             onApply={() => {}}
             onCleanApply={() => {}}
             onBack={() => {}}
