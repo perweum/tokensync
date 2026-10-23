@@ -12,6 +12,7 @@
 import { useState } from "react";
 import type { Project } from "../App";
 import { fetchBranches } from "../hooks/useGitHub";
+import { normalizeRepo, cleanToken } from "../githubInput";
 import { AddProjectWizard } from "./AddProjectWizard";
 import { Button } from "../components/Button";
 import { Field, TextInput } from "../components/Field";
@@ -87,16 +88,23 @@ function ProjectForm({
   }
 
   async function handleTestConnection() {
-    if (!pat.trim() || !repo.trim() || !repo.includes("/")) {
+    const cleanRepo = normalizeRepo(repo);
+    const token = cleanToken(pat);
+    if (!token || !cleanRepo) {
       setTestState({
         kind: "error",
-        message: "Enter a personal access token and a repository (org/repo-name) first.",
+        message: repo.trim()
+          ? "The repository should look like org/repo-name — for example your-org/design-tokens, not a web address with extra path."
+          : "Enter a personal access token and a repository (org/repo-name) first.",
       });
       return;
     }
+    // Show exactly what's being used, so a pasted URL visibly becomes org/repo.
+    setRepo(cleanRepo);
+    setPat(token);
     setTestState({ kind: "loading" });
     try {
-      const branches = await fetchBranches(pat.trim(), repo.trim());
+      const branches = await fetchBranches(token, cleanRepo);
       const branchName = branch.trim();
       const branchMissing = branchName && !branches.includes(branchName);
       setTestState({
@@ -117,14 +125,14 @@ function ProjectForm({
     if (!name.trim()) return setError("Project name is required");
     // GitHub connection is optional — see AddProjectWizard.tsx's matching
     // comment on handleSave. Only validate the format of what was typed.
-    if (repo.trim() && !repo.includes("/"))
-      return setError("Repository must be in format org/repo-name");
+    const cleanRepo = repo.trim() ? normalizeRepo(repo) : "";
+    if (cleanRepo === null) return setError("Repository must be in format org/repo-name");
 
     onSave({
       id: project?.id ?? generateId(),
       name: name.trim(),
-      pat: pat.trim(),
-      repo: repo.trim(),
+      pat: cleanToken(pat),
+      repo: cleanRepo,
       branch: branch.trim() || "main",
       tokensPath: tokensPath.trim() || "tokens/",
       figmaFileKey: figmaFileKey.trim(),

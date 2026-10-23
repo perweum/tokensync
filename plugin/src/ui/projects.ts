@@ -1,4 +1,5 @@
 import type { Project } from "./App";
+import { normalizeRepo, cleanToken } from "./githubInput";
 
 /**
  * Parse the persisted `tokenspark:projects` value.
@@ -18,8 +19,22 @@ export function parseStoredProjects(raw: string | null | undefined): Project[] |
     const wellFormed = parsed.every(
       (p) => typeof p === "object" && p !== null && typeof (p as Project).id === "string",
     );
-    return wellFormed ? (parsed as Project[]) : null;
+    return wellFormed ? (parsed as Project[]).map(repairProject) : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * A project saved before Repository/Token cleaning existed may hold a pasted
+ * URL or a token with an invisible character — neither can ever connect, and
+ * the user would have to notice and retype them. Fixed on load; a repo that
+ * can't be read as owner/name is left exactly as saved rather than guessed at.
+ */
+function repairProject(project: Project): Project {
+  return {
+    ...project,
+    repo: normalizeRepo(project.repo) ?? project.repo,
+    pat: cleanToken(project.pat ?? ""),
+  };
 }

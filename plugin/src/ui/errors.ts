@@ -18,9 +18,21 @@ export function describeGitHubError(err: unknown, action: GitHubAction): Describ
     return { message: githubMessage(err, action), detail: err.message };
   }
   if (err instanceof TypeError) {
-    // fetch() rejects with a TypeError for network failures/CORS, with no status code.
+    // fetch() rejects with a TypeError, with no status code, whenever the
+    // request never produced an HTTP response — a real network failure, but
+    // also a request the browser refused to build. Telling them apart matters:
+    // a bad token or repo value looks identical to the user ("it says I'm
+    // offline") but needs a completely different fix.
+    if (/ISO-8859-1|Invalid value/i.test(err.message)) {
+      return {
+        message:
+          "Your token contains a character GitHub's API can't accept — usually an invisible one picked up when copying. Paste it again, ideally straight from GitHub's token page.",
+        detail: err.message,
+      };
+    }
     return {
-      message: "Couldn't reach GitHub — check your internet connection and try again.",
+      message:
+        "Couldn't reach GitHub. Check your internet connection — and, if you're online, that the repository is written as owner/name (not a web address) and the token was pasted cleanly.",
       detail: err.message,
     };
   }
