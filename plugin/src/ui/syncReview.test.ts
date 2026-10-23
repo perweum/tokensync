@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { reviewPull, reviewPush, skippedCollectionsSuffix } from "./syncReview";
 import type { FigmaVariable, FigmaVariableCollection, GitHubFile } from "../shared/messages";
 import { parseRepository } from "../shared/token-merger";
+import { buildFilesFromDiffs } from "../shared/sync-logic";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Fixtures: a one-token design system — Primitives with dimension/0 = 4px.
@@ -133,6 +134,50 @@ describe("reviewPush", () => {
       { id: "c9", name: "Mystery", modes: [{ modeId: "z", name: "Value" }], variableIds: [] },
     ];
     expect(push({ figmaCollections: collections }).unknownCollectionNames).toEqual(["Mystery"]);
+  });
+});
+
+describe("a push's files include every enabled output format", () => {
+  // End to end through the same two calls Sync.tsx makes: reviewPush (what the
+  // diff screen shows) then buildFilesFromDiffs (what the PR actually writes).
+  // Guards the chain the Sync.tsx extraction moved: output files exist only if
+  // the metadata read from GitHub enables them, and the Figma-side collections
+  // reach the transformers.
+  const filesFor = (platforms: object | undefined) => {
+    const review = push({
+      figmaVariables: figmaVariables(8),
+      githubFiles: [
+        file("tokens/metadata.json", metadataJson(platforms ? { platforms } : {})),
+        primitivesFile,
+      ],
+    });
+    const selected = new Set(review.diffs.map((d) => `${d.collectionName}/${d.modeName}`));
+    const { files } = buildFilesFromDiffs(
+      selected,
+      { collections: figmaCollections(), variables: figmaVariables(8), typographyStyles: [] },
+      review.githubParsed.metadata,
+      "tokens",
+      review.figmaCollectionData,
+    );
+    return files.map((f) => f.path);
+  };
+
+  it("writes the token file plus a CSS and a JS file when both are enabled", () => {
+    const paths = filesFor({ css: { enabled: true }, js: { enabled: true } });
+    expect(paths).toContain("tokens/primitives/dimension.json");
+    expect(paths.some((p) => p.endsWith(".css"))).toBe(true);
+    expect(paths.some((p) => p.endsWith(".js"))).toBe(true);
+  });
+
+  it("writes only the enabled one", () => {
+    const paths = filesFor({ css: { enabled: true }, js: { enabled: false } });
+    expect(paths.some((p) => p.endsWith(".css"))).toBe(true);
+    expect(paths.some((p) => p.endsWith(".js"))).toBe(false);
+  });
+
+  it("writes no output file at all when metadata.json has no platforms — the opt-in default", () => {
+    const paths = filesFor(undefined);
+    expect(paths).toEqual(["tokens/primitives/dimension.json"]);
   });
 });
 
