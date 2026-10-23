@@ -45,32 +45,55 @@ export function isPureRef(value: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * DTCG allows a numeric or boolean `$value` (`"$value": 16`, `true`), and
- * repo JSON is hand-editable, so one can appear. Everything downstream —
- * diffing, the transformers, Figma apply — assumes a string `$value` (every
- * value Figma-side is already stringified), so a raw number crashed
- * `.trim()`/`.startsWith()`/`.match()` well past the parse step. Coerced
- * once, at the point repo JSON enters the system, rather than defended
- * against at each of those call sites. Returns a copy; leaves objects/arrays
- * (composite values) untouched — those aren't supported yet and are a
- * separate, larger gap (see the Token Studio adapter in DECISIONS.md).
+ * Normalises a parsed token tree at the point repo JSON enters the system.
+ *
+ * DTCG allows a numeric or boolean `$value` (`"$value": 16`, `true`), and repo
+ * JSON is hand-editable, so one can appear. Everything downstream — diffing,
+ * the transformers, Figma apply — assumes a string `$value` (every value
+ * Figma-side is already stringified), so a raw number crashed
+ * `.trim()`/`.startsWith()`/`.match()` well past the parse step. Those are
+ * coerced once, here, rather than defended against at each call site.
+ *
+ * A composite `$value` (an array or object — a Token Studio shadow, a whole
+ * typography object) or `null` has no string form at all. Such a token is
+ * *removed* from the returned tree and its dot path reported in
+ * `unsupportedPaths`, so the caller can refuse to proceed rather than either
+ * crash or quietly treat the token as absent.
+ *
+ * Returns a copy; never mutates its input.
  */
-export function coerceScalarValues(tree: TokenTree): TokenTree {
+export function normalizeTokenTree(
+  tree: TokenTree,
+  prefix = "",
+): { tree: TokenTree; unsupportedPaths: string[] } {
   const result: Record<string, unknown> = {};
+  const unsupportedPaths: string[] = [];
+
   for (const [key, node] of Object.entries(tree)) {
     if (key.startsWith("$")) {
       result[key] = node;
-    } else if (isTokenValue(node)) {
-      const v = node.$value as unknown;
-      result[key] =
-        typeof v === "number" || typeof v === "boolean" ? { ...node, $value: String(v) } : node;
+      continue;
+    }
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (isTokenValue(node)) {
+      const value = node.$value as unknown;
+      if (typeof value === "string") {
+        result[key] = node;
+      } else if (typeof value === "number" || typeof value === "boolean") {
+        result[key] = { ...node, $value: String(value) };
+      } else {
+        unsupportedPaths.push(path);
+      }
     } else if (isTokenTree(node)) {
-      result[key] = coerceScalarValues(node);
+      const sub = normalizeTokenTree(node, path);
+      result[key] = sub.tree;
+      unsupportedPaths.push(...sub.unsupportedPaths);
     } else {
       result[key] = node;
     }
   }
-  return result as TokenTree;
+
+  return { tree: result as TokenTree, unsupportedPaths };
 }
 
 /**

@@ -795,6 +795,30 @@ describe("parseRepository — hand-edited JSON that isn't strictly string-valued
   });
 });
 
+describe("parseRepository — reports tokens whose value type it can't sync", () => {
+  // A composite $value (a shadow array, a typography object) has no string form.
+  // Dropping it silently would make it look absent from GitHub; leaving it in
+  // crashed the diff. So it's removed from the collections AND reported.
+  it("removes them from the collections and lists file + path", () => {
+    const files = [
+      file("tokens/metadata.json", { version: "1.0.0", themes: ["default"] }),
+      file("tokens/primitives/misc.json", {
+        shadow: { card: { $type: "boxShadow", $value: [{ x: 0 }] } },
+        size: { a: { $type: "number", $value: "1" } },
+      }),
+    ];
+    const { collections, unsupportedTokens } = parseRepository(files, tokensPath);
+    expect(unsupportedTokens).toEqual([{ file: "primitives/misc.json", path: "shadow.card" }]);
+    const prim = collections.find((c) => c.collectionName === "Primitives")!;
+    expect(Object.keys(prim.tokens)).toEqual(["size.a"]);
+  });
+
+  it("is empty for an ordinary repo", () => {
+    const files = [file("tokens/primitives/ok.json", { a: { $type: "number", $value: "1" } })];
+    expect(parseRepository(files, tokensPath).unsupportedTokens).toEqual([]);
+  });
+});
+
 describe("parseRepository — reports files it could not read instead of silently dropping them", () => {
   // A token file that fails to parse just disappears from the merge, so every
   // token in it looks "removed in GitHub" to the pull diff — and Apply then

@@ -24,7 +24,7 @@
 
 import type { GitHubFile, TokenTree, TokenValue } from "./messages";
 import {
-  coerceScalarValues,
+  normalizeTokenTree,
   flattenTokens,
   resolveAllReferences,
   isTokenValue,
@@ -201,6 +201,11 @@ export interface ParsedRepository {
    * object. Their tokens are absent from `collections`, so a caller that
    * treats "absent from GitHub" as "delete from Figma" must check this first. */
   unreadableFiles: string[];
+  /** Tokens whose `$value` is composite (an array/object) or null — no string
+   * form exists for them, so they're removed from `collections` rather than
+   * left to crash the diff. Reported so a caller can refuse to act on a
+   * partial picture instead of treating them as absent from GitHub. */
+  unsupportedTokens: Array<{ file: string; path: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,13 +226,14 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   const stripped = stripTokensPath(files, tokensPath);
 
   const unreadableFiles: string[] = [];
+  const unsupportedTokens: Array<{ file: string; path: string }> = [];
   const metadata = parseMetadata(stripped);
   // parseMetadata quietly falls back to defaults on bad JSON; surface it too,
   // or a broken metadata.json silently swaps the whole real config for defaults.
   const rawMetadata = stripped.get("metadata.json");
   if (rawMetadata !== undefined && !isJsonObject(rawMetadata))
     unreadableFiles.push("metadata.json");
-  const layers = buildLayers(stripped, unreadableFiles);
+  const layers = buildLayers(stripped, unreadableFiles, unsupportedTokens);
 
   // Several physical Figma collections can back one role (see CollectionNames);
   // the GitHub side has no way to know which one a given token file belongs to,
@@ -402,7 +408,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     });
   }
 
-  return { metadata, collections, unreadableFiles };
+  return { metadata, collections, unreadableFiles, unsupportedTokens };
 }
 
 // ---------------------------------------------------------------------------
@@ -433,8 +439,13 @@ function isJsonObject(text: string): boolean {
   }
 }
 
-/** Pushes the path of every file that couldn't be read into `unreadable`. */
-function buildLayers(files: Map<string, string>, unreadable: string[]): Layers {
+/** Pushes the path of every file that couldn't be read into `unreadable`, and
+ * every token with an unsupported value type into `unsupported`. */
+function buildLayers(
+  files: Map<string, string>,
+  unreadable: string[],
+  unsupported: Array<{ file: string; path: string }>,
+): Layers {
   const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {}, sizes: {} };
 
   for (const [path, content] of files) {
@@ -450,7 +461,11 @@ function buildLayers(files: Map<string, string>, unreadable: string[]): Layers {
         unreadable.push(path);
         continue;
       }
-      tree = coerceScalarValues(parsed as TokenTree);
+      const normalized = normalizeTokenTree(parsed as TokenTree);
+      tree = normalized.tree;
+      for (const tokenPath of normalized.unsupportedPaths) {
+        unsupported.push({ file: path, path: tokenPath });
+      }
     } catch {
       console.warn(`[TokenSpark] Failed to parse ${path}`);
       unreadable.push(path);
