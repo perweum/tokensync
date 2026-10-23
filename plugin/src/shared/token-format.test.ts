@@ -12,6 +12,8 @@ import {
   filterByPaths,
   formatFigmaColor,
   slugifyModeName,
+  sameMode,
+  pickDefaultMode,
 } from "./token-format";
 import type { TokenTree } from "./messages";
 
@@ -389,5 +391,47 @@ describe("fromFigmaVarName", () => {
   it("roundtrips with toFigmaVarName", () => {
     const path = "color.base.brand.default";
     expect(fromFigmaVarName(toFigmaVarName(path))).toBe(path);
+  });
+});
+
+describe("sameMode", () => {
+  it("ignores case, and the space/slash/hyphen gap between a real mode name and its slug", () => {
+    expect(sameMode("Christmas", "christmas")).toBe(true);
+    // A real Figma mode name vs the legacy filename slug metadata.json may still hold.
+    expect(sameMode("Mode 1", "mode-1")).toBe(true);
+    expect(sameMode("Mode 1", "Mode-1")).toBe(true);
+    expect(sameMode("Brand/Dark", "brand-dark")).toBe(true);
+  });
+
+  it("still tells genuinely different modes apart", () => {
+    expect(sameMode("light", "dark")).toBe(false);
+    expect(sameMode("Mode 1", "Mode 2")).toBe(false);
+    expect(sameMode("", "light")).toBe(false);
+  });
+});
+
+describe("pickDefaultMode", () => {
+  const cols = [{ modeName: "Desktop" }, { modeName: "Mobile" }, { modeName: "Beta Two" }];
+  const nameOf = (c: { modeName: string }) => c.modeName;
+
+  it("config order decides the default, not candidate order", () => {
+    expect(pickDefaultMode(["mobile", "desktop"], cols, nameOf)).toBe(cols[1]);
+  });
+
+  it("skips configured names that match nothing and takes the next one that does", () => {
+    expect(pickDefaultMode(["nope", "desktop"], cols, nameOf)).toBe(cols[0]);
+  });
+
+  it("matches through the slug gap — a legacy slug in config still finds the real mode name", () => {
+    expect(pickDefaultMode(["beta-two"], cols, nameOf)).toBe(cols[2]);
+  });
+
+  it("falls back to the first candidate when nothing configured matches (or nothing is configured)", () => {
+    expect(pickDefaultMode(["nope"], cols, nameOf)).toBe(cols[0]);
+    expect(pickDefaultMode([], cols, nameOf)).toBe(cols[0]);
+  });
+
+  it("is undefined when there are no candidates at all", () => {
+    expect(pickDefaultMode(["light"], [], nameOf)).toBeUndefined();
   });
 });

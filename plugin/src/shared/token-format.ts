@@ -270,3 +270,45 @@ export function fromFigmaVarName(name: string): string {
 export function slugifyModeName(name: string): string {
   return name.toLowerCase().replace(/[\s/]+/g, "-");
 }
+
+/**
+ * The one definition of "these two names are the same mode". A mode name
+ * reaches the code in three spellings — the real Figma name ("Mode 1"),
+ * metadata.json's entry for it (a real name, or a legacy filename slug like
+ * "mode-1"), and the capitalised filename-derived form ("Mode-1") — and plain
+ * `.toLowerCase()` equality only bridges the first of those gaps. Comparing
+ * slugs bridges all of them, and is exactly how a mode's file is named on
+ * disk, so two names this treats as the same could not have coexisted there
+ * anyway.
+ *
+ * Only for *matching*. Output naming (CSS selectors, JS keys, Dart/Swift
+ * identifiers) is a separate contract with downstream code and is
+ * deliberately not routed through here.
+ */
+export function sameMode(a: string, b: string): boolean {
+  return slugifyModeName(a) === slugifyModeName(b);
+}
+
+/**
+ * The default among `candidates`: the first name in `configured` (config
+ * order — metadata.themes/sizes/colorSchemes) that matches a candidate, else
+ * the first candidate. Config order, not candidate order, decides — the
+ * candidates arrive in GitHub tree order or Figma's own mode order, neither
+ * of which is guaranteed to put the configured default first.
+ *
+ * Was independently re-implemented in figma-to-tokens.ts, token-merger.ts,
+ * css.ts and sync-logic.ts, with slightly different matching rules and (in
+ * parseRepository's theme lookup) no fallback at all — see DECISIONS.md's
+ * default-theme-selection entries for the bugs that drift caused.
+ */
+export function pickDefaultMode<T>(
+  configured: readonly string[],
+  candidates: readonly T[],
+  modeNameOf: (candidate: T) => string,
+): T | undefined {
+  for (const name of configured) {
+    const match = candidates.find((c) => sameMode(modeNameOf(c), name));
+    if (match !== undefined) return match;
+  }
+  return candidates[0];
+}

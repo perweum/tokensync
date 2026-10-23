@@ -8,6 +8,7 @@
 
 import type { ResolvedCollection, Metadata, PlatformConfig } from "../token-merger";
 import { findGlobalCollection, selectDefaultPrimitives } from "../token-merger";
+import { sameMode } from "../token-format";
 import { generateCSS } from "./css";
 import { generateJS, generateSchemeJS } from "./js";
 import { generateDart, generateSchemeDart } from "./dart";
@@ -52,7 +53,7 @@ export function runTransformers(
     const outputTemplate = cfg.output || defaultFilename;
     if (outputTemplate.includes("{colorScheme}")) {
       for (const scheme of metadata.colorSchemes) {
-        const schemeCol = semantic.find((c) => c.modeName.toLowerCase() === scheme.toLowerCase());
+        const schemeCol = semantic.find((c) => sameMode(c.modeName, scheme));
         if (!schemeCol) continue;
 
         const outPath = outputTemplate.replace("{colorScheme}", scheme.toLowerCase());

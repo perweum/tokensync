@@ -24,6 +24,7 @@ import {
   filterByPaths,
   formatFigmaColor,
   slugifyModeName,
+  pickDefaultMode,
 } from "./token-format";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -87,7 +88,7 @@ export function figmaToCollections(
   // — e.g. "main color" and "support color" both mapped to "themes", each contributing
   // a mode literally named "Christmas". Those must merge into *one* Christmas entry,
   // not become two separate ResolvedCollections that both render as [data-theme="christmas"]
-  // — hence keying themeModes/semanticModes/sizeModes by lowercased mode name instead of
+  // — hence keying themeModes/semanticModes/sizeModes by slugified mode name instead of
   // pushing every (collection, mode) pair as its own entry.
   let primitivesRaw: Record<string, TokenValue> = {};
   let primitivesModeName: string | undefined;
@@ -135,12 +136,7 @@ export function figmaToCollections(
   // axis exists. Config order (metadata.sizes) wins over whatever order Figma
   // happened to return modes in; falls back to the first size mode found.
   const defaultSizeModeRaw =
-    sizeModes.size === 0
-      ? {}
-      : (metadata.sizes
-          .map((name) => sizeModes.get(name.toLowerCase())?.raw)
-          .find((raw): raw is Record<string, TokenValue> => raw !== undefined) ??
-        sizeModes.values().next().value!.raw);
+    pickDefaultMode(metadata.sizes, [...sizeModes.values()], (m) => m.modeName)?.raw ?? {};
   const defaultPrimitivesRaw = { ...primitivesRaw, ...defaultSizeModeRaw };
 
   // The default theme's raw values — needed by both Global (a type style's
@@ -150,12 +146,7 @@ export function figmaToCollections(
   // Config order (metadata.themes) wins over whatever order Figma happened
   // to return modes in, same reasoning as defaultSizeModeRaw just above.
   const defaultThemeRaw =
-    themeModes.size === 0
-      ? {}
-      : (metadata.themes
-          .map((name) => themeModes.get(name.toLowerCase())?.raw)
-          .find((raw): raw is Record<string, TokenValue> => raw !== undefined) ??
-        themeModes.values().next().value!.raw);
+    pickDefaultMode(metadata.themes, [...themeModes.values()], (m) => m.modeName)?.raw ?? {};
 
   // Pass 2: resolve. Each layer's context is exactly what it's allowed to reference.
   const result: ResolvedCollection[] = [];
@@ -255,8 +246,8 @@ export function figmaToCollections(
   return { collections: result, unknownCollectionNames, brokenAliasPaths };
 }
 
-/** Merge a mode's raw tokens into an existing entry with the same (lowercased)
- * name, or start a new one — so two physical collections that both contribute
+/** Merge a mode's raw tokens into an existing entry with the same mode (see
+ * sameMode — case and space/slash/hyphen insensitive), or start a new one — so two physical collections that both contribute
  * a mode called "Christmas" produce one merged Christmas entry, not two. The
  * first-seen exact casing of the name wins for display. */
 function mergeIntoMode(
@@ -264,7 +255,7 @@ function mergeIntoMode(
   modeName: string,
   raw: Record<string, TokenValue>,
 ): void {
-  const key = modeName.toLowerCase();
+  const key = slugifyModeName(modeName);
   const existing = modes.get(key);
   if (existing) {
     existing.raw = { ...existing.raw, ...raw };
@@ -368,7 +359,7 @@ function mergeIntoModeEntries(
   modeName: string,
   entries: VarEntry[],
 ): void {
-  const key = modeName.toLowerCase();
+  const key = slugifyModeName(modeName);
   const existing = modes.get(key);
   if (existing) {
     existing.entries = existing.entries.concat(entries);

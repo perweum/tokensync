@@ -22,7 +22,7 @@ import type { CollectionKind } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
 import type { TransformedFile } from "./transformer";
 import type { TypographyStyle } from "./typography-styles";
-import { slugifyModeName } from "./token-format";
+import { slugifyModeName, sameMode, pickDefaultMode } from "./token-format";
 
 /** A flat resolved value map for one collection/mode from Figma — same shape
  * the UI's useFigmaValues.ts (`buildFigmaFlatMaps`) produces. Duplicated as a
@@ -182,12 +182,12 @@ function figmaValuesFor(
     const mKind = collectionKind(m.collectionName, names);
     if (role === "primitives") {
       if (mKind === "primitives") return isModeAgnosticRole("primitives");
-      if (mKind === "sizes") return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
+      if (mKind === "sizes") return sameMode(m.modeName, githubCol.modeName);
       return false;
     }
     if (mKind !== role) return false;
     if (isModeAgnosticRole(role)) return true;
-    return m.modeName.toLowerCase() === githubCol.modeName.toLowerCase();
+    return sameMode(m.modeName, githubCol.modeName);
   });
   return {
     values: Object.assign({}, ...matching.map((m) => m.values)),
@@ -241,10 +241,7 @@ export function mergeTypographyIntoFigmaMaps(
   for (const kind of ["sizes", "themes"] as const) {
     const configOrder = kind === "sizes" ? metadata.sizes : metadata.themes;
     const modeMaps = figmaMaps.filter((m) => collectionKind(m.collectionName, names) === kind);
-    const defaultMap =
-      configOrder
-        .map((name) => modeMaps.find((m) => m.modeName.toLowerCase() === name.toLowerCase()))
-        .find((m): m is FigmaFlatMap => m !== undefined) ?? modeMaps[0];
+    const defaultMap = pickDefaultMode(configOrder, modeMaps, (m) => m.modeName);
     if (defaultMap) Object.assign(allResolved, defaultMap.values);
   }
 
@@ -328,7 +325,7 @@ export function computePushDiff(
     const githubCol = githubCollections.find(
       (c) =>
         c.collectionName === figmaCol.collectionName &&
-        (modeAgnostic || c.modeName.toLowerCase() === figmaCol.modeName.toLowerCase()),
+        (modeAgnostic || sameMode(c.modeName, figmaCol.modeName)),
     );
     return buildCollectionDiff(
       figmaCol.collectionName,
@@ -482,20 +479,14 @@ function isModeSelected(
     const primitivesName = names.primitives[0] ?? ROLE_DEFAULT_NAME.primitives;
     return selectedList.some((key) => {
       const slash = key.indexOf("/");
-      return (
-        key.slice(0, slash) === primitivesName &&
-        key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase()
-      );
+      return key.slice(0, slash) === primitivesName && sameMode(key.slice(slash + 1), mode.name);
     });
   }
 
   const syntheticName = names[kind][0] ?? ROLE_DEFAULT_NAME[kind];
   return selectedList.some((key) => {
     const slash = key.indexOf("/");
-    return (
-      key.slice(0, slash) === syntheticName &&
-      key.slice(slash + 1).toLowerCase() === mode.name.toLowerCase()
-    );
+    return key.slice(0, slash) === syntheticName && sameMode(key.slice(slash + 1), mode.name);
   });
 }
 
