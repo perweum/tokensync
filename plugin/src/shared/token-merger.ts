@@ -24,6 +24,7 @@
 
 import type { GitHubFile, TokenTree, TokenValue } from "./messages";
 import {
+  coerceScalarValues,
   flattenTokens,
   resolveAllReferences,
   isTokenValue,
@@ -240,7 +241,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     const primitivesFlatRaw = flattenTokens(primitivesTree);
     const primitivesFlat = resolveAllReferences(primitivesFlatRaw);
     collections.push({
-      collectionName: names.primitives[0],
+      collectionName: names.primitives[0] ?? ROLE_FALLBACK_NAME.primitives,
       modeName: "Value",
       tokens: primitivesFlat,
       rawTokens: primitivesFlatRaw,
@@ -263,7 +264,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
       const fullFlatRaw = flattenTokens(fullTree);
       const fullFlatResolved = resolveAllReferences(fullFlatRaw);
       collections.push({
-        collectionName: names.primitives[0],
+        collectionName: names.primitives[0] ?? ROLE_FALLBACK_NAME.primitives,
         // Prefer metadata.sizes' own real name (e.g. "Mode 1") over the
         // filename-derived slug ("mode-1") — capitalising the slug directly
         // loses any space/slash the real Figma mode name had ("Mode-1", not
@@ -329,7 +330,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     // `collectionId: diff.collectionName` — reached
     // `figma.variables.createVariableCollection(undefined)` on apply, not
     // just a blank diff tab label like the equivalent push-side bug.
-    collectionName: names.global[0] ?? "Global",
+    collectionName: names.global[0] ?? ROLE_FALLBACK_NAME.global,
     modeName: "Value",
     tokens: filterByPaths(globalResolved, globalPaths),
     rawTokens: filterByPaths(globalRawUnresolved, globalPaths),
@@ -344,7 +345,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     const fullFlatResolved = resolveAllReferences(fullFlatUnresolved);
     const themePaths = Object.keys(flattenTokens(themeTree));
     collections.push({
-      collectionName: names.themes[0],
+      collectionName: names.themes[0] ?? ROLE_FALLBACK_NAME.themes,
       // Same reasoning as the Size axis above — themeName here is always
       // the filename-derived slug (this loop iterates layers.themes'
       // keys directly, not metadata.themes), so recover metadata.themes'
@@ -379,7 +380,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     );
 
     collections.push({
-      collectionName: names.semantic[0],
+      collectionName: names.semantic[0] ?? ROLE_FALLBACK_NAME.semantic,
       // `scheme` is already metadata.colorSchemes' own real name (e.g.
       // "Mode 1") — no need to reconstruct anything from `schemeKey`,
       // which is only the filename-derived slug used to find the file.
@@ -420,7 +421,14 @@ function buildLayers(files: Map<string, string>): Layers {
 
     let tree: TokenTree;
     try {
-      tree = JSON.parse(content) as TokenTree;
+      const parsed: unknown = JSON.parse(content);
+      // Valid JSON that isn't an object (`null`, an array, a bare number) has
+      // no tokens and would crash the tree merges below.
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        console.warn(`[TokenSpark] Skipping ${path}: top level is not a JSON object`);
+        continue;
+      }
+      tree = coerceScalarValues(parsed as TokenTree);
     } catch {
       console.warn(`[TokenSpark] Failed to parse ${path}`);
       continue;
@@ -584,9 +592,11 @@ function findCaseInsensitive(candidates: string[], target: string): string | und
  * inline when nothing is mapped to a role (e.g. `names.global[0] ?? "Global"`)
  * — a role with an empty `names.role` list still gets a real collection
  * under this literal name. */
-const ROLE_FALLBACK_NAME: Record<"primitives" | "global", string> = {
+const ROLE_FALLBACK_NAME: Record<"primitives" | "global" | "themes" | "semantic", string> = {
   primitives: "Primitives",
   global: "Global",
+  themes: "Themes",
+  semantic: "Semantic",
 };
 
 /** All collections backing a single-or-multi-mode role (primitives or

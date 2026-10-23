@@ -13,6 +13,7 @@ import type { PluginMessage } from "../shared/messages";
 import { Button } from "./components/Button";
 import { IconPlus } from "./icons";
 import { color, font, radius, space } from "./theme";
+import { parseStoredProjects } from "./projects";
 
 export interface Project {
   id: string;
@@ -59,11 +60,20 @@ export default function App() {
     useCallback((msg: PluginMessage) => {
       if (msg.type === "STORAGE_LOADED") {
         if (msg.key === PROJECTS_KEY) {
-          try {
-            const parsed = JSON.parse(msg.value ?? "[]") as Project[];
-            setProjects(parsed);
-          } catch {
+          const projects = parseStoredProjects(msg.value);
+          if (projects === null) {
+            // Unreadable, not empty — falling back to [] would let the persist
+            // effect below overwrite the stored value with "[]", destroying
+            // every saved project and PAT. Keep the raw text under a backup
+            // key first so it's still recoverable.
+            send({
+              type: "SAVE_STORAGE",
+              key: `${PROJECTS_KEY}:corrupt-backup`,
+              value: msg.value ?? "",
+            });
             setProjects([]);
+          } else {
+            setProjects(projects);
           }
         }
         if (msg.key === ACTIVE_KEY) {
@@ -172,6 +182,11 @@ export default function App() {
           onAdd={() => setSetupMode("add")}
         />
         <Sync
+          // Remount per project: Sync's message handler closes over the
+          // project's storage keys once (useCallback deps `[]`), so without a
+          // new instance, project B's LOAD_STORAGE replies were ignored and B
+          // pulled/pushed against A's branch.
+          key={activeProject.id}
           project={activeProject}
           onEditProject={() => setSetupMode("edit")}
           onDeleteProject={() => handleDeleteProject(activeProject.id)}

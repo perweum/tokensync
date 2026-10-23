@@ -1091,4 +1091,40 @@ describe("figmaToTokenFiles — FLOAT variable type inference", () => {
     expect(tree.dimension["0"].$type).toBe("dimension");
     expect(tree.dimension["0"].$value).toBe("4px");
   });
+
+  it('keeps a FLOAT "lineHeight/*" variable a px dimension — pinned to real Spor data', () => {
+    // Deliberately pins current behavior, not an ideal one. inferType's
+    // /height/i keyword matches "lineHeight" before its (unreachable)
+    // lineHeight -> "number" branch is ever tested, and a code review flagged
+    // that as a bug. Checked against the real Spor repo instead: its
+    // lineHeight.* variables are pixel values (54px, 36px, 24px, …) typed
+    // `dimension` — so "dimension" is right for real data, and "fixing" the
+    // order would silently turn every one of them into a bare "54" and break
+    // the generated CSS. A unitless-multiplier line-height variable (1.5) is
+    // the case this would get wrong, but no real project has one yet.
+    const collections: FigmaVariableCollection[] = [
+      {
+        id: "c1",
+        name: "Primitives",
+        modes: [{ modeId: "m1", name: "Value" }],
+        variableIds: ["v1"],
+      },
+    ];
+    const variables: FigmaVariable[] = [
+      {
+        id: "v1",
+        name: "lineHeight/2xl",
+        resolvedType: "FLOAT",
+        valuesByMode: { m1: 54 },
+        collectionId: "c1",
+        collectionName: "Primitives",
+      },
+    ];
+
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names);
+    const tree = JSON.parse(files[0].content);
+
+    expect(tree.lineHeight["2xl"].$type).toBe("dimension");
+    expect(tree.lineHeight["2xl"].$value).toBe("54px");
+  });
 });

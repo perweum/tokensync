@@ -45,6 +45,35 @@ export function isPureRef(value: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
+ * DTCG allows a numeric or boolean `$value` (`"$value": 16`, `true`), and
+ * repo JSON is hand-editable, so one can appear. Everything downstream —
+ * diffing, the transformers, Figma apply — assumes a string `$value` (every
+ * value Figma-side is already stringified), so a raw number crashed
+ * `.trim()`/`.startsWith()`/`.match()` well past the parse step. Coerced
+ * once, at the point repo JSON enters the system, rather than defended
+ * against at each of those call sites. Returns a copy; leaves objects/arrays
+ * (composite values) untouched — those aren't supported yet and are a
+ * separate, larger gap (see the Token Studio adapter in DECISIONS.md).
+ */
+export function coerceScalarValues(tree: TokenTree): TokenTree {
+  const result: Record<string, unknown> = {};
+  for (const [key, node] of Object.entries(tree)) {
+    if (key.startsWith("$")) {
+      result[key] = node;
+    } else if (isTokenValue(node)) {
+      const v = node.$value as unknown;
+      result[key] =
+        typeof v === "number" || typeof v === "boolean" ? { ...node, $value: String(v) } : node;
+    } else if (isTokenTree(node)) {
+      result[key] = coerceScalarValues(node);
+    } else {
+      result[key] = node;
+    }
+  }
+  return result as TokenTree;
+}
+
+/**
  * Flattens a nested TokenTree into dot-notation entries.
  *
  * { color: { brand: { 600: { $type: 'color', $value: '#1a52d8' } } } }
@@ -102,7 +131,11 @@ export function resolveReference(
   // UI with an unhandled TypeError and no visible error (see handlePushCollectionsLoaded's
   // try/catch in Sync.tsx). Same "missing target" fallback as an unresolvable path.
   if (typeof ref !== "string") return null;
-  const match = ref.match(/^\{(.+)\}$/);
+  // `[^{}]+`, not `.+` — greedy `.+` matches straight through a `}`, so a
+  // composite like "{a} solid {b}" would count as ONE ref whose path is
+  // "a} solid {b" and never reach the embedded-ref branch below. Same
+  // definition as isPureRef above.
+  const match = ref.match(/^\{([^{}]+)\}$/);
   if (match) {
     // Pure reference — look up and recurse
     const path = match[1];
