@@ -22,6 +22,7 @@
 import { useState } from "react";
 import type { Project } from "../App";
 import { fetchBranches } from "../hooks/useGitHub";
+import { normalizeRepo, cleanToken } from "../githubInput";
 import { generateId } from "./Setup";
 import { AboutTokenSpark, BestPracticesTips } from "./Help";
 import { NameArt, ConnectArt, DefaultsArt } from "../onboardingArt";
@@ -63,16 +64,22 @@ export function AddProjectWizard({ onSave, onCancel, onSkipToFlatForm }: Props) 
   const [testState, setTestState] = useState<TestState>({ kind: "idle" });
   const [reviewError, setReviewError] = useState("");
 
-  const repoValid = repo.trim().includes("/") && repo.trim().length > 2;
+  const cleanRepo = normalizeRepo(repo);
+  const repoValid = cleanRepo !== null;
 
   function resetTestState() {
     if (testState.kind !== "idle") setTestState({ kind: "idle" });
   }
 
   async function handleTestConnection() {
+    if (cleanRepo === null) return;
+    const token = cleanToken(pat);
+    // Show exactly what's being used, so a pasted URL visibly becomes org/repo.
+    setRepo(cleanRepo);
+    setPat(token);
     setTestState({ kind: "loading" });
     try {
-      const branches = await fetchBranches(pat.trim(), repo.trim());
+      const branches = await fetchBranches(token, cleanRepo);
       setTestState({
         kind: "success",
         message: `Connected — found ${branches.length} branch${branches.length !== 1 ? "es" : ""}.`,
@@ -94,8 +101,8 @@ export function AddProjectWizard({ onSave, onCancel, onSkipToFlatForm }: Props) 
     onSave({
       id: generateId(),
       name: name.trim(),
-      pat: pat.trim(),
-      repo: repo.trim(),
+      pat: cleanToken(pat),
+      repo: cleanRepo ?? "",
       branch: branch.trim() || "main",
       tokensPath: tokensPath.trim() || "tokens/",
       figmaFileKey: figmaFileKey.trim(),
