@@ -64,6 +64,11 @@ interface Props {
    * an enabled platform (Output Formats) whose file was never generated,
    * found even though there's zero token-level change to review. */
   outputOnlyFiles?: string[];
+  /** No output format (CSS/JS/TS/Dart/Swift) is enabled in metadata.json, so
+   * this PR carries token JSON only. Not an error — formats are opt-in, and a
+   * team with its own build step leaves them off — but with nothing said, a
+   * push that writes no CSS looks like a failure to someone who expected it. */
+  noOutputFormats?: boolean;
   onCreatePR: (title: string, selectedKeys: Set<string>) => void;
   onBack: () => void;
   creating: boolean;
@@ -81,6 +86,7 @@ export function PushDiff({
   conflictPaths = [],
   staleConfiguredModes = [],
   outputOnlyFiles = [],
+  noOutputFormats = false,
   onCreatePR,
   onBack,
   creating,
@@ -321,6 +327,22 @@ export function PushDiff({
             {error && (
               <StatusBanner tone="danger" detail={error.detail}>
                 {error.message}
+              </StatusBanner>
+            )}
+            {noOutputFormats && (
+              <StatusBanner
+                tone="neutral"
+                expandableDetail={
+                  <>
+                    Output formats are off, so there's no CSS, JS, TS, Dart or Swift to generate —
+                    fine if you have your own build step reading these token files. To generate
+                    them, turn formats on under <strong>Output formats</strong> on the main screen.
+                    That screen saves through its own pull request, so merge it first: a push reads
+                    the setting from the branch it targets, and won't see it until then.
+                  </>
+                }
+              >
+                No output formats are enabled — this PR will contain token JSON only.
               </StatusBanner>
             )}
             <Field label="Pull request title">

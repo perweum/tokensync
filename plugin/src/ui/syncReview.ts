@@ -17,7 +17,7 @@
 
 import type { FigmaVariable, FigmaVariableCollection } from "../shared/messages";
 import type { CollectionDiff } from "../shared/token-diff";
-import type { ParsedRepository, ResolvedCollection } from "../shared/token-merger";
+import type { ParsedRepository, Platforms, ResolvedCollection } from "../shared/token-merger";
 import { parseRepository } from "../shared/token-merger";
 import { figmaToCollections, figmaToTokenFiles } from "../shared/figma-to-tokens";
 import {
@@ -93,6 +93,8 @@ export interface PushReview {
    * is a change with nothing to do with any token's value. */
   outputOnlyFiles: string[];
   unknownCollectionNames: string[];
+  /** Output formats the push will generate — empty means token JSON only. */
+  enabledOutputFormats: string[];
   brokenAliasPaths: string[];
   /** Real Figma variable names that structurally collide (a leaf and a group at one path). */
   conflictPaths: string[];
@@ -152,6 +154,7 @@ export function reviewPush(input: {
     githubParsed,
     figmaCollectionData,
     unknownCollectionNames,
+    enabledOutputFormats: enabledOutputFormats(githubParsed.metadata.platforms),
     brokenAliasPaths,
     conflictPaths,
     staleModes,
@@ -174,6 +177,20 @@ export function reviewPush(input: {
     return { ...shared, outcome: "review", diffs: [], outputOnlyFiles: missing.map((f) => f.path) };
   }
   return { ...shared, outcome: "up-to-date", diffs: [], outputOnlyFiles: [] };
+}
+
+/** Fixed order, so the list reads the same however metadata.json happens to be ordered. */
+const PLATFORM_ORDER = ["css", "js", "ts", "dart", "swift"] as const;
+
+/**
+ * Which output formats (CSS/JS/TS/Dart/Swift) a push will generate — the
+ * platforms switched on in metadata.json. Empty is common and valid: formats
+ * are opt-in, and a team with its own build step leaves them all off. It's
+ * worth surfacing anyway, because "no files generated" looks exactly like a
+ * failure to someone who expected them.
+ */
+export function enabledOutputFormats(platforms: Platforms | undefined): string[] {
+  return PLATFORM_ORDER.filter((p) => platforms?.[p]?.enabled);
 }
 
 /** " (skipped unrecognized collection(s): X, Y — check metadata.json figma.collections)" or "". */

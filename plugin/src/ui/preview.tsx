@@ -73,6 +73,12 @@ function harnessGitHub(url: string): Response | null {
   // ?broken=1 — a token file in GitHub that isn't valid JSON (Pull must refuse, not diff without it).
   // ?truncated=1 — GitHub could only list part of the repo (Pull must refuse).
   const files = { ...harnessFiles };
+  // ?formats=1 — CSS output enabled in metadata.json (Push must NOT show the "no output formats" notice).
+  if (params.get("formats")) {
+    const meta = JSON.parse(files["tokens/metadata.json"]);
+    meta.platforms = { css: { enabled: true, output: "dist/tokens.css" } };
+    files["tokens/metadata.json"] = JSON.stringify(meta);
+  }
   if (params.get("broken")) files["tokens/primitives/broken.json"] = "{ not json";
   if (path.startsWith("git/trees/")) {
     return json({
