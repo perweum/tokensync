@@ -77,7 +77,7 @@ All tokens follow the W3C DTCG format:
 | `color` | `"#0062ba"`, `"rgba(0,0,0,0.1)"` | All colour tokens |
 | `dimension` | `"16px"`, `"1rem"` | Spacing, radius, font-size |
 | `fontFamily` | `"Inter, sans-serif"` | Typography |
-| `fontWeight` | `"600"` | Typography |
+| `fontWeight` | `"600"`, or a Figma font style name (`"Expanded Medium Italic"`) | Typography — see *Typography in CSS* under Platform Output |
 | `number` | `"1.5"` | Line height, opacity |
 | `boolean` | `"true"` | A Figma `BOOLEAN` variable — not an official DTCG type, a pragmatic extension |
 | `string` | `"uppercase"` | A Figma `STRING` variable not related to a font — also not an official DTCG type |
@@ -305,6 +305,27 @@ Switching the active theme mode in Figma (or via `[data-theme]` in CSS) cascades
 }
 ```
 
+Two more optional keys adjust how Figma font style names become CSS (see
+*Typography in CSS*). Both only affect generated output — never what's stored in
+the token files or written to Figma:
+
+```json
+{
+  "fontStyles": {
+    "Ext Md": { "weight": 500, "stretch": "125%", "style": "normal" }
+  },
+  "fontStretchKeywords": { "expanded": "125%", "condensed": "75%" }
+}
+```
+
+- `fontStyles` — style names the built-in parser can't read, mapped to their
+  `weight` (1–1000), `stretch` (a CSS `font-stretch` value) and `style`
+  (`normal` | `italic`). An entry wins over the parser; any key it leaves out
+  is filled in by the parser. Malformed entries are ignored.
+- `fontStretchKeywords` — width word → `font-stretch` percentage, replacing the
+  defaults, so output can match the project's own `@font-face` `font-stretch`
+  ranges. A word not in the defaults may be added here too.
+
 `figma.collections` is a **list per role** — a role can be backed by several
 physical Figma collections (see Figma Variables Mapping above). `sizes` is
 the ordered list of size-mode names (base mode first); `sizeBreakpoints` maps
@@ -381,6 +402,47 @@ The CSS transformer emits a single file with attribute-based theme and color-sch
   }
 }
 ```
+
+#### Typography in CSS
+
+Token files keep typography exactly as Figma holds it, so Figma ⇄ repo sync stays
+lossless: a font style *name* (`"Expanded Medium Italic"`), a line height and
+letter spacing as a bare number meaning **percent** (`"140"`, `"4"`), text case
+as one of Figma's words (`"upper"`). Several of those are invalid or lossy as raw
+CSS, so the generated CSS translates them — one way, output only:
+
+| Stored | CSS | Notes |
+| --- | --- | --- |
+| `fontWeight: "Expanded Medium"` | `font-weight: 500` **plus** `…-fontStretch: 125%` | Width and italic are separate CSS axes; each sibling is emitted only when it isn't the default. |
+| `fontWeight: "Condensed Bold Italic"` | `700`, `…-fontStretch: 75%`, `…-fontStyle: italic` | |
+| `lineHeight: "140"` | `1.4` | A bare number is a percent; emitted raw, `line-height: 140` would be 140× the font size. `"24px"` stays `24px`. |
+| `letterSpacing: "4"` or `"4%"` | `0.04em` | `px` stays `px`. |
+| `textCase: "upper"` / `"title"` / `"original"` | `uppercase` / `capitalize` / `none` | Values that are already valid CSS pass through. |
+| `textDecoration: "strikethrough"` | `line-through` | |
+
+- **Width words** (`compressed` 62.5%, `condensed` 75%, `standard` 100%, `extended`
+  112.5%, `expanded` 125%) and the weight words are read case-, spacing- and
+  punctuation-insensitively (`SemiBold`, `Semi Bold`, `semi-bold`). A name with a
+  word it doesn't know falls back to weight 400 with a warning — it never fails
+  the build. Override with `fontStyles` / `fontStretchKeywords` in `metadata.json`.
+- **Sibling names**: for a typography field called `fontWeight` the sibling replaces
+  that segment (`--typography-action-fontStretch`); for any other `fontWeight`
+  token it's appended (`--font-weight-display-bold-fontStretch`). In the override
+  block of a non-default theme or colour scheme the defaults are spelled out
+  (`100%`, `normal`), so a plainer style can't inherit the base's width.
+- **Rounding**: percent values are rounded to 3 decimals before converting —
+  Figma stores 130% as `129.99999523162842`, which would otherwise surface as
+  `1.2999999523`. The same rounding is applied when values are read from Figma,
+  so the committed file says `130`.
+- **Only typography groups are translated.** The percent convention applies to the
+  fields of a group marked `"$type": "typography"`; a free-standing number that
+  merely has `lineHeight` in its name is left alone.
+- A `var(--…)` reference (a field bound to a Figma variable) is emitted as the
+  reference. Figma reads a variable bound to `lineHeight`/`letterSpacing` as
+  pixels, so a bound value needs no percent conversion.
+- **Dart and Swift** read the weight from the same parser (`Expanded Medium` →
+  `FontWeight.w500` / `.medium`, not `w400`). Their output doesn't carry width or
+  italic, and JS/TS emit the stored values unchanged.
 
 ### JavaScript / TypeScript
 
