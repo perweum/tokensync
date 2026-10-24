@@ -115,6 +115,30 @@ describe("diffTokens — dimension normalisation", () => {
     expect(diffTokens(github, figma)).toHaveLength(0);
   });
 
+  it("treats Figma's float artefacts as unchanged, so a committed unrounded value doesn't show as changed forever", () => {
+    // The repo may still hold 129.99999523162842 (Coop does, 21 times) while
+    // Figma now reads 130. Applying that diff writes the same effective value
+    // back, so without a tolerance it would reappear on every pull.
+    expect(
+      diffTokens({ "lh.body": tok("129.99999523162842", "number") }, { "lh.body": "130" }),
+    ).toHaveLength(0);
+    expect(
+      diffTokens({ "ls.body": tok("0.15000000596046448", "dimension") }, { "ls.body": "0.15" }),
+    ).toHaveLength(0);
+    expect(
+      diffTokens({ "lh.body": tok("20.0000001px", "dimension") }, { "lh.body": "20px" }),
+    ).toHaveLength(0);
+  });
+
+  it("still detects a genuine difference small enough to matter", () => {
+    expect(diffTokens({ "lh.body": tok("130", "number") }, { "lh.body": "131" })[0].status).toBe(
+      "changed",
+    );
+    expect(diffTokens({ "ls.body": tok("0.5", "dimension") }, { "ls.body": "0.6" })[0].status).toBe(
+      "changed",
+    );
+  });
+
   it("detects genuine size changes", () => {
     const github = { "size.md": tok("16px", "dimension") };
     const figma = { "size.md": "8px" };

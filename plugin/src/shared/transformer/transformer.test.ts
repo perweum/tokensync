@@ -773,3 +773,48 @@ describe("Dart/Swift field names — a path segment starting with a digit", () =
     expect(dart).toContain("_2xlDisplayLetterspacing");
   });
 });
+
+describe("typography CSS on the push path (Figma Text Styles -> CSS)", () => {
+  // The path a real push takes: Text Styles read from Figma -> figmaToCollections
+  // -> runTransformers. The CSS formatter only translates a typography group's
+  // fields (a bare lineHeight there means percent), so it has to be told which
+  // paths those are — which figmaToCollections used to leave empty.
+  const names = {
+    primitives: ["Primitives"],
+    global: [] as string[],
+    themes: [] as string[],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+  const metadata = {
+    version: "1.0.0",
+    themes: ["default"],
+    colorSchemes: ["light", "dark"],
+    sizes: [],
+    figma: { fileKey: "abc", collections: names },
+    platforms: { css: { enabled: true, output: "dist/tokens.css" } },
+  };
+  const styles = [
+    {
+      path: "typography.action",
+      fields: {
+        fontFamily: { $type: "fontFamily", $value: "GT America" },
+        fontWeight: { $type: "fontWeight", $value: "Expanded Medium" },
+        lineHeight: { $type: "number", $value: "129.99999523162842" },
+        letterSpacing: { $type: "dimension", $value: "4" },
+        textCase: { $type: "string", $value: "upper" },
+      },
+    },
+  ];
+
+  it("emits valid CSS for Text-Style typography", () => {
+    const { collections } = figmaToCollections([], [], metadata, styles as never);
+    const css = runTransformers(collections, metadata, "tokens")[0].content;
+
+    expect(css).toContain("--typography-action-fontWeight: 500;");
+    expect(css).toContain("--typography-action-fontStretch: 125%;");
+    expect(css).toContain("--typography-action-lineHeight: 1.3;");
+    expect(css).toContain("--typography-action-letterSpacing: 0.04em;");
+    expect(css).toContain("--typography-action-textCase: uppercase;");
+  });
+});

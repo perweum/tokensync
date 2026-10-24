@@ -511,3 +511,191 @@ describe("generateCSS — default theme is chosen by metadata.themes, not array 
     expect(css).not.toMatch(/\[data-theme="original"\]/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Typography output: CSS-valid values, and font width/italic as separate axes
+// ---------------------------------------------------------------------------
+
+describe("generateCSS — typography values are valid CSS", () => {
+  /** A Global collection whose typography group is *marked*, as parseRepository/figmaToCollections produce. */
+  function globalWith(
+    fields: Record<string, string>,
+    extraTokens: ResolvedCollection["tokens"] = {},
+    raw: Record<string, string> = {},
+  ): ResolvedCollection {
+    const type: Record<string, string> = {
+      fontFamily: "fontFamily",
+      fontWeight: "fontWeight",
+      fontSize: "dimension",
+      lineHeight: "number",
+      letterSpacing: "dimension",
+      textCase: "string",
+      textDecoration: "string",
+    };
+    const tokens: ResolvedCollection["tokens"] = { ...extraTokens };
+    const rawTokens: ResolvedCollection["rawTokens"] = { ...extraTokens };
+    const styleFields: Record<string, { $type: string; $value: string }> = {};
+    for (const [field, value] of Object.entries(fields)) {
+      const token = { $type: type[field], $value: value };
+      tokens[`typography.body.${field}`] = token;
+      rawTokens[`typography.body.${field}`] = { ...token, $value: raw[field] ?? value };
+      styleFields[field] = token;
+    }
+    return {
+      collectionName: names.global,
+      modeName: "Value",
+      tokens,
+      rawTokens,
+      typographyStyles: [{ path: "typography.body", fields: styleFields as never }],
+    };
+  }
+
+  it("converts line height percent to a unitless ratio, absorbing Figma's float artefact", () => {
+    const css = generateCSS([globalWith({ lineHeight: "129.99999523162842" })], metadata);
+    expect(css).toContain("--typography-body-lineHeight: 1.3;");
+    expect(generateCSS([globalWith({ lineHeight: "150" })], metadata)).toContain(
+      "--typography-body-lineHeight: 1.5;",
+    );
+  });
+
+  it("keeps a pixel line height as px", () => {
+    expect(generateCSS([globalWith({ lineHeight: "24px" })], metadata)).toContain(
+      "--typography-body-lineHeight: 24px;",
+    );
+  });
+
+  it("converts letter spacing percent to em and keeps px", () => {
+    expect(generateCSS([globalWith({ letterSpacing: "4" })], metadata)).toContain(
+      "--typography-body-letterSpacing: 0.04em;",
+    );
+    expect(generateCSS([globalWith({ letterSpacing: "0px" })], metadata)).toContain(
+      "--typography-body-letterSpacing: 0px;",
+    );
+  });
+
+  it("emits text case and decoration as values text-transform / text-decoration accept", () => {
+    const css = generateCSS(
+      [globalWith({ textCase: "upper", textDecoration: "strikethrough" })],
+      metadata,
+    );
+    expect(css).toContain("--typography-body-textCase: uppercase;");
+    expect(css).toContain("--typography-body-textDecoration: line-through;");
+  });
+
+  it("does NOT convert a free-standing number that merely has lineHeight in its name", () => {
+    // Only a marked typography group's lineHeight is a percent by convention.
+    // A plain token (here a ratio someone wrote by hand) is just a number.
+    const css = generateCSS(
+      [
+        col(names.primitives, "Value", {
+          "leading.lineHeight": { $type: "number", $value: "1.5" },
+        }),
+      ],
+      metadata,
+    );
+    expect(css).toContain("--leading-lineHeight: 1.5;");
+  });
+
+  it("leaves a line height bound to a variable as the var() reference, untouched", () => {
+    const g = globalWith(
+      { lineHeight: "24px" },
+      { "primitive.line-height.md": { $type: "dimension", $value: "24px" } },
+      { lineHeight: "{primitive.line-height.md}" },
+    );
+    const css = generateCSS([g], metadata);
+    expect(css).toContain("--typography-body-lineHeight: var(--primitive-line-height-md);");
+  });
+});
+
+describe("generateCSS — font style names become weight, stretch and style", () => {
+  const typographyGlobal = (
+    weight: string,
+    raw?: string,
+    extra: ResolvedCollection["tokens"] = {},
+  ) => {
+    const token = { $type: "fontWeight", $value: weight };
+    return {
+      collectionName: names.global,
+      modeName: "Value",
+      tokens: { ...extra, "typography.action.fontWeight": token },
+      rawTokens: { ...extra, "typography.action.fontWeight": { ...token, $value: raw ?? weight } },
+      typographyStyles: [{ path: "typography.action", fields: { fontWeight: token } }],
+    } as ResolvedCollection;
+  };
+
+  it("emits the weight plus a font-stretch sibling for a wide style", () => {
+    const css = generateCSS([typographyGlobal("Expanded Medium")], metadata);
+    expect(css).toContain("--typography-action-fontWeight: 500;");
+    expect(css).toContain("--typography-action-fontStretch: 125%;");
+    expect(css).not.toContain("fontStyle");
+  });
+
+  it("emits font-style for italic, and both when a style is wide and italic", () => {
+    const css = generateCSS([typographyGlobal("Condensed Bold Italic")], metadata);
+    expect(css).toContain("--typography-action-fontWeight: 700;");
+    expect(css).toContain("--typography-action-fontStretch: 75%;");
+    expect(css).toContain("--typography-action-fontStyle: italic;");
+  });
+
+  it("adds nothing for a plain style — output for existing repos is unchanged", () => {
+    const css = generateCSS([typographyGlobal("Regular")], metadata);
+    expect(css).toContain("--typography-action-fontWeight: 400;");
+    expect(css).not.toContain("fontStretch");
+    expect(css).not.toContain("fontStyle");
+  });
+
+  it("emits siblings for a free-standing fontWeight primitive too, appended to its name", () => {
+    const css = generateCSS(
+      [
+        col(names.primitives, "Value", {
+          "font-weight.display.bold": { $type: "fontWeight", $value: "Expanded Bold" },
+        }),
+      ],
+      metadata,
+    );
+    expect(css).toContain("--font-weight-display-bold: 700;");
+    expect(css).toContain("--font-weight-display-bold-fontStretch: 125%;");
+  });
+
+  it("still emits a literal sibling when the weight itself is a var() reference", () => {
+    const g = typographyGlobal("Expanded Medium", "{font-weight.interface.medium}", {
+      "font-weight.interface.medium": { $type: "fontWeight", $value: "Expanded Medium" },
+    });
+    const css = generateCSS([g], metadata);
+    expect(css).toContain("--typography-action-fontWeight: var(--font-weight-interface-medium);");
+    expect(css).toContain("--typography-action-fontStretch: 125%;");
+  });
+
+  it("in a non-default theme's override block, spells out defaults so the base value can't leak through", () => {
+    const tokens = (w: string) => ({ "font.weight.brand": { $type: "fontWeight", $value: w } });
+    const css = generateCSS(
+      [
+        col(names.themes, "Wide", tokens("Expanded Bold")),
+        col(names.themes, "Plain", tokens("Bold")),
+      ],
+      { ...metadata, themes: ["Wide", "Plain"] },
+    );
+    expect(css).toMatch(/:root \{[^}]*--font-weight-brand-fontStretch: 125%;/s);
+    expect(css).toMatch(
+      /\[data-theme="plain"\] \{[^}]*--font-weight-brand: 700;[^}]*--font-weight-brand-fontStretch: 100%;/s,
+    );
+  });
+
+  it("uses metadata.json's fontStyles and fontStretchKeywords", () => {
+    const css = generateCSS(
+      [typographyGlobal("Ext Md"), typographyGlobal("Expanded Medium")].slice(0, 1),
+      {
+        ...metadata,
+        fontStyles: { "Ext Md": { weight: 500, stretch: "125%", style: "normal" } },
+      },
+    );
+    expect(css).toContain("--typography-action-fontWeight: 500;");
+    expect(css).toContain("--typography-action-fontStretch: 125%;");
+
+    const keyworded = generateCSS([typographyGlobal("Expanded Medium")], {
+      ...metadata,
+      fontStretchKeywords: { expanded: "120%" },
+    });
+    expect(keyworded).toContain("--typography-action-fontStretch: 120%;");
+  });
+});

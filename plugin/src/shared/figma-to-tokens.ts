@@ -207,7 +207,11 @@ export function figmaToCollections(
       modeName: globalModeName ?? "Value",
       tokens: filterByPaths(resolved, Object.keys(globalRaw)),
       rawTokens: globalRaw,
-      typographyStyles: [],
+      // The Text Styles this collection's typography tokens came from — the
+      // same thing parseRepository sets from the marked groups on the GitHub
+      // side. Output generation needs it to know which tokens are a typography
+      // group's fields (a bare lineHeight there means percent, not a ratio).
+      typographyStyles,
     });
   }
 

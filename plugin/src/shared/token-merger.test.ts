@@ -819,6 +819,62 @@ describe("parseRepository — reports tokens whose value type it can't sync", ()
   });
 });
 
+describe("parseRepository — metadata.json's optional font style overrides", () => {
+  const meta = (extra: object) =>
+    file("tokens/metadata.json", { version: "1.0.0", themes: ["default"], ...extra });
+
+  it("reads fontStyles and fontStretchKeywords", () => {
+    const { metadata } = parseRepository(
+      [
+        meta({
+          fontStyles: { "Ext Md": { weight: 500, stretch: "125%", style: "normal" } },
+          fontStretchKeywords: { expanded: "120%" },
+        }),
+      ],
+      tokensPath,
+    );
+    expect(metadata.fontStyles).toEqual({
+      "Ext Md": { weight: 500, stretch: "125%", style: "normal" },
+    });
+    expect(metadata.fontStretchKeywords).toEqual({ expanded: "120%" });
+  });
+
+  it("is absent when metadata.json doesn't have them — no change for existing repos", () => {
+    const { metadata } = parseRepository([meta({})], tokensPath);
+    expect(metadata.fontStyles).toBeUndefined();
+    expect(metadata.fontStretchKeywords).toBeUndefined();
+  });
+
+  it("drops entries that are malformed (hand-edited JSON) instead of failing the whole parse", () => {
+    const { metadata } = parseRepository(
+      [
+        meta({
+          fontStyles: {
+            Good: { weight: 700 },
+            "Bad weight": { weight: 5000 },
+            "Bad style": { style: "slanty" },
+            "Bad stretch": { stretch: 125 },
+            "Not an object": "bold",
+          },
+          fontStretchKeywords: { expanded: "125%", wide: 140, other: "" },
+        }),
+      ],
+      tokensPath,
+    );
+    expect(metadata.fontStyles).toEqual({ Good: { weight: 700 } });
+    expect(metadata.fontStretchKeywords).toEqual({ expanded: "125%" });
+  });
+
+  it("ignores a value that isn't an object at all", () => {
+    const { metadata } = parseRepository(
+      [meta({ fontStyles: ["nope"], fontStretchKeywords: "nope" })],
+      tokensPath,
+    );
+    expect(metadata.fontStyles).toBeUndefined();
+    expect(metadata.fontStretchKeywords).toBeUndefined();
+  });
+});
+
 describe("parseRepository — reports files it could not read instead of silently dropping them", () => {
   // A token file that fails to parse just disappears from the merge, so every
   // token in it looks "removed in GitHub" to the pull diff — and Apply then

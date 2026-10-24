@@ -516,6 +516,15 @@ Add `"ignoredCollections": ["primitives"]` to `metadata.json` to exclude layers 
 
 Separately, a **"Sync type styles"** checkbox on the plugin's main screen turns on applying typography groups (`"$type": "typography"`) to Figma as Text Styles, independent of Variables sync — off by default, remembered per project. Push, pull-diff, and apply have all been verified live end-to-end, but only against a single real Figma file's typography styles so far (not yet broad enough to cover every real-world case — multiple pixel-based `lineHeight`/`letterSpacing` values, delete-safety for a style removed from the repo); flip it on once you've verified it against your own file. This is coarser than `ignoredCollections`: it's all typography styles or none, not per-collection.
 
+### Typography in the generated CSS
+
+Token files keep typography the way Figma stores it — so syncing stays lossless — and the generated CSS translates it into valid CSS:
+
+- A Figma font style name becomes weight, width and italic: `"Expanded Medium Italic"` → `font-weight: 500`, plus `…-fontStretch: 125%` and `…-fontStyle: italic` (each only when it isn't the default).
+- A line height of `"140"` (a percent) becomes the unitless `1.4`; letter spacing `"4"` becomes `0.04em`; text case `"upper"` becomes `uppercase`.
+
+If your font's width or style names don't follow the usual words, map them in `metadata.json` with `fontStyles` and `fontStretchKeywords`. Details and the full table: [SPEC.md](SPEC.md#typography-in-css).
+
 ### Already have a build step?
 
 Token Spark's CSS/JS/TS/Dart/Swift generators are a convenience for teams without one — not a requirement. Every platform is off unless explicitly enabled from the **Output Formats** screen; a project with none of them turned on still gets the token JSON, nothing else.

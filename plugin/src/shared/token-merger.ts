@@ -33,6 +33,7 @@ import {
   sameMode,
 } from "./token-format";
 import { extractTypographyStyles } from "./typography-styles";
+import type { FontStyleOverride } from "./font-weight";
 import type { TypographyStyle } from "./typography-styles";
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,15 @@ export interface Metadata {
     collectionSources?: CollectionSources;
   };
   ignoredCollections?: string[];
+  /** Figma font style names the output transformers can't read on their own
+   * ("Ext Md"), mapped to the weight / `font-stretch` / `font-style` they mean.
+   * Optional; an entry wins over the built-in parser. Output-only — never
+   * written back to Figma or changed in the token files. */
+  fontStyles?: Record<string, FontStyleOverride>;
+  /** Width word -> CSS `font-stretch` percentage, replacing the defaults
+   * (expanded 125%, condensed 75%…) so output can match the project's own
+   * `@font-face` `font-stretch` ranges. Optional. */
+  fontStretchKeywords?: Record<string, string>;
   /** Per-platform code output, run by `runTransformers` on push. All optional
    * and off unless explicitly enabled — a repo with no `platforms` at all
    * generates no output files, only the token JSON. */
@@ -154,6 +164,41 @@ function coerceToList(value: unknown, fallback: string[]): string[] {
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
   if (typeof value === "string" && value.length > 0) return [value];
   return fallback;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Keeps only well-formed `fontStyles` entries; undefined when none survive. */
+function coerceFontStyles(value: unknown): Record<string, FontStyleOverride> | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const out: Record<string, FontStyleOverride> = {};
+  for (const [name, entry] of Object.entries(value)) {
+    if (!isPlainObject(entry)) continue;
+    const { weight, stretch, style } = entry;
+    const valid =
+      (weight === undefined || (typeof weight === "number" && weight >= 1 && weight <= 1000)) &&
+      (stretch === undefined || (typeof stretch === "string" && stretch.trim() !== "")) &&
+      (style === undefined || style === "normal" || style === "italic");
+    if (!valid) continue;
+    out[name] = {
+      ...(weight !== undefined && { weight: weight as number }),
+      ...(stretch !== undefined && { stretch: stretch as string }),
+      ...(style !== undefined && { style: style as "normal" | "italic" }),
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Keeps only non-empty string percentages; undefined when none survive. */
+function coerceStretchKeywords(value: unknown): Record<string, string> | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [word, percent] of Object.entries(value)) {
+    if (typeof percent === "string" && percent.trim() !== "") out[word] = percent.trim();
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** A hand-edited metadata.json could list the same Figma collection name under
@@ -551,6 +596,14 @@ function parseMetadata(files: Map<string, string>): Metadata {
       sizes,
       sizeBreakpoints,
     };
+    // Hand-edited JSON: validate rather than trust (and never carry a bad
+    // value through just because `...parsed` copied it).
+    const fontStyles = coerceFontStyles(parsed.fontStyles);
+    const fontStretchKeywords = coerceStretchKeywords(parsed.fontStretchKeywords);
+    delete merged.fontStyles;
+    delete merged.fontStretchKeywords;
+    if (fontStyles) merged.fontStyles = fontStyles;
+    if (fontStretchKeywords) merged.fontStretchKeywords = fontStretchKeywords;
     if (parsed.figma) {
       const parsedCollections = parsed.figma.collections as
         | Partial<Record<keyof CollectionNames, unknown>>
