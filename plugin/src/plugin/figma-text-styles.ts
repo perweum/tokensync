@@ -18,6 +18,7 @@ import {
   resolveTextDecoration,
   formatUnitValue,
   unitFromLiteral,
+  describeFontStyleMismatch,
 } from "../shared/text-style-figma-fields";
 import { toFigmaVarName, fromFigmaVarName, isPureRef } from "../shared/token-format";
 import { toFigmaValue } from "./figma-variables";
@@ -199,6 +200,17 @@ async function applyOneStyle(
   const weightBound = weightToken
     ? tryBind(style, "fontWeight", weightToken, allVarsByName)
     : false;
+
+  // Figma silently ignores a font-style binding whose style isn't installed
+  // (no error — the style just stays as it was), so confirm it took. The
+  // literal path below already fails loudly via loadFontOrThrowClearError.
+  if (weightBound) {
+    const mismatch = describeFontStyleMismatch(
+      resolvedFallback[`${typographyStyle.path}.fontWeight`],
+      style.fontName,
+    );
+    if (mismatch) errors.push(`${style.name}: ${mismatch}`);
+  }
 
   const family =
     familyToken && !familyBound

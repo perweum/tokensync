@@ -45,10 +45,31 @@ import type { ResolvedCollection, Metadata } from "../token-merger";
 import { findGlobalCollection } from "../token-merger";
 import type { TokenValue } from "../messages";
 import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
+import type { FontStyleOverrides } from "../font-weight";
+import type { TypographyField } from "../typography-styles";
 import { toCSSVar, sameMode, pickDefaultMode } from "../token-format";
+import { formatTypographyField, fontStyleSiblings, typographyFieldIndex } from "./typography-css";
+
+/**
+ * What the value formatter needs beyond the token itself: which paths are a
+ * marked typography group's fields (a bare lineHeight there means percent),
+ * and the project's own font style name overrides from metadata.json.
+ */
+interface FormatContext {
+  typographyFields: Map<string, TypographyField>;
+  fontOverrides: FontStyleOverrides | undefined;
+}
 
 export function generateCSS(collections: ResolvedCollection[], metadata: Metadata): string {
   const blocks: string[] = [cssHeader()];
+
+  const ctx: FormatContext = {
+    typographyFields: typographyFieldIndex(collections),
+    fontOverrides:
+      metadata.fontStyles || metadata.fontStretchKeywords
+        ? { fontStyles: metadata.fontStyles, stretchKeywords: metadata.fontStretchKeywords }
+        : undefined,
+  };
 
   const names = metadata.figma.collections;
   const primitivesCols = collections.filter((c) => names.primitives.includes(c.collectionName));
@@ -94,7 +115,7 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
     shared: sharedSemantic,
     light: lightOnly,
     dark: darkOnly,
-  } = splitSharedSemanticTokens(lightCol, darkCol, referenceableCSSVars);
+  } = splitSharedSemanticTokens(lightCol, darkCol, referenceableCSSVars, ctx);
 
   // Global: emit var(--*) for any ref whose target is a real CSS var — e.g. a
   // typography field referencing a theme-scoped font choice ({font-family.display})
@@ -111,9 +132,9 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
       if (token.$type === "boolean") continue;
       const rawValue = global.rawTokens[path]?.$value;
       const themeAware = resolveSemanticValue(token.$value, rawValue, referenceableCSSVars);
-      globalExtra[path] = themeAware.startsWith("var(")
-        ? themeAware
-        : formatCSSValue(token.$type, themeAware);
+      for (const [declPath, value] of declarations(path, token, themeAware, ctx, false)) {
+        globalExtra[declPath] = value;
+      }
     }
   }
 
@@ -127,7 +148,13 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
     ...defaultPrimitives?.tokens,
     ...defaultTheme?.tokens,
   };
-  const rootBlock = cssBlockWithExtra(":root", rootTokens, { ...globalExtra, ...sharedSemantic });
+  const rootBlock = cssBlockWithExtra(
+    ":root",
+    rootTokens,
+    { ...globalExtra, ...sharedSemantic },
+    ctx,
+    false,
+  );
   if (rootBlock) {
     blocks.push(rootBlock);
   }
@@ -138,7 +165,7 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   for (const col of nonDefaultThemes) {
     const themeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
     const overrides = diffTokens(col.tokens, defaultTheme?.tokens ?? {});
-    blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, overrides));
+    blocks.push(cssBlock(`[data-theme="${themeSlug}"]`, overrides, ctx));
   }
 
   // Non-default size modes — explicit [data-size="…"] pin, always diffed
@@ -148,7 +175,7 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   for (const col of nonDefaultPrimitives) {
     const sizeSlug = col.modeName.toLowerCase().replace(/\s+/g, "-");
     const overrides = diffTokens(col.tokens, defaultPrimitives?.tokens ?? {});
-    blocks.push(cssBlock(`[data-size="${sizeSlug}"]`, overrides));
+    blocks.push(cssBlock(`[data-size="${sizeSlug}"]`, overrides, ctx));
   }
 
   // Responsive @media (min-width) cascade — only for modes with a configured
@@ -174,7 +201,7 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   let previousTierTokens = defaultPrimitives?.tokens ?? {};
   for (const { col, breakpoint } of responsiveTiers) {
     const overrides = diffTokens(col.tokens, previousTierTokens);
-    blocks.push(sizeMediaBlock(breakpoint, overrides));
+    blocks.push(sizeMediaBlock(breakpoint, overrides, ctx));
     previousTierTokens = col.tokens;
   }
 
@@ -183,17 +210,18 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   // primitive directly), resolved literals for anything else; entries identical in
   // both schemes were already hoisted into :root above and are absent here.
   if (lightOnly) {
-    blocks.push(semanticBlock('[data-color-scheme="light"]', lightOnly, referenceableCSSVars));
-    blocks.push(semanticBlock('[data-color-scheme="auto"]', lightOnly, referenceableCSSVars));
+    blocks.push(semanticBlock('[data-color-scheme="light"]', lightOnly, referenceableCSSVars, ctx));
+    blocks.push(semanticBlock('[data-color-scheme="auto"]', lightOnly, referenceableCSSVars, ctx));
   }
   if (darkOnly) {
-    blocks.push(semanticBlock('[data-color-scheme="dark"]', darkOnly, referenceableCSSVars));
+    blocks.push(semanticBlock('[data-color-scheme="dark"]', darkOnly, referenceableCSSVars, ctx));
     blocks.push(
       semanticMediaBlock(
         "(prefers-color-scheme: dark)",
         '[data-color-scheme="auto"]',
         darkOnly,
         referenceableCSSVars,
+        ctx,
       ),
     );
   }
@@ -214,14 +242,18 @@ function semanticBlock(
   selector: string,
   col: ResolvedCollection,
   referenceableCSSVars: Set<string>,
+  ctx: FormatContext,
 ): string {
   const entries = Object.entries(col.tokens).filter(([, t]) => t.$type !== "boolean");
   if (entries.length === 0) return "";
 
-  const lines = entries.map(([path, token]) => {
-    const value = semanticCSSValue(col, path, token, referenceableCSSVars);
-    return `  ${toCSSVar(path)}: ${value};`;
-  });
+  // A colour-scheme block is an override of :root, so a font style that's
+  // plainer than the base must say so (explicit defaults) — see declarations().
+  const lines = entries.flatMap(([path, token]) =>
+    semanticDeclarations(col, path, token, referenceableCSSVars, ctx, true).map(
+      ([declPath, value]) => `  ${toCSSVar(declPath)}: ${value};`,
+    ),
+  );
 
   return `${selector} {\n${lines.join("\n")}\n}`;
 }
@@ -231,8 +263,9 @@ function semanticMediaBlock(
   selector: string,
   col: ResolvedCollection,
   referenceableCSSVars: Set<string>,
+  ctx: FormatContext,
 ): string {
-  const inner = semanticBlock(selector, col, referenceableCSSVars);
+  const inner = semanticBlock(selector, col, referenceableCSSVars, ctx);
   if (!inner) return "";
   const indented = inner
     .split("\n")
@@ -244,8 +277,12 @@ function semanticMediaBlock(
 /** Wraps a size mode's overrides in an unconditional @media (min-width) block
  * targeting :root — see the file header for why this is unconditional rather
  * than gated behind a wrapper attribute the way color-scheme's "auto" is. */
-function sizeMediaBlock(minWidthPx: number, overrides: Record<string, TokenValue>): string {
-  const inner = cssBlock(":root", overrides);
+function sizeMediaBlock(
+  minWidthPx: number,
+  overrides: Record<string, TokenValue>,
+  ctx: FormatContext,
+): string {
+  const inner = cssBlock(":root", overrides, ctx);
   if (!inner) return "";
   const indented = inner
     .split("\n")
@@ -254,8 +291,13 @@ function sizeMediaBlock(minWidthPx: number, overrides: Record<string, TokenValue
   return `@media (min-width: ${minWidthPx}px) {\n${indented}\n}`;
 }
 
-function cssBlock(selector: string, tokens: Record<string, TokenValue>): string {
-  return cssBlockWithExtra(selector, tokens, {});
+/** A block that overrides :root (a non-default theme or size) — so explicit font-style defaults. */
+function cssBlock(
+  selector: string,
+  tokens: Record<string, TokenValue>,
+  ctx: FormatContext,
+): string {
+  return cssBlockWithExtra(selector, tokens, {}, ctx, true);
 }
 
 /**
@@ -268,10 +310,14 @@ function cssBlockWithExtra(
   selector: string,
   tokens: Record<string, TokenValue>,
   extra: Record<string, string>,
+  ctx: FormatContext,
+  explicitFontDefaults: boolean,
 ): string {
   const entries = Object.entries(tokens).filter(([, t]) => t.$type !== "boolean");
-  const lines = entries.map(
-    ([path, token]) => `  ${toCSSVar(path)}: ${formatCSSValue(token.$type, token.$value)};`,
+  const lines = entries.flatMap(([path, token]) =>
+    declarations(path, token, null, ctx, explicitFontDefaults).map(
+      ([declPath, value]) => `  ${toCSSVar(declPath)}: ${value};`,
+    ),
   );
   const extraLines = Object.entries(extra).map(([path, value]) => `  ${toCSSVar(path)}: ${value};`);
   const allLines = [...lines, ...extraLines];
@@ -292,15 +338,17 @@ function cssHeader(): string {
  * computation, used both to decide what's shared across schemes and to
  * render the final declaration, so the two can never disagree.
  */
-function semanticCSSValue(
+function semanticDeclarations(
   col: ResolvedCollection,
   path: string,
   token: TokenValue,
   referenceableCSSVars: Set<string>,
-): string {
+  ctx: FormatContext,
+  explicitFontDefaults: boolean,
+): Array<[string, string]> {
   const rawValue = col.rawTokens[path]?.$value;
   const themeAware = resolveSemanticValue(token.$value, rawValue, referenceableCSSVars);
-  return themeAware.startsWith("var(") ? themeAware : formatCSSValue(token.$type, themeAware);
+  return declarations(path, token, themeAware, ctx, explicitFontDefaults);
 }
 
 /**
@@ -315,6 +363,7 @@ function splitSharedSemanticTokens(
   lightCol: ResolvedCollection | undefined,
   darkCol: ResolvedCollection | undefined,
   referenceableCSSVars: Set<string>,
+  ctx: FormatContext,
 ): {
   /** Already-final CSS value strings — may be a var(--*) reference, so these
    * must never be re-run through formatCSSValue (see cssBlockWithExtra). */
@@ -340,14 +389,31 @@ function splitSharedSemanticTokens(
     if (lightToken?.$type === "boolean" || darkToken?.$type === "boolean") continue;
 
     if (lightToken && darkToken) {
-      const lightValue = semanticCSSValue(lightCol, path, lightToken, referenceableCSSVars);
-      const darkValue = semanticCSSValue(darkCol, path, darkToken, referenceableCSSVars);
-      if (lightValue === darkValue) {
+      // Every declaration the token produces (its value, plus a font style's
+      // stretch/italic siblings) must match, not just the primary one — else a
+      // token whose width differs by scheme would be hoisted and lose it.
+      const lightDecls = semanticDeclarations(
+        lightCol,
+        path,
+        lightToken,
+        referenceableCSSVars,
+        ctx,
+        false,
+      );
+      const darkDecls = semanticDeclarations(
+        darkCol,
+        path,
+        darkToken,
+        referenceableCSSVars,
+        ctx,
+        false,
+      );
+      if (JSON.stringify(lightDecls) === JSON.stringify(darkDecls)) {
         // The computed value IS the final declaration text (var() reference
         // or already-formatted literal) — storing the original TokenValue
         // here instead would silently discard the var() form and re-bake a
         // resolved literal once this reaches :root.
-        shared[path] = lightValue;
+        for (const [declPath, value] of lightDecls) shared[declPath] = value;
         continue;
       }
     }
@@ -408,15 +474,25 @@ function resolveSemanticValue(
   return resolvedValue;
 }
 
+/** Whether a token carries a Figma font style name (a `fontWeight`), by its type or as a typography field. */
+function isFontStyleToken(path: string, $type: string, ctx: FormatContext): boolean {
+  return $type === "fontWeight" || ctx.typographyFields.get(path) === "fontWeight";
+}
+
 /**
- * `fontWeight` tokens hold Figma's named font style ("SemiBold") — CSS `font-weight`
- * only accepts `normal`/`bold` or a number 100-900, so this converts via the DTCG
- * alias table, falling back to DEFAULT_FONT_WEIGHT (with a warning) rather than
- * emitting an invalid declaration.
+ * A literal token value as CSS wants it.
+ *
+ * `fontWeight` tokens hold Figma's named font style ("SemiBold",
+ * "Expanded Medium") — CSS `font-weight` only accepts `normal`/`bold` or a
+ * number, so the weight is read out of the name, falling back to
+ * DEFAULT_FONT_WEIGHT (with a warning) rather than emitting an invalid
+ * declaration. A marked typography group's lineHeight / letterSpacing /
+ * textCase / textDecoration are translated too (see typography-css.ts).
+ * Everything else passes through.
  */
-function formatCSSValue($type: string, value: string): string {
-  if ($type === "fontWeight") {
-    const resolved = resolveFontWeightNumber(value);
+function formatCSSValue(path: string, $type: string, value: string, ctx: FormatContext): string {
+  if (isFontStyleToken(path, $type, ctx)) {
+    const resolved = resolveFontWeightNumber(value, ctx.fontOverrides);
     if (resolved === null) {
       console.warn(
         `[TokenSpark] Unrecognized font weight "${value}" — using ${DEFAULT_FONT_WEIGHT}`,
@@ -424,5 +500,40 @@ function formatCSSValue($type: string, value: string): string {
     }
     return String(resolved ?? DEFAULT_FONT_WEIGHT);
   }
-  return value;
+  const field = ctx.typographyFields.get(path);
+  return field ? formatTypographyField(field, value) : value;
+}
+
+/**
+ * Every CSS declaration one token produces, as (token path, value) pairs — a
+ * path, not a variable name, so everything goes through toCSSVar the same way.
+ *
+ * The first pair is the token itself. A font style name additionally yields
+ * `font-stretch` / `font-style` siblings when it's wide or italic (see
+ * fontStyleSiblings). `themeAware`, when given, is the already-computed value
+ * of a semantic or global entry: a `var(--*)` reference is emitted as it is
+ * (never reformatted — the variable it points at holds the formatted value),
+ * but its siblings are still worked out from the token's resolved value,
+ * since a reference can't carry them.
+ *
+ * `explicitFontDefaults` is for blocks that override :root (non-default
+ * themes, sizes and colour schemes): a style plainer than the base has to say
+ * "100%" / "normal" instead of leaving the base's width to leak through.
+ */
+function declarations(
+  path: string,
+  token: TokenValue,
+  themeAware: string | null,
+  ctx: FormatContext,
+  explicitFontDefaults: boolean,
+): Array<[string, string]> {
+  const primary =
+    themeAware !== null && themeAware.startsWith("var(")
+      ? themeAware
+      : formatCSSValue(path, token.$type, themeAware ?? token.$value, ctx);
+  const out: Array<[string, string]> = [[path, primary]];
+  if (isFontStyleToken(path, token.$type, ctx)) {
+    out.push(...fontStyleSiblings(path, token.$value, ctx.fontOverrides, explicitFontDefaults));
+  }
+  return out;
 }

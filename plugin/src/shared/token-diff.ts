@@ -128,8 +128,22 @@ function deriveStatus(
  */
 function normalise(value: string, type: string): string {
   if (type === "color") return normaliseColor(value);
+  const rounded = type === "number" || type === "dimension" ? roundSimpleNumber(value) : null;
+  if (rounded !== null) return rounded;
   if (type === "dimension") return normaliseDimension(value);
   return value.trim().toLowerCase();
+}
+
+/**
+ * A plain number, optionally with a px/%/em/rem unit, rounded to 3 decimals —
+ * absorbing Figma's float artefacts (130% is stored as 129.99999523162842), so
+ * a repo that still holds the unrounded value doesn't show as changed against
+ * the rounded one Figma now reports. Null for anything else (a ref, a calc()).
+ */
+function roundSimpleNumber(value: string): string | null {
+  const m = /^(-?\d*\.?\d+)(px|%|em|rem)?$/.exec(value.trim());
+  if (!m) return null;
+  return `${Math.round(Number(m[1]) * 1000) / 1000}${m[2] ?? ""}`;
 }
 
 function normaliseColor(value: string): string {

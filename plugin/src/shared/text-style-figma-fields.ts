@@ -63,6 +63,23 @@ const TEXT_DECORATION_ALIASES: Record<string, FigmaTextDecoration> = {
   linethrough: "STRIKETHROUGH", // CSS text-decoration: line-through
 };
 
+/**
+ * After binding a text style's font style to a variable, checks Figma
+ * actually took it. Figma silently ignores a binding whose style isn't
+ * installed — no error, the style just stays as it was — so success has to be
+ * confirmed by comparing what the style is now against what it was meant to
+ * be. Returns a message to show the user, or null when it took (or there's
+ * nothing to compare against). Compared loosely ("SemiBold" == "Semi Bold").
+ */
+export function describeFontStyleMismatch(
+  intendedStyle: string | undefined,
+  actual: { family: string; style: string },
+): string | null {
+  if (!intendedStyle) return null;
+  if (normalizeKey(intendedStyle) === normalizeKey(actual.style)) return null;
+  return `Font "${actual.family} ${intendedStyle}" isn't installed in this Figma file — style kept as "${actual.style}"`;
+}
+
 /** Accepts CSS-familiar spellings ("uppercase") as well as Figma's own ("UPPER"). Null if unrecognized. */
 export function resolveTextCase(value: string): FigmaTextCase | null {
   return TEXT_CASE_ALIASES[normalizeKey(value)] ?? null;
@@ -85,7 +102,10 @@ export function resolveTextDecoration(value: string): FigmaTextDecoration | null
  * write direction.
  */
 export function formatUnitValue(v: { value: number; unit: "PIXELS" | "PERCENT" }): string {
-  return v.unit === "PIXELS" ? `${v.value}px` : String(v.value);
+  // Figma stores 130% as 129.99999523162842 — rounded to 3 places so it's read
+  // (and committed, and diffed) as 130 instead of as noise.
+  const value = Math.round(v.value * 1000) / 1000;
+  return v.unit === "PIXELS" ? `${value}px` : String(value);
 }
 
 /** Inverse of formatUnitValue's unit marker — a bare number defaults to

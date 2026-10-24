@@ -5,6 +5,7 @@ import {
   resolveTextDecoration,
   formatUnitValue,
   unitFromLiteral,
+  describeFontStyleMismatch,
 } from "./text-style-figma-fields";
 
 describe("FIGMA_BINDABLE_FIELD", () => {
@@ -86,5 +87,75 @@ describe("formatUnitValue / unitFromLiteral — lineHeight/letterSpacing PIXELS-
   it("defaults a bare number (every token written before this fix) to PERCENT", () => {
     expect(unitFromLiteral("150")).toBe("PERCENT");
     expect(unitFromLiteral("-2")).toBe("PERCENT");
+  });
+});
+
+describe("formatUnitValue — rounds Figma's float artefacts", () => {
+  it("writes 130, not 129.99999523162842, for a 130% line height", () => {
+    // Figma stores 130% as 129.99999523162842. That exact value is in the real
+    // Coop repo 21 times — noise in every diff and every committed file.
+    expect(formatUnitValue({ value: 129.99999523162842, unit: "PERCENT" })).toBe("130");
+    expect(formatUnitValue({ value: 0.15000000596046448, unit: "PERCENT" })).toBe("0.15");
+  });
+
+  it("rounds pixels too, and keeps the px marker", () => {
+    expect(formatUnitValue({ value: 20.0000001, unit: "PIXELS" })).toBe("20px");
+    expect(formatUnitValue({ value: 31.5, unit: "PIXELS" })).toBe("31.5px");
+  });
+
+  it("leaves ordinary values exactly as they were", () => {
+    expect(formatUnitValue({ value: 150, unit: "PERCENT" })).toBe("150");
+    expect(formatUnitValue({ value: -0.25, unit: "PERCENT" })).toBe("-0.25");
+    expect(formatUnitValue({ value: 0, unit: "PIXELS" })).toBe("0px");
+  });
+});
+
+describe("lineHeight / letterSpacing round trip: stored value -> Figma -> stored value", () => {
+  // The stored tokens stay Figma-native; reading back what was just written must
+  // reproduce them byte for byte, or every push would show spurious changes.
+  const roundTrip = (stored: string) => {
+    const figma = { value: Number(stored.replace("px", "")), unit: unitFromLiteral(stored) };
+    return formatUnitValue(figma);
+  };
+
+  it.each(["150", "130", "100", "24px", "31.5px", "0", "0px", "0.5", "-1", "-0.25", "4"])(
+    "%s survives the trip unchanged",
+    (stored) => {
+      expect(roundTrip(stored)).toBe(stored);
+    },
+  );
+
+  it("settles an old unrounded value after one trip, and stays settled", () => {
+    const once = roundTrip("129.99999523162842");
+    expect(once).toBe("130");
+    expect(roundTrip(once)).toBe("130");
+  });
+});
+
+describe("describeFontStyleMismatch — a font style binding Figma silently ignored", () => {
+  // Verified against Figma's Plugin API: binding a STRING variable to fontStyle
+  // with a style that isn't installed ("Bold") throws nothing — the style just
+  // stays as it was ("Regular"). Without checking afterwards, that looks like
+  // a successful apply.
+  it("names the font and says what the style was left as", () => {
+    expect(describeFontStyleMismatch("Bold", { family: "GT America", style: "Regular" })).toBe(
+      `Font "GT America Bold" isn't installed in this Figma file — style kept as "Regular"`,
+    );
+  });
+
+  it("is silent when the style took effect", () => {
+    expect(describeFontStyleMismatch("Bold", { family: "GT America", style: "Bold" })).toBeNull();
+  });
+
+  it("ignores spacing, case and punctuation, so a naming difference isn't reported as a failure", () => {
+    expect(describeFontStyleMismatch("SemiBold", { family: "F", style: "Semi Bold" })).toBeNull();
+    expect(
+      describeFontStyleMismatch("expanded medium", { family: "F", style: "Expanded Medium" }),
+    ).toBeNull();
+  });
+
+  it("has nothing to compare when the intended style is unknown", () => {
+    expect(describeFontStyleMismatch(undefined, { family: "F", style: "Regular" })).toBeNull();
+    expect(describeFontStyleMismatch("", { family: "F", style: "Regular" })).toBeNull();
   });
 });
