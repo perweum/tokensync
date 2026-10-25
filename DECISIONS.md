@@ -434,7 +434,7 @@ Updated whenever something below changes state. For *why* something was built th
 
 ### Developer-First Toolchain: Core Extraction + CLI + CI (direction, not yet built)
 * **Decision**: Extract everything in `plugin/src/shared/` (token-merger, token-format, token-diff, all transformers — pure TypeScript, zero Figma API dependencies) into a `@tokenspark/core` package consumed by both the plugin and a new CLI (`tokenspark build | validate | diff | watch`). Platform outputs (CSS/JS/TS/Dart/Swift) move out of plugin-created PRs entirely: a GitHub Action runs `tokenspark build` on merge and publishes the artifacts (npm package or release branch). The plugin shrinks to the Figma-side boundary only — designers pull/push variables; developers never need Figma or the plugin.
-* **Rationale**: The Figma Variables REST API is Enterprise-gated and plugins cannot run headless, so terminal-driven Figma sync is impossible on standard plans. But developers only need the token repo, which is already the source of truth. Moving compilation to CLI/CI also means PRs contain only token JSON (smaller diffs, no generated-file conflicts) and structurally prevents broken artifacts from being committed (a `dist/{colorScheme}.js` containing TypeScript syntax once shipped via a plugin PR).
+* **Rationale**: The Figma Variables REST API is Enterprise-gated and the plugin itself cannot run headless, so a *CLI* cannot drive Figma on standard plans. (October 2026 correction: Figma's MCP server's `use_figma` can run Plugin API code in a file without the plugin, so agent-driven access may exist on standard plans — unverified, see docs/design/ai-figma-sync-tool.md. That is an agent path, not a CLI one; the reasoning below still holds.) But developers only need the token repo, which is already the source of truth. Moving compilation to CLI/CI also means PRs contain only token JSON (smaller diffs, no generated-file conflicts) and structurally prevents broken artifacts from being committed (a `dist/{colorScheme}.js` containing TypeScript syntax once shipped via a plugin PR).
 * **Considered and rejected — localhost relay bridge**: a plugin window polling a local server so a CLI could drive it. Rejected: Figma must still be open with the plugin running, local-network `networkAccess` rules are fragile across desktop/browser, and it simulates headless without being headless. The core extraction removes the need.
 * **Future provider — Enterprise REST**: shape `@tokenspark/core` around a provider interface so an Enterprise-plan REST provider can later offer true headless two-way sync (`tokenspark pull --from-figma`, scheduled CI backups of Figma state). Not built until there is demand; verify current Figma plan gating at that time.
 * **Accepted limitation**: on non-Enterprise plans, Figma → GitHub always requires a designer to click Push in the plugin. Best mitigation: keep push one-click, and optionally a Figma file-update webhook that nudges designers to sync (webhook availability is plan-dependent — verify).
@@ -778,18 +778,19 @@ section above), one is left for the user to execute.
   project actually needs it, not built speculatively.
 * **AI-assisted Figma sync, as a controlled tool with strict rules** (not
   "run sync unattended" — "let an AI operate the sync loop safely"). Written
-  up in [docs/design/ai-figma-sync-tool.md](docs/design/ai-figma-sync-tool.md):
-  splits into two genuinely different ideas gated by the same Enterprise-plan
-  line the plugin's own architecture already runs into (README — "Why a
-  Figma plugin and not a browser app?"). (A) a GitHub-file-only MCP surface —
-  buildable today, any plan, reuses `plugin/src/shared/`'s existing
-  validation logic, but never confirms the eventual Figma-side apply
-  succeeded. (B) a full headless Figma REST integration — Enterprise-plan
-  only, a genuinely new sync engine, same scope as the already-filed
-  "Enterprise REST provider" item below. Recommendation: (A) is the
-  realistic near-term path, sequenced naturally with the `@tokenspark/core`
-  extraction (Priority 1); (B) stays exactly where it already sits below,
-  gated on a real Enterprise use case.
+  up and **revised October 2026** in
+  [docs/design/ai-figma-sync-tool.md](docs/design/ai-figma-sync-tool.md). The
+  September version said the Plugin API cannot be reached from outside Figma,
+  so agent access required the Enterprise REST API; that was wrong once
+  Figma's MCP server offered `use_figma` (Plugin API code run against a file)
+  and `get_variable_defs`. Now three surfaces: (A) repo-only MCP — buildable
+  today, never touches Figma, doesn't close the loop; (B) agent with Figma MCP
+  + GitHub — closes the loop, plan/seat requirements and rate limits **still
+  to verify** against a real file; (C) Enterprise REST — unchanged, on demand.
+  Key conclusion: the plugin's rules must apply to an agent but as code
+  (`@tokenspark/core` behind a narrow tool surface, PR-only, branch/copy of the
+  Figma file, read-back verification), not as prompt text. Sequenced after the
+  core extraction (Priority 1); nothing built.
 * **Landing page / documentation website.** Mostly a promotion/packaging
   exercise — the content already exists in README.md and `docs/`; the gap is
   presentation, not material. No CI or static-site tooling exists in this
