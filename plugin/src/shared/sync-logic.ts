@@ -22,7 +22,7 @@ import type { CollectionKind } from "./figma-to-tokens";
 import { runTransformers } from "./transformer";
 import type { TransformedFile } from "./transformer";
 import type { TypographyStyle } from "./typography-styles";
-import { slugifyModeName, sameMode, pickDefaultMode } from "./token-format";
+import { slugifyModeName, sameMode, pickDefaultMode, themeSearchOrder } from "./token-format";
 
 /** A flat resolved value map for one collection/mode from Figma — same shape
  * the UI's useFigmaValues.ts (`buildFigmaFlatMaps`) produces. Duplicated as a
@@ -239,7 +239,7 @@ export function mergeTypographyIntoFigmaMaps(
   // sizes/themes: genuinely multi-mode with different values per mode — only
   // the configured default mode's map may be merged in.
   for (const kind of ["sizes", "themes"] as const) {
-    const configOrder = kind === "sizes" ? metadata.sizes : metadata.themes;
+    const configOrder = kind === "sizes" ? metadata.sizes : themeSearchOrder(metadata);
     const modeMaps = figmaMaps.filter((m) => collectionKind(m.collectionName, names) === kind);
     const defaultMap = pickDefaultMode(configOrder, modeMaps, (m) => m.modeName);
     if (defaultMap) Object.assign(allResolved, defaultMap.values);

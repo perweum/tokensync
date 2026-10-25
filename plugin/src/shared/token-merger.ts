@@ -31,6 +31,7 @@ import {
   filterByPaths,
   pickDefaultMode,
   sameMode,
+  themeSearchOrder,
 } from "./token-format";
 import { extractTypographyStyles } from "./typography-styles";
 import type { FontStyleOverride } from "./font-weight";
@@ -103,6 +104,18 @@ export interface Metadata {
    * ("Ext Md"), mapped to the weight / `font-stretch` / `font-style` they mean.
    * Optional; an entry wins over the built-in parser. Output-only — never
    * written back to Figma or changed in the token files. */
+  /** The theme `:root` (and every default-theme resolution) uses. Without it,
+   * the first entry of `themes` — which Map Collections rewrites from
+   * Figma's mode order on every save, so it can't be hand-edited to stick. */
+  defaultTheme?: string;
+  /** Output option: dot-paths (`*` = one segment, `**` = any) of dimension
+   * tokens whose px value the generated CSS writes in rem instead — e.g.
+   * ["primitive.font-size.*", "spacing.unit"]. Anything not listed stays px,
+   * so radii and hairline borders don't scale with the user's font size.
+   * Token files and Figma are untouched; CSS output only. */
+  remTokens?: string[];
+  /** px per 1rem for `remTokens`. Default 16. */
+  remBase?: number;
   fontStyles?: Record<string, FontStyleOverride>;
   /** Width word -> CSS `font-stretch` percentage, replacing the defaults
    * (expanded 125%, condensed 75%…) so output can match the project's own
@@ -189,6 +202,13 @@ function coerceFontStyles(value: unknown): Record<string, FontStyleOverride> | u
     };
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** The non-empty strings of an array; undefined when it isn't an array or none survive. */
+function coerceStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = value.filter((v): v is string => typeof v === "string" && v.trim() !== "");
+  return out.length > 0 ? out : undefined;
 }
 
 /** Keeps only non-empty string percentages; undefined when none survive. */
@@ -367,7 +387,11 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
   // use: first configured name that exists, else the first theme found. This
   // used to try only metadata.themes[0] and resolve against an empty tree when
   // it didn't match a file, while every other side fell back to a real theme.
-  const defaultThemeName = pickDefaultMode(metadata.themes, Object.keys(layers.themes), (n) => n);
+  const defaultThemeName = pickDefaultMode(
+    themeSearchOrder(metadata),
+    Object.keys(layers.themes),
+    (n) => n,
+  );
   const defaultThemeTree = defaultThemeName === undefined ? {} : layers.themes[defaultThemeName];
 
   // --- Global collection ---
@@ -602,6 +626,21 @@ function parseMetadata(files: Map<string, string>): Metadata {
     const fontStretchKeywords = coerceStretchKeywords(parsed.fontStretchKeywords);
     delete merged.fontStyles;
     delete merged.fontStretchKeywords;
+    delete merged.remTokens;
+    delete merged.remBase;
+    delete merged.defaultTheme;
+    const remTokens = coerceStringList(parsed.remTokens);
+    if (remTokens) merged.remTokens = remTokens;
+    if (typeof parsed.remBase === "number" && Number.isFinite(parsed.remBase) && parsed.remBase > 0)
+      merged.remBase = parsed.remBase;
+    if (typeof parsed.defaultTheme === "string" && parsed.defaultTheme.trim()) {
+      merged.defaultTheme = parsed.defaultTheme.trim();
+      // A typo here would silently fall back to the first theme — say so.
+      if (!themes.some((t) => sameMode(t, merged.defaultTheme!)))
+        console.warn(
+          `[TokenSpark] metadata.json defaultTheme "${merged.defaultTheme}" isn't one of its themes (${themes.join(", ")}) — using the first.`,
+        );
+    }
     if (fontStyles) merged.fontStyles = fontStyles;
     if (fontStretchKeywords) merged.fontStretchKeywords = fontStretchKeywords;
     if (parsed.figma) {

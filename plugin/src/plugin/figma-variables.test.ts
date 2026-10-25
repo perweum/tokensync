@@ -38,3 +38,16 @@ describe("toFigmaValue with FLOAT", () => {
     expect(toFigmaValue("-2", "FLOAT")).toBe(-2);
   });
 });
+
+describe("duration tokens (motion)", () => {
+  it("maps to a real FLOAT variable — otherwise a pull silently skips them", () => {
+    expect(figmaTypeFromTokenType("duration")).toBe("FLOAT");
+  });
+
+  it("reads milliseconds and seconds back to the number Figma stores (ms)", () => {
+    expect(toFigmaValue("150ms", "FLOAT")).toBe(150);
+    expect(toFigmaValue("0.2s", "FLOAT")).toBe(200);
+    expect(toFigmaValue("1s", "FLOAT")).toBe(1000);
+    expect(toFigmaValue("16px", "FLOAT")).toBe(16); // unchanged
+  });
+});

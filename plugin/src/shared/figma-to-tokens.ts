@@ -25,6 +25,7 @@ import {
   formatFigmaColor,
   slugifyModeName,
   pickDefaultMode,
+  themeSearchOrder,
 } from "./token-format";
 import type { TypographyStyle } from "./typography-styles";
 
@@ -146,7 +147,8 @@ export function figmaToCollections(
   // Config order (metadata.themes) wins over whatever order Figma happened
   // to return modes in, same reasoning as defaultSizeModeRaw just above.
   const defaultThemeRaw =
-    pickDefaultMode(metadata.themes, [...themeModes.values()], (m) => m.modeName)?.raw ?? {};
+    pickDefaultMode(themeSearchOrder(metadata), [...themeModes.values()], (m) => m.modeName)?.raw ??
+    {};
 
   // Pass 2: resolve. Each layer's context is exactly what it's allowed to reference.
   const result: ResolvedCollection[] = [];
@@ -685,11 +687,7 @@ function rawToTokenValue(
   if (typeof raw === "boolean") return String(raw);
 
   // Number → dimension string or plain number
-  if (typeof raw === "number") {
-    if ($type === "dimension") return `${raw}px`;
-    if ($type === "fontWeight") return String(raw);
-    return String(raw);
-  }
+  if (typeof raw === "number") return formatNumberToken(raw, $type);
 
   if (typeof raw === "string") return raw;
 
@@ -699,6 +697,19 @@ function rawToTokenValue(
 // ---------------------------------------------------------------------------
 // Type inference from variable name + Figma resolvedType
 // ---------------------------------------------------------------------------
+
+/**
+ * A Figma FLOAT as the string a token stores, by token type: a dimension gets
+ * "px", a duration "ms" (Figma holds milliseconds), anything else is the bare
+ * number. The single definition — push (rawToTokenValue) and both pull-diff
+ * paths (useFigmaValues) each used to carry their own copy of the "px" rule,
+ * and drift between them has caused permanent false diffs before.
+ */
+export function formatNumberToken(value: number, $type: string): string {
+  if ($type === "dimension") return `${value}px`;
+  if ($type === "duration") return `${value}ms`;
+  return String(value);
+}
 
 export function inferType(name: string, resolvedType: string): string {
   if (resolvedType === "COLOR") return "color";
@@ -713,6 +724,9 @@ export function inferType(name: string, resolvedType: string): string {
     return "string";
   }
   if (resolvedType === "FLOAT") {
+    // Motion: Figma holds milliseconds. Checked first so a name like
+    // "motion/duration/..." can't be caught by a looser keyword below.
+    if (/duration|delay/i.test(name)) return "duration";
     if (/dimension|size|spacing|padding|radius|width|height|border|gap/i.test(name))
       return "dimension";
     if (/weight/i.test(name)) return "fontWeight";

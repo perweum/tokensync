@@ -11,7 +11,7 @@ import type {
   FigmaVariableValue,
 } from "../../shared/messages";
 import { fromFigmaVarName, formatFigmaColor } from "../../shared/token-format";
-import { inferType } from "../../shared/figma-to-tokens";
+import { inferType, formatNumberToken } from "../../shared/figma-to-tokens";
 
 export interface FigmaFlatMap {
   collectionName: string;
@@ -113,8 +113,7 @@ function resolveValue(
   // opacity.low = 30, not a pixel dimension at all) permanently mismatched
   // GitHub's correctly bare-number value on every pull.
   if (typeof value === "number") {
-    const type = inferType(variable.name, variable.resolvedType);
-    return type === "dimension" ? `${value}px` : String(value);
+    return formatNumberToken(value, inferType(variable.name, variable.resolvedType));
   }
 
   // String
@@ -156,8 +155,7 @@ function resolveOneHop(
   }
 
   if (typeof value === "number") {
-    const type = inferType(variable.name, variable.resolvedType);
-    return type === "dimension" ? `${value}px` : String(value);
+    return formatNumberToken(value, inferType(variable.name, variable.resolvedType));
   }
 
   if (typeof value === "string") {

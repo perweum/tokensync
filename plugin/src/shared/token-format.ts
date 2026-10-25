@@ -313,6 +313,21 @@ export function sameMode(a: string, b: string): boolean {
 }
 
 /**
+ * The order to search `metadata.themes` in when picking the default theme: an
+ * explicit `defaultTheme` first, then the list's own order. Map Collections
+ * rewrites `themes` from Figma's mode order on every save, so the list order
+ * alone can't be hand-edited to stick — `defaultTheme` can. A `defaultTheme`
+ * that matches no theme is skipped by pickDefaultMode, falling through to
+ * the list order.
+ */
+export function themeSearchOrder(metadata: {
+  themes: readonly string[];
+  defaultTheme?: string;
+}): string[] {
+  return metadata.defaultTheme ? [metadata.defaultTheme, ...metadata.themes] : [...metadata.themes];
+}
+
+/**
  * The default among `candidates`: the first name in `configured` (config
  * order — metadata.themes/sizes/colorSchemes) that matches a candidate, else
  * the first candidate. Config order, not candidate order, decides — the

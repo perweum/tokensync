@@ -1000,3 +1000,71 @@ describe("selectDefaultPrimitives", () => {
     expect(result?.collectionName).toBe("Primitives");
   });
 });
+
+describe("parseRepository — remTokens, remBase and defaultTheme in metadata.json", () => {
+  const meta = (extra: object) =>
+    file("tokens/metadata.json", { version: "1.0.0", themes: ["Vann", "Ild"], ...extra });
+
+  it("reads all three", () => {
+    const { metadata } = parseRepository(
+      [
+        meta({
+          remTokens: ["spacing.unit", "primitive.font-size.*"],
+          remBase: 10,
+          defaultTheme: "Ild",
+        }),
+      ],
+      tokensPath,
+    );
+    expect(metadata.remTokens).toEqual(["spacing.unit", "primitive.font-size.*"]);
+    expect(metadata.remBase).toBe(10);
+    expect(metadata.defaultTheme).toBe("Ild");
+  });
+
+  it("is absent when not set", () => {
+    const { metadata } = parseRepository([meta({})], tokensPath);
+    expect(metadata.remTokens).toBeUndefined();
+    expect(metadata.remBase).toBeUndefined();
+    expect(metadata.defaultTheme).toBeUndefined();
+  });
+
+  it("drops malformed values instead of failing (hand-edited JSON)", () => {
+    const { metadata } = parseRepository(
+      [meta({ remTokens: ["ok", 3, "", null], remBase: -4, defaultTheme: 7 })],
+      tokensPath,
+    );
+    expect(metadata.remTokens).toEqual(["ok"]);
+    expect(metadata.remBase).toBeUndefined();
+    expect(metadata.defaultTheme).toBeUndefined();
+    expect(
+      parseRepository([meta({ remTokens: "spacing.unit", remBase: "16" })], tokensPath).metadata
+        .remTokens,
+    ).toBeUndefined();
+  });
+
+  it("resolves a Global ref against defaultTheme, not themes[0]", () => {
+    const files = [
+      meta({ defaultTheme: "Ild" }),
+      file("tokens/primitives/fontFamily.json", {
+        fontFamily: {
+          a: { $type: "fontFamily", $value: "Font A" },
+          b: { $type: "fontFamily", $value: "Font B" },
+        },
+      }),
+      file("tokens/semantic/themes/vann.json", {
+        "font-family": { display: { $type: "fontFamily", $value: "{fontFamily.a}" } },
+      }),
+      file("tokens/semantic/themes/ild.json", {
+        "font-family": { display: { $type: "fontFamily", $value: "{fontFamily.b}" } },
+      }),
+      file("tokens/semantic/global/typography.json", {
+        typography: {
+          banner: { fontFamily: { $type: "fontFamily", $value: "{font-family.display}" } },
+        },
+      }),
+    ];
+    const { collections } = parseRepository(files, tokensPath);
+    const global = collections.find((c) => c.collectionName === "Global")!;
+    expect(global.tokens["typography.banner.fontFamily"].$value).toBe("Font B");
+  });
+});
