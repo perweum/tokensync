@@ -438,6 +438,15 @@ describe("pickDefaultMode", () => {
 });
 
 describe("normalizeTokenTree", () => {
+  it("reports keys containing a dot as Figma names, nested ones included", () => {
+    const { dottedNames } = normalizeTokenTree({
+      spacing: { "1.5": { $type: "dimension", $value: "6px" } },
+      "x.y": { z: { $type: "dimension", $value: "1px" } },
+      ok: { "a-b": { $type: "dimension", $value: "1px" } },
+    } as never);
+    expect(dottedNames).toEqual(["spacing/1.5", "x.y"]);
+  });
+
   it("coerces numeric and boolean $value to strings, leaving strings alone", () => {
     const { tree, unsupportedPaths } = normalizeTokenTree({
       size: { a: { $type: "number", $value: 16 }, b: { $type: "boolean", $value: false } },

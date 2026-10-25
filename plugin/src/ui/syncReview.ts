@@ -19,7 +19,7 @@ import type { FigmaVariable, FigmaVariableCollection } from "../shared/messages"
 import type { CollectionDiff } from "../shared/token-diff";
 import type { ParsedRepository, ResolvedCollection } from "../shared/token-merger";
 import { parseRepository } from "../shared/token-merger";
-import { figmaToCollections, figmaToTokenFiles } from "../shared/figma-to-tokens";
+import { figmaToCollections, figmaToTokenFiles, findDottedNames } from "../shared/figma-to-tokens";
 import {
   computePullDiff,
   computePushDiff,
@@ -96,6 +96,8 @@ export interface PushReview {
   brokenAliasPaths: string[];
   /** Real Figma variable names that structurally collide (a leaf and a group at one path). */
   conflictPaths: string[];
+  /** Real Figma variable names containing a "." (the token path separator). */
+  dottedNames: string[];
   staleModes: StaleConfiguredMode[];
 }
 
@@ -138,6 +140,12 @@ export function reviewPush(input: {
     figmaTypographyStyles,
   );
 
+  const dottedNames = findDottedNames(
+    figmaCollections,
+    figmaVariables,
+    githubParsed.metadata.figma.collections,
+  );
+
   const staleModes = findStaleConfiguredModes(githubParsed.metadata, figmaCollections);
 
   // Diff: Figma (new) vs GitHub (current) — githubValue = current state in
@@ -154,6 +162,7 @@ export function reviewPush(input: {
     unknownCollectionNames,
     brokenAliasPaths,
     conflictPaths,
+    dottedNames,
     staleModes,
   };
 
