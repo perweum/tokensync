@@ -271,6 +271,10 @@ export interface ParsedRepository {
    * left to crash the diff. Reported so a caller can refuse to act on a
    * partial picture instead of treating them as absent from GitHub. */
   unsupportedTokens: Array<{ file: string; path: string }>;
+  /** Token or group keys containing "." — `path` is the Figma name it would
+   * need. A dot is the path separator, so such a key would be pulled into Figma
+   * as nested variables under a different name. */
+  dottedNames: Array<{ file: string; path: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,13 +296,14 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
 
   const unreadableFiles: string[] = [];
   const unsupportedTokens: Array<{ file: string; path: string }> = [];
+  const dottedNames: Array<{ file: string; path: string }> = [];
   const metadata = parseMetadata(stripped);
   // parseMetadata quietly falls back to defaults on bad JSON; surface it too,
   // or a broken metadata.json silently swaps the whole real config for defaults.
   const rawMetadata = stripped.get("metadata.json");
   if (rawMetadata !== undefined && !isJsonObject(rawMetadata))
     unreadableFiles.push("metadata.json");
-  const layers = buildLayers(stripped, unreadableFiles, unsupportedTokens);
+  const layers = buildLayers(stripped, unreadableFiles, unsupportedTokens, dottedNames);
 
   // Several physical Figma collections can back one role (see CollectionNames);
   // the GitHub side has no way to know which one a given token file belongs to,
@@ -477,7 +482,7 @@ export function parseRepository(files: GitHubFile[], tokensPath: string): Parsed
     });
   }
 
-  return { metadata, collections, unreadableFiles, unsupportedTokens };
+  return { metadata, collections, unreadableFiles, unsupportedTokens, dottedNames };
 }
 
 // ---------------------------------------------------------------------------
@@ -509,11 +514,13 @@ function isJsonObject(text: string): boolean {
 }
 
 /** Pushes the path of every file that couldn't be read into `unreadable`, and
- * every token with an unsupported value type into `unsupported`. */
+ * every token with an unsupported value type into `unsupported`, and every key
+ * containing a dot into `dotted`. */
 function buildLayers(
   files: Map<string, string>,
   unreadable: string[],
   unsupported: Array<{ file: string; path: string }>,
+  dotted: Array<{ file: string; path: string }>,
 ): Layers {
   const layers: Layers = { primitives: {}, global: {}, themes: {}, semantic: {}, sizes: {} };
 
@@ -534,6 +541,9 @@ function buildLayers(
       tree = normalized.tree;
       for (const tokenPath of normalized.unsupportedPaths) {
         unsupported.push({ file: path, path: tokenPath });
+      }
+      for (const name of normalized.dottedNames) {
+        dotted.push({ file: path, path: name });
       }
     } catch {
       console.warn(`[TokenSpark] Failed to parse ${path}`);

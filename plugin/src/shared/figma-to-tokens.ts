@@ -270,6 +270,28 @@ function mergeIntoMode(
   }
 }
 
+/**
+ * Real Figma variable names with a "." in them, in the collections that sync.
+ *
+ * "." is the path separator in token files, so "spacing/1.5" would be written
+ * as the nested group spacing → 1 → 5 (or collide with "spacing/1") and come
+ * back from the next pull as "spacing/1/5", deleting the original. Name it
+ * "spacing/1-5" instead.
+ */
+export function findDottedNames(
+  collections: FigmaVariableCollection[],
+  variables: FigmaVariable[],
+  figmaCollectionNames: CollectionNames,
+): string[] {
+  const synced = new Set(
+    collections
+      .filter((c) => collectionKind(c.name, figmaCollectionNames) !== "unknown")
+      .map((c) => c.id),
+  );
+  const names = variables.filter((v) => synced.has(v.collectionId) && v.name.includes("."));
+  return [...new Set(names.map((v) => v.name))];
+}
+
 export interface FigmaToTokenFilesResult {
   files: TokenFile[];
   /** Dot-paths skipped because a real Figma variable name structurally

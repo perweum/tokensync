@@ -60,14 +60,18 @@ export function isPureRef(value: string): boolean {
  * `unsupportedPaths`, so the caller can refuse to proceed rather than either
  * crash or quietly treat the token as absent.
  *
+ * Keys containing "." are reported in `dottedNames` (as Figma names) and left
+ * in place.
+ *
  * Returns a copy; never mutates its input.
  */
 export function normalizeTokenTree(
   tree: TokenTree,
   prefix = "",
-): { tree: TokenTree; unsupportedPaths: string[] } {
+): { tree: TokenTree; unsupportedPaths: string[]; dottedNames: string[] } {
   const result: Record<string, unknown> = {};
   const unsupportedPaths: string[] = [];
+  const dottedNames: string[] = [];
 
   for (const [key, node] of Object.entries(tree)) {
     if (key.startsWith("$")) {
@@ -75,6 +79,8 @@ export function normalizeTokenTree(
       continue;
     }
     const path = prefix ? `${prefix}.${key}` : key;
+    // A "." inside a key can't survive the dot-path round trip (see findDottedNames).
+    if (key.includes(".")) dottedNames.push(prefix ? `${toFigmaVarName(prefix)}/${key}` : key);
     if (isTokenValue(node)) {
       const value = node.$value as unknown;
       if (typeof value === "string") {
@@ -88,12 +94,13 @@ export function normalizeTokenTree(
       const sub = normalizeTokenTree(node, path);
       result[key] = sub.tree;
       unsupportedPaths.push(...sub.unsupportedPaths);
+      dottedNames.push(...sub.dottedNames);
     } else {
       result[key] = node;
     }
   }
 
-  return { tree: result as TokenTree, unsupportedPaths };
+  return { tree: result as TokenTree, unsupportedPaths, dottedNames };
 }
 
 /**

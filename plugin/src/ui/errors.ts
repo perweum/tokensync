@@ -110,6 +110,21 @@ export function describeUnsupportedTokens(
 }
 
 /**
+ * Pull found a token or group key with a "." in it (see parseRepository's
+ * `dottedNames`). A dot is the path separator, so Figma would get it as nested
+ * variables under another name, and the original would show as removed.
+ */
+export function describeDottedNames(names: Array<{ file: string; path: string }>): DescribedError {
+  const n = names.length;
+  const listed = names.slice(0, 10).map((t) => `${t.file}: ${t.path}`);
+  if (n > 10) listed.push(`…and ${n - 10} more`);
+  return {
+    message: `${n} token name${n !== 1 ? "s" : ""} in GitHub ${n !== 1 ? "contain" : "contains"} a "." — the path separator — so pulling would create different variables and could delete the originals. Use "-" instead (1.5 → 1-5, -0.5 → neg-0-5), then pull again.`,
+    detail: listed.join(", "),
+  };
+}
+
+/**
  * Pull found token files it couldn't read (see parseRepository's
  * `unreadableFiles`). Refusing outright — rather than diffing without them —
  * is the point: their tokens would look "removed in GitHub", and Apply would

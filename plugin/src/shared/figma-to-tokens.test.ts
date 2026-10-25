@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { figmaToCollections, figmaToTokenFiles, buildCollectionSources } from "./figma-to-tokens";
+import {
+  figmaToCollections,
+  figmaToTokenFiles,
+  buildCollectionSources,
+  findDottedNames,
+} from "./figma-to-tokens";
 import type { FigmaVariable, FigmaVariableCollection } from "./messages";
 import type { CollectionNames, Metadata } from "./token-merger";
 import type { TypographyStyle } from "./typography-styles";
@@ -1241,5 +1246,36 @@ describe("figmaToTokenFiles — motion tokens (duration, easing) and a backdrop 
 
   it("keeps an alpha colour (a modal backdrop) with its alpha", () => {
     expect(tree().color.backdrop).toMatchObject({ $type: "color", $value: "rgba(0, 0, 0, 0.80)" });
+  });
+});
+
+describe("findDottedNames", () => {
+  const collections: FigmaVariableCollection[] = [
+    {
+      id: "c1",
+      name: "Global",
+      modes: [{ modeId: "m1", name: "Value" }],
+      variableIds: ["v1", "v2", "v3"],
+    },
+    { id: "c2", name: "Scratch", modes: [{ modeId: "m2", name: "Value" }], variableIds: ["v4"] },
+  ];
+  const variable = (id: string, name: string, collectionId: string): FigmaVariable => ({
+    id,
+    name,
+    resolvedType: "FLOAT",
+    valuesByMode: { m1: 6, m2: 6 },
+    collectionId,
+    collectionName: collectionId === "c1" ? "Global" : "Scratch",
+  });
+  const variables = [
+    variable("v1", "spacing/1.5", "c1"),
+    variable("v2", "spacing/1-5", "c1"),
+    variable("v3", "spacing/1.5", "c1"),
+    variable("v4", "draft/0.5", "c2"),
+  ];
+
+  it("lists dotted names in synced collections once, ignoring unrecognised collections", () => {
+    const names = { primitives: [], global: ["Global"], themes: [], semantic: [], sizes: [] };
+    expect(findDottedNames(collections, variables, names)).toEqual(["spacing/1.5"]);
   });
 });

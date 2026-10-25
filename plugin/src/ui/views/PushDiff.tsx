@@ -54,6 +54,9 @@ interface Props {
    * against the full Figma data, so this can show up even for a collection
    * the user hasn't selected yet. */
   conflictPaths?: string[];
+  /** Real Figma variable names containing a "." — the token path separator. The
+   * push is refused until they're renamed (e.g. 1.5 → 1-5). */
+  dottedNames?: string[];
   /** A theme/colorScheme/size mode renamed in Figma since "Map Collections"
    * was last saved — metadata.json's configured name no longer matches any
    * live Figma mode for that role. Figma itself always pushes under its
@@ -79,6 +82,7 @@ export function PushDiff({
   unrecognizedCollections = [],
   brokenAliasPaths = [],
   conflictPaths = [],
+  dottedNames = [],
   staleConfiguredModes = [],
   outputOnlyFiles = [],
   onCreatePR,
@@ -128,12 +132,13 @@ export function PushDiff({
     (unrecognizedCollections.length > 0 ? 1 : 0) +
     (brokenAliasPaths.length > 0 ? 1 : 0) +
     (conflictPaths.length > 0 ? 1 : 0) +
+    (dottedNames.length > 0 ? 1 : 0) +
     (staleConfiguredModes.length > 0 ? 1 : 0);
   const hasWarnings = warningCount > 0;
   // Conflicts are the one case that actually blocks the push (see its own
   // copy below) — surface that by starting the accordion in red instead of
   // amber, even though the group itself still opens collapsed like any other.
-  const warningsTone = conflictPaths.length > 0 ? "danger" : "warning";
+  const warningsTone = conflictPaths.length > 0 || dottedNames.length > 0 ? "danger" : "warning";
 
   return (
     <div style={s.container}>
@@ -200,6 +205,26 @@ export function PushDiff({
                 {conflictPaths.length} variable name{conflictPaths.length !== 1 ? "s" : ""} can't
                 sync — {conflictPaths.length === 1 ? "it conflicts" : "they conflict"} with another
                 variable in Figma.
+              </StatusBanner>
+            )}
+
+            {dottedNames.length > 0 && (
+              <StatusBanner
+                bare
+                tone="danger"
+                expandableDetail={
+                  <>
+                    <strong>{dottedNames.join(", ")}</strong> — "." is the path separator in the
+                    token files, so {dottedNames.length === 1 ? "this name" : "these names"} would
+                    come back from the next pull as nested variables, and the original would be
+                    removed. Rename in Figma using "-" (<code>spacing/1.5</code> →{" "}
+                    <code>spacing/1-5</code>, <code>-0.5</code> → <code>neg-0-5</code>), then push
+                    again — this will block the push until it's resolved.
+                  </>
+                }
+              >
+                {dottedNames.length} variable name{dottedNames.length !== 1 ? "s" : ""} contain
+                {dottedNames.length === 1 ? "s" : ""} a "." and can't sync.
               </StatusBanner>
             )}
 

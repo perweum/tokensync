@@ -20,6 +20,7 @@ import type {
   CollectionNames,
   CollectionSources,
 } from "../../shared/token-merger";
+import { findDottedNames } from "../../shared/figma-to-tokens";
 import type { figmaToCollections } from "../../shared/figma-to-tokens";
 import { toFigmaVarName } from "../../shared/token-format";
 import type { CollectionDiff } from "../../shared/token-diff";
@@ -52,6 +53,7 @@ import {
   describeGitHubError,
   describePluginError,
   describeUnreadableFiles,
+  describeDottedNames,
   describeUnsupportedTokens,
 } from "../errors";
 import type { DescribedError } from "../errors";
@@ -115,6 +117,10 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // it's visible on the diff screen itself, not only as the hard stop
   // handleCreatePR still enforces against whatever's actually selected.
   const [conflictPaths, setConflictPaths] = useState<string[]>([]);
+  // Real Figma variable names with a "." in them — see findDottedNames. Same
+  // reasoning as conflictPaths: shown on the diff screen, enforced again in
+  // handleCreatePR.
+  const [dottedNames, setDottedNames] = useState<string[]>([]);
   // A theme/colorScheme/size mode renamed in Figma since "Map Collections"
   // was last saved — metadata.json's configured name (a sanitized slug, or
   // stale real casing) no longer matches any live Figma mode for that role.
@@ -380,6 +386,10 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         setStatus({ kind: "error", ...describeUnsupportedTokens(parsed.unsupportedTokens) });
         return;
       }
+      if (parsed.dottedNames.length > 0) {
+        setStatus({ kind: "error", ...describeDottedNames(parsed.dottedNames) });
+        return;
+      }
       pendingGitHub.current = parsed;
 
       setStatus({ kind: "loading", message: "Reading Figma variables…" });
@@ -568,6 +578,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setUnrecognizedCollections(review.unknownCollectionNames);
       setBrokenAliasPaths(review.brokenAliasPaths);
       setConflictPaths(review.conflictPaths);
+      setDottedNames(review.dottedNames);
       setStaleConfiguredModes(review.staleModes);
       setOutputOnlyFiles(review.outputOnlyFiles);
 
@@ -625,6 +636,22 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           `Can't push — ${figmaNames} ${conflictPaths.length === 1 ? "conflicts" : "conflict"} ` +
             `with another variable in Figma (a variable is named exactly this, and other variables ` +
             `are also nested under that same name). Rename or delete one of them in Figma, then push again.`,
+        );
+      }
+
+      // A "." in a Figma variable name can't survive the dot-path round trip:
+      // it would be written as nested groups and come back from the next pull
+      // under a different name.
+      const dotted = findDottedNames(
+        raw.collections,
+        raw.variables,
+        parsed.metadata.figma.collections,
+      );
+      if (dotted.length > 0) {
+        throw new Error(
+          `Can't push — ${dotted.join(", ")} ${dotted.length === 1 ? "has" : "have"} a "." in ` +
+            `the name, and "." is the path separator in the token files. Rename in Figma using "-" ` +
+            `(1.5 → 1-5, -0.5 → neg-0-5), then push again.`,
         );
       }
 
@@ -689,6 +716,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         unrecognizedCollections={unrecognizedCollections}
         brokenAliasPaths={brokenAliasPaths}
         conflictPaths={conflictPaths}
+        dottedNames={dottedNames}
         staleConfiguredModes={staleConfiguredModes}
         outputOnlyFiles={outputOnlyFiles}
         onCreatePR={(title, keys) => handleCreatePR(title, keys)}

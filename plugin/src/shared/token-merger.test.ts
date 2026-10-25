@@ -819,6 +819,34 @@ describe("parseRepository — reports tokens whose value type it can't sync", ()
   });
 });
 
+// "." is the path separator: a key like "1.5" would be pulled into Figma as
+// spacing/1/5, and the original would show as removed on the next push.
+describe("parseRepository — keys containing a dot", () => {
+  const dim = (v: string) => ({ $type: "dimension", $value: v });
+
+  it("lists them as the Figma name they would need, file included", () => {
+    const files = [
+      file("tokens/semantic/global/spacing.json", {
+        spacing: { "1.5": dim("6px"), 2: dim("8px") },
+        "a.b": { c: dim("1px") },
+      }),
+    ];
+    expect(parseRepository(files, tokensPath).dottedNames).toEqual([
+      { file: "semantic/global/spacing.json", path: "spacing/1.5" },
+      { file: "semantic/global/spacing.json", path: "a.b" },
+    ]);
+  });
+
+  it("is empty when names use hyphens", () => {
+    const files = [
+      file("tokens/semantic/global/spacing.json", {
+        spacing: { "1-5": dim("6px"), "neg-0-5": dim("-2px") },
+      }),
+    ];
+    expect(parseRepository(files, tokensPath).dottedNames).toEqual([]);
+  });
+});
+
 describe("parseRepository — metadata.json's optional font style overrides", () => {
   const meta = (extra: object) =>
     file("tokens/metadata.json", { version: "1.0.0", themes: ["default"], ...extra });
