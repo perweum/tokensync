@@ -348,6 +348,67 @@ describe("figmaToCollections — default theme for Semantic resolution is chosen
   });
 });
 
+describe("figmaToCollections — an explicit defaultTheme wins over the order of metadata.themes", () => {
+  // Map Collections rewrites metadata.themes from Figma's mode order on every
+  // save, so a hand-edited order can't stick. defaultTheme is the stable way
+  // to say which theme is the default — and Semantic must resolve against it.
+  const names = {
+    primitives: ["Primitives"],
+    global: [] as string[],
+    themes: ["Themes"],
+    semantic: ["Semantic"],
+    sizes: [] as string[],
+  };
+  const figmaCollections = [
+    {
+      id: "c1",
+      name: "Themes",
+      modes: [
+        { modeId: "m1", name: "Vann" },
+        { modeId: "m2", name: "Ild" },
+      ],
+      variableIds: [],
+    },
+    { id: "c2", name: "Semantic", modes: [{ modeId: "m3", name: "Light" }], variableIds: [] },
+  ];
+  const variables: FigmaVariable[] = [
+    {
+      id: "v1",
+      name: "color/accent",
+      resolvedType: "COLOR",
+      valuesByMode: { m1: { r: 0.75, g: 0, b: 0 }, m2: { r: 0, g: 0.26, b: 1 } },
+      collectionId: "c1",
+      collectionName: "Themes",
+    },
+    {
+      id: "v2",
+      name: "background/default",
+      resolvedType: "COLOR",
+      valuesByMode: { m3: { type: "VARIABLE_ALIAS", id: "v1" } },
+      collectionId: "c2",
+      collectionName: "Semantic",
+    },
+  ];
+
+  it("resolves Semantic against defaultTheme ('Ild'), not the first entry ('Vann')", () => {
+    const metadata = { ...metadataFor(names, [], ["Vann", "Ild"]), defaultTheme: "Ild" };
+    const { collections } = figmaToCollections(figmaCollections, variables, metadata);
+    const semantic = collections.find((c) => c.collectionName === "Semantic")!;
+    // #bf0000 would mean it resolved against Vann (red); #0042ff is Ild (blue).
+    expect(semantic.tokens["background.default"].$value).toBe("#0042ff");
+  });
+
+  it("still uses the first entry when defaultTheme isn't set", () => {
+    const { collections } = figmaToCollections(
+      figmaCollections,
+      variables,
+      metadataFor(names, [], ["Vann", "Ild"]),
+    );
+    const semantic = collections.find((c) => c.collectionName === "Semantic")!;
+    expect(semantic.tokens["background.default"].$value).toBe("#bf0000");
+  });
+});
+
 describe("figmaToTokenFiles — real Figma Text Styles pushed into typography.json", () => {
   const names = {
     primitives: [] as string[],
@@ -1126,5 +1187,59 @@ describe("figmaToTokenFiles — FLOAT variable type inference", () => {
 
     expect(tree.lineHeight["2xl"].$type).toBe("dimension");
     expect(tree.lineHeight["2xl"].$value).toBe("54px");
+  });
+});
+
+describe("figmaToTokenFiles — motion tokens (duration, easing) and a backdrop colour", () => {
+  const names = {
+    primitives: ["Primitives"],
+    global: [] as string[],
+    themes: [] as string[],
+    semantic: [] as string[],
+    sizes: [] as string[],
+  };
+  const collections: FigmaVariableCollection[] = [
+    {
+      id: "c1",
+      name: "Primitives",
+      modes: [{ modeId: "m1", name: "Value" }],
+      variableIds: ["v1", "v2", "v3", "v4"],
+    },
+  ];
+  const v = (id: string, name: string, resolvedType: string, value: unknown): FigmaVariable =>
+    ({
+      id,
+      name,
+      resolvedType,
+      valuesByMode: { m1: value },
+      collectionId: "c1",
+      collectionName: "Primitives",
+    }) as FigmaVariable;
+  const variables = [
+    v("v1", "motion/duration/fast", "FLOAT", 150),
+    v("v2", "motion/easing/standard", "STRING", "cubic-bezier(0.2, 0, 0, 1)"),
+    v("v3", "color/backdrop", "COLOR", { r: 0, g: 0, b: 0, a: 0.8 }),
+    v("v4", "motion/delay/short", "FLOAT", 50),
+  ];
+
+  // Primitives are split into one file per top-level group (motion.json, color.json …).
+  const tree = () => {
+    const { files } = figmaToTokenFiles(collections, variables, "tokens/", names);
+    return Object.assign({}, ...files.map((f) => JSON.parse(f.content)));
+  };
+
+  it("writes a FLOAT named duration/delay as a DTCG duration in milliseconds", () => {
+    // Used to be a bare number (type "number", no unit), so CSS got
+    // `--motion-duration-fast: 150` — invalid for transition-duration.
+    expect(tree().motion.duration.fast).toMatchObject({ $type: "duration", $value: "150ms" });
+    expect(tree().motion.delay.short).toMatchObject({ $type: "duration", $value: "50ms" });
+  });
+
+  it("passes an easing STRING through untouched", () => {
+    expect(tree().motion.easing.standard.$value).toBe("cubic-bezier(0.2, 0, 0, 1)");
+  });
+
+  it("keeps an alpha colour (a modal backdrop) with its alpha", () => {
+    expect(tree().color.backdrop).toMatchObject({ $type: "color", $value: "rgba(0, 0, 0, 0.80)" });
   });
 });

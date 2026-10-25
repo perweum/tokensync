@@ -188,3 +188,29 @@ describe("buildFigmaFlatMaps — rawValues stop at one hop, unlike the fully-res
     expect(map.rawValues["opacity.low"]).toBe("30");
   });
 });
+
+describe("buildFigmaFlatMaps — duration variables get their unit, matching the push side", () => {
+  it("formats a FLOAT named duration as milliseconds, not a bare number", () => {
+    const maps = buildFigmaFlatMaps(
+      [
+        {
+          id: "c1",
+          name: "Primitives",
+          modes: [{ modeId: "m1", name: "Value" }],
+          variableIds: ["v1"],
+        },
+      ],
+      [
+        {
+          id: "v1",
+          name: "motion/duration/fast",
+          resolvedType: "FLOAT",
+          valuesByMode: { m1: 150 },
+          collectionId: "c1",
+          collectionName: "Primitives",
+        },
+      ],
+    );
+    expect(maps[0].values["motion.duration.fast"]).toBe("150ms");
+  });
+});

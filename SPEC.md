@@ -78,6 +78,7 @@ All tokens follow the W3C DTCG format:
 | `dimension` | `"16px"`, `"1rem"` | Spacing, radius, font-size |
 | `fontFamily` | `"Inter, sans-serif"` | Typography |
 | `fontWeight` | `"600"`, or a Figma font style name (`"Expanded Medium Italic"`) | Typography — see *Typography in CSS* under Platform Output |
+| `duration` | `"150ms"` | Motion — a Figma `FLOAT` whose name contains `duration` or `delay` (Figma holds milliseconds; a token may also be written `"0.2s"`) |
 | `number` | `"1.5"` | Line height, opacity |
 | `boolean` | `"true"` | A Figma `BOOLEAN` variable — not an official DTCG type, a pragmatic extension |
 | `string` | `"uppercase"` | A Figma `STRING` variable not related to a font — also not an official DTCG type |
@@ -304,6 +305,32 @@ Switching the active theme mode in Figma (or via `[data-theme]` in CSS) cascades
   }
 }
 ```
+
+Three optional keys control which theme is the default and how dimensions are
+written. They only affect generated output — token files and Figma are untouched:
+
+```json
+{
+  "defaultTheme": "Ild",
+  "remTokens": ["primitive.font-size.*", "spacing.unit"],
+  "remBase": 16
+}
+```
+
+- `defaultTheme` — the theme `:root` holds, and the one every default-theme
+  resolution uses. Without it, the first entry of `themes`. **Prefer this over
+  reordering `themes`:** Map Collections rewrites `themes` from Figma's mode order
+  on every save, so a hand-edited order doesn't stick. A name that matches no
+  theme is ignored (with a warning). The default theme gets no `[data-theme]`
+  block of its own — it *is* `:root` — so a section can't switch *back* to it from
+  inside another theme.
+- `remTokens` — dot-paths of dimension tokens written in `rem` instead of `px` in
+  the CSS (`*` = one path segment, `**` = anything): `["primitive.font-size.*",
+  "spacing.unit"]`. Only a plain `px` value is converted, and only for a listed
+  token, so radii and hairline borders stay `px`. A value that's a `var()`
+  reference follows its target. Typography fields given as literals need their
+  own entry (`"typography.*.fontSize"`).
+- `remBase` — px per `1rem`, default `16`.
 
 Two more optional keys adjust how Figma font style names become CSS (see
 *Typography in CSS*). Both only affect generated output — never what's stored in

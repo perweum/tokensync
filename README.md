@@ -525,6 +525,16 @@ Token files keep typography the way Figma stores it — so syncing stays lossles
 
 If your font's width or style names don't follow the usual words, map them in `metadata.json` with `fontStyles` and `fontStretchKeywords`. Details and the full table: [SPEC.md](SPEC.md#typography-in-css).
 
+### Output options in `metadata.json`
+
+All optional, all output-only — token files and Figma never change:
+
+- `defaultTheme` — which theme is the default (`:root`), instead of relying on the order of `themes`, which Map Collections rewrites from Figma on every save.
+- `remTokens` / `remBase` — write chosen dimension tokens in `rem` instead of `px` (e.g. `["primitive.font-size.*", "spacing.unit"]`), leaving radii and borders in px.
+- `fontStyles` / `fontStretchKeywords` — see *Typography in the generated CSS*.
+
+Motion works through ordinary Figma variables: a `FLOAT` named `…/duration/…` or `…/delay/…` becomes a DTCG `duration` in milliseconds (`"150ms"`), and a `STRING` such as `cubic-bezier(0.2, 0, 0, 1)` passes through as it is. Shadows (elevation) can't be synced yet — see [DECISIONS.md](DECISIONS.md).
+
 ### Already have a build step?
 
 Token Spark's CSS/JS/TS/Dart/Swift generators are a convenience for teams without one — not a requirement. Every platform is off unless explicitly enabled from the **Output Formats** screen; a project with none of them turned on still gets the token JSON, nothing else.

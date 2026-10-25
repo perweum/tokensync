@@ -699,3 +699,117 @@ describe("generateCSS — font style names become weight, stretch and style", ()
     expect(keyworded).toContain("--typography-action-fontStretch: 120%;");
   });
 });
+
+describe("generateCSS — remTokens converts chosen px values to rem", () => {
+  const px = (value: string, $type = "dimension") => ({ $type, $value: value });
+  const collections = [
+    col(names.primitives, "Value", {
+      "primitive.font-size.1": px("12px"),
+      "primitive.font-size.2": px("18px"),
+      "spacing.unit": px("4px"),
+      "radius.md": px("4px"),
+      "border-width.default": px("1px"),
+      "primitive.dimension.1": px("3px"),
+    }),
+  ];
+
+  it("converts only the tokens whose path matches, against a 16px base", () => {
+    const css = generateCSS(collections, {
+      ...metadata,
+      remTokens: ["primitive.font-size.*", "spacing.unit"],
+    });
+    expect(css).toContain("--primitive-font-size-1: 0.75rem;");
+    expect(css).toContain("--primitive-font-size-2: 1.125rem;");
+    expect(css).toContain("--spacing-unit: 0.25rem;");
+    // Everything else stays px: a radius or a hairline border must not scale with the user's font size.
+    expect(css).toContain("--radius-md: 4px;");
+    expect(css).toContain("--border-width-default: 1px;");
+    expect(css).toContain("--primitive-dimension-1: 3px;");
+  });
+
+  it("uses remBase when it isn't 16", () => {
+    const css = generateCSS(collections, { ...metadata, remTokens: ["spacing.unit"], remBase: 10 });
+    expect(css).toContain("--spacing-unit: 0.4rem;");
+  });
+
+  it("changes nothing when remTokens isn't set — output for existing repos is unchanged", () => {
+    const css = generateCSS(collections, metadata);
+    expect(css).toContain("--spacing-unit: 4px;");
+    expect(css).not.toContain("rem;");
+  });
+
+  it("converts inside size-axis override blocks too", () => {
+    const css = generateCSS(
+      [
+        col(names.primitives, "Mobile", { "primitive.font-size.1": px("12px") }),
+        col(names.primitives, "Desktop", { "primitive.font-size.1": px("16px") }),
+      ],
+      {
+        ...metadata,
+        sizes: ["mobile", "desktop"],
+        sizeBreakpoints: { desktop: 768 },
+        remTokens: ["primitive.font-size.*"],
+      },
+    );
+    expect(css).toContain("--primitive-font-size-1: 0.75rem;");
+    expect(css).toContain("--primitive-font-size-1: 1rem;");
+    expect(css).not.toMatch(/font-size-1: \d+px/);
+  });
+
+  it("leaves a var() reference and a non-px value alone", () => {
+    const css = generateCSS(
+      [
+        col(
+          names.primitives,
+          "Value",
+          { "a.size": px("12px"), "b.size": px("1.5em"), "c.size": px("0px") },
+          { "a.size": px("{x.size}"), "b.size": px("1.5em"), "c.size": px("0px") },
+        ),
+      ],
+      { ...metadata, remTokens: ["*.size"] },
+    );
+    expect(css).toContain("--b-size: 1.5em;");
+    expect(css).toContain("--c-size: 0rem;");
+  });
+
+  it("passes a duration through with its unit", () => {
+    const css = generateCSS(
+      [col(names.primitives, "Value", { "motion.duration.fast": px("150ms", "duration") })],
+      metadata,
+    );
+    expect(css).toContain("--motion-duration-fast: 150ms;");
+  });
+});
+
+describe("generateCSS — an explicit defaultTheme decides what :root holds", () => {
+  const theme = (name: string, color: string) =>
+    col(names.themes, name, { "color.accent": { $type: "color", $value: color } });
+
+  it("puts the named theme in :root even when it isn't first in the list", () => {
+    const css = generateCSS([theme("Vann", "#111111"), theme("Ild", "#222222")], {
+      ...metadata,
+      themes: ["Vann", "Ild"],
+      defaultTheme: "Ild",
+    });
+    expect(css).toMatch(/:root \{[^}]*--color-accent: #222222;/s);
+    expect(css).toMatch(/\[data-theme="vann"\] \{[^}]*--color-accent: #111111;/s);
+    expect(css).not.toMatch(/\[data-theme="ild"\]/);
+  });
+
+  it("falls back to the first theme when defaultTheme isn't set (unchanged behaviour)", () => {
+    const css = generateCSS([theme("Vann", "#111111"), theme("Ild", "#222222")], {
+      ...metadata,
+      themes: ["Vann", "Ild"],
+    });
+    expect(css).toMatch(/:root \{[^}]*--color-accent: #111111;/s);
+  });
+
+  it("ignores a defaultTheme that matches no theme, rather than breaking", () => {
+    const css = generateCSS([theme("Vann", "#111111"), theme("Ild", "#222222")], {
+      ...metadata,
+      themes: ["Vann", "Ild"],
+      defaultTheme: "nope",
+    });
+    expect(css).toMatch(/:root \{[^}]*--color-accent: #111111;/s);
+  });
+});

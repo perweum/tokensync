@@ -47,7 +47,7 @@ import type { TokenValue } from "../messages";
 import { resolveFontWeightNumber, DEFAULT_FONT_WEIGHT } from "../font-weight";
 import type { FontStyleOverrides } from "../font-weight";
 import type { TypographyField } from "../typography-styles";
-import { toCSSVar, sameMode, pickDefaultMode } from "../token-format";
+import { toCSSVar, sameMode, pickDefaultMode, themeSearchOrder } from "../token-format";
 import { formatTypographyField, fontStyleSiblings, typographyFieldIndex } from "./typography-css";
 
 /**
@@ -58,6 +58,22 @@ import { formatTypographyField, fontStyleSiblings, typographyFieldIndex } from "
 interface FormatContext {
   typographyFields: Map<string, TypographyField>;
   fontOverrides: FontStyleOverrides | undefined;
+  /** metadata.remTokens, compiled — null when the option isn't set. */
+  rem: { matchers: RegExp[]; base: number } | null;
+}
+
+/** A dot-path pattern: `*` is one path segment, `**` is anything, everything else literal. */
+function pathPattern(pattern: string): RegExp {
+  const source = pattern
+    .split("**")
+    .map((part) =>
+      part
+        .split("*")
+        .map((lit) => lit.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+        .join("[^.]*"),
+    )
+    .join(".*");
+  return new RegExp(`^${source}$`);
 }
 
 export function generateCSS(collections: ResolvedCollection[], metadata: Metadata): string {
@@ -69,6 +85,9 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
       metadata.fontStyles || metadata.fontStretchKeywords
         ? { fontStyles: metadata.fontStyles, stretchKeywords: metadata.fontStretchKeywords }
         : undefined,
+    rem: metadata.remTokens?.length
+      ? { matchers: metadata.remTokens.map(pathPattern), base: metadata.remBase ?? 16 }
+      : null,
   };
 
   const names = metadata.figma.collections;
@@ -89,7 +108,7 @@ export function generateCSS(collections: ResolvedCollection[], metadata: Metadat
   // default, not whatever order themeCols happened to arrive in (GitHub tree
   // order, or Figma's own mode order on the push side, neither of which is
   // guaranteed to put metadata.themes[0] first).
-  const defaultTheme = pickDefaultMode(metadata.themes, themeCols, (c) => c.modeName);
+  const defaultTheme = pickDefaultMode(themeSearchOrder(metadata), themeCols, (c) => c.modeName);
   const nonDefaultThemes = themeCols.filter((c) => c !== defaultTheme);
 
   // Every path that will actually get its own `--var: value;` declaration in
@@ -491,6 +510,22 @@ function isFontStyleToken(path: string, $type: string, ctx: FormatContext): bool
  * Everything else passes through.
  */
 function formatCSSValue(path: string, $type: string, value: string, ctx: FormatContext): string {
+  return toRem(path, formatBaseCSSValue(path, $type, value, ctx), ctx);
+}
+
+/** A px value as rem — only for the tokens `remTokens` names, and only a plain px number. */
+function toRem(path: string, value: string, ctx: FormatContext): string {
+  if (!ctx.rem || !ctx.rem.matchers.some((m) => m.test(path))) return value;
+  const m = /^(-?\d*\.?\d+)px$/.exec(value.trim());
+  return m ? `${Number((Number(m[1]) / ctx.rem.base).toFixed(4))}rem` : value;
+}
+
+function formatBaseCSSValue(
+  path: string,
+  $type: string,
+  value: string,
+  ctx: FormatContext,
+): string {
   if (isFontStyleToken(path, $type, ctx)) {
     const resolved = resolveFontWeightNumber(value, ctx.fontOverrides);
     if (resolved === null) {

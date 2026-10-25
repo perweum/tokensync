@@ -298,6 +298,7 @@ export function figmaTypeFromTokenType(
       return "BOOLEAN";
     case "dimension":
     case "number":
+    case "duration":
       // Numeric properties (spacing, radius, font size, line height…) — must be a real
       // Figma FLOAT variable to bind to auto-layout, corner radius, stroke weight, etc.
       return "FLOAT";
@@ -355,6 +356,9 @@ function hexToRGBA(hex: string): RGBA | null {
 }
 
 function parseDimension(value: string): number | null {
+  // A duration: Figma holds milliseconds, so "0.2s" is 200 and "150ms" is 150.
+  const duration = /^(-?\d*\.?\d+)(ms|s)$/.exec(value.trim());
+  if (duration) return Number(duration[1]) * (duration[2] === "s" ? 1000 : 1);
   // Strip known units — values in token files are pre-converted to unitless px/% numbers
   const stripped = value.replace(/px$/, "").replace(/rem$/, "").replace(/em$/, "");
   const num = parseFloat(stripped);
