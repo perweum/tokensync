@@ -126,6 +126,9 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
   // been generated (e.g. just turned on in Output Formats) — see PushDiff's
   // "output-only" state.
   const [outputOnlyFiles, setOutputOnlyFiles] = useState<string[]>([]);
+  // Output formats the push will generate; null until a push has been reviewed.
+  // Empty means the PR will carry token JSON only — PushDiff says so.
+  const [enabledFormats, setEnabledFormats] = useState<string[] | null>(null);
   const [lastSync, setLastSync] = useState<LastSync | null>(null);
 
   // Branch switching — persisted per project; defaults to the configured branch.
@@ -570,6 +573,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
       setConflictPaths(review.conflictPaths);
       setStaleConfiguredModes(review.staleModes);
       setOutputOnlyFiles(review.outputOnlyFiles);
+      setEnabledFormats(review.enabledOutputFormats);
 
       // "Up to date" needs no token changes, no enabled-but-never-generated
       // output file, AND no stale configured mode — the last two are reasons to
@@ -691,6 +695,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
         conflictPaths={conflictPaths}
         staleConfiguredModes={staleConfiguredModes}
         outputOnlyFiles={outputOnlyFiles}
+        noOutputFormats={enabledFormats?.length === 0}
         onCreatePR={(title, keys) => handleCreatePR(title, keys)}
         onBack={() => {
           setView("main");
@@ -701,6 +706,7 @@ export function Sync({ project, onEditProject, onDeleteProject: _onDeleteProject
           setConflictPaths([]);
           setStaleConfiguredModes([]);
           setOutputOnlyFiles([]);
+          setEnabledFormats(null);
           setCreateError(undefined);
         }}
         creating={creating}

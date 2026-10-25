@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { reviewPull, reviewPush, skippedCollectionsSuffix } from "./syncReview";
+import {
+  reviewPull,
+  reviewPush,
+  skippedCollectionsSuffix,
+  enabledOutputFormats,
+} from "./syncReview";
 import type { FigmaVariable, FigmaVariableCollection, GitHubFile } from "../shared/messages";
 import { parseRepository } from "../shared/token-merger";
 import { buildFilesFromDiffs } from "../shared/sync-logic";
@@ -134,6 +139,45 @@ describe("reviewPush", () => {
       { id: "c9", name: "Mystery", modes: [{ modeId: "z", name: "Value" }], variableIds: [] },
     ];
     expect(push({ figmaCollections: collections }).unknownCollectionNames).toEqual(["Mystery"]);
+  });
+});
+
+describe("enabledOutputFormats", () => {
+  it("lists only the platforms switched on, in a stable order", () => {
+    expect(
+      enabledOutputFormats({
+        swift: { enabled: true },
+        css: { enabled: true },
+        js: { enabled: false },
+        dart: { enabled: true },
+      }),
+    ).toEqual(["css", "dart", "swift"]);
+  });
+
+  it("is empty when none are on, none are configured, or platforms is absent", () => {
+    expect(enabledOutputFormats({ css: { enabled: false } })).toEqual([]);
+    expect(enabledOutputFormats({})).toEqual([]);
+    expect(enabledOutputFormats(undefined)).toEqual([]);
+  });
+});
+
+describe("reviewPush reports which output formats the push will generate", () => {
+  it("is empty for a repo that never enabled any — what the push screen warns about", () => {
+    expect(push({ figmaVariables: figmaVariables(8) }).enabledOutputFormats).toEqual([]);
+  });
+
+  it("lists the enabled ones", () => {
+    const githubFiles = [
+      file(
+        "tokens/metadata.json",
+        metadataJson({ platforms: { css: { enabled: true }, ts: { enabled: true } } }),
+      ),
+      primitivesFile,
+    ];
+    expect(push({ githubFiles, figmaVariables: figmaVariables(8) }).enabledOutputFormats).toEqual([
+      "css",
+      "ts",
+    ]);
   });
 });
 
